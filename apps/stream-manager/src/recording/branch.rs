@@ -66,6 +66,16 @@ pub struct RecordingBranch {
     config: RecordingConfig,
 }
 
+impl std::fmt::Debug for RecordingBranch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RecordingBranch")
+            .field("is_recording", &self.is_recording.load(Ordering::Relaxed))
+            .field("segment_counter", &self.segment_counter.load(Ordering::Relaxed))
+            .field("config", &self.config)
+            .finish()
+    }
+}
+
 impl RecordingBranch {
     /// Creates a new recording branch with zero-frame-loss guarantee
     /// 

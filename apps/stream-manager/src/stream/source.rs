@@ -84,6 +84,19 @@ pub struct StreamSource {
     creation_time: Instant,
 }
 
+impl std::fmt::Debug for StreamSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StreamSource")
+            .field("id", &self.id)
+            .field("source_uri", &self.source_uri)
+            .field("source_type", &self.source_type)
+            .field("has_source_bin", &self.source_bin.is_some())
+            .field("has_fallbacksrc", &self.fallbacksrc.is_some())
+            .field("has_decodebin", &self.decodebin.is_some())
+            .finish()
+    }
+}
+
 /// Messages that can be sent from the source
 #[derive(Debug, Clone)]
 pub enum SourceMessage {
