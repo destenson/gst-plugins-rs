@@ -1,0 +1,84 @@
+# Stream Manager Configuration Example
+
+[app]
+name = "Stream Manager"
+log_level = "info"  # Options: trace, debug, info, warn, error
+max_concurrent_streams = 10
+shutdown_timeout_seconds = 30
+
+[server]
+bind_address = "0.0.0.0"
+rtsp_port = 8554
+webrtc_port = 8555
+api_port = 8080
+websocket_port = 8081
+
+[storage]
+base_path = "/var/lib/stream-manager/recordings"
+max_disk_usage_percent = 80.0
+rotation_enabled = true
+retention_days = 7
+min_free_space_gb = 10.0
+check_interval_seconds = 60
+
+[recording]
+segment_duration_seconds = 300  # 5 minutes
+format = "mp4"
+video_codec = "h264"
+audio_codec = "aac"
+video_bitrate_kbps = 2000
+audio_bitrate_kbps = 128
+keyframe_interval = 30
+
+[inference]
+enabled = false
+gpu_enabled = false
+batch_size = 1
+# model_path = "/path/to/model"
+confidence_threshold = 0.5
+inference_interval_ms = 100
+
+[monitoring]
+health_check_interval_seconds = 10
+metrics_enabled = true
+telemetry_enabled = false
+prometheus_port = 9090
+
+[stream_defaults]
+reconnect_timeout_seconds = 5
+max_reconnect_attempts = 10
+buffer_size_mb = 50
+
+# Stream definitions
+[[streams]]
+id = "camera-1"
+name = "Front Door Camera"
+source_uri = "rtsp://192.168.1.100:554/stream1"
+enabled = true
+recording_enabled = true
+inference_enabled = false
+reconnect_timeout_seconds = 5
+max_reconnect_attempts = 10
+buffer_size_mb = 50
+
+[[streams]]
+id = "camera-2"
+name = "Parking Lot Camera"
+source_uri = "rtsp://192.168.1.101:554/stream1"
+enabled = true
+recording_enabled = true
+inference_enabled = true
+reconnect_timeout_seconds = 5
+max_reconnect_attempts = 10
+buffer_size_mb = 50
+
+[[streams]]
+id = "camera-3"
+name = "Warehouse Interior"
+source_uri = "rtsp://192.168.1.102:554/stream1"
+enabled = false
+recording_enabled = true
+inference_enabled = false
+reconnect_timeout_seconds = 10
+max_reconnect_attempts = 5
+buffer_size_mb = 100

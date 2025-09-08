@@ -1,0 +1,83 @@
+[package]
+name = "stream-manager"
+version.workspace = true
+authors = ["GStreamer developers <gstreamer-devel@lists.freedesktop.org>"]
+repository.workspace = true
+license = "MIT OR Apache-2.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Unified multi-stream recording and inference system"
+
+[[bin]]
+name = "stream-manager"
+path = "src/main.rs"
+
+[dependencies]
+# GStreamer dependencies
+gst = { workspace = true }
+gst-app = { workspace = true }
+gst-base = { workspace = true }
+gst-rtsp = { workspace = true }
+gst-rtsp-server = { workspace = true }
+gst-webrtc = { workspace = true }
+gst-video = { workspace = true }
+gst-audio = { workspace = true }
+gst-rtp = { workspace = true }
+gst-sdp = { workspace = true }
+
+# Async runtime
+tokio = { version = "1.47.1", features = ["full"] }
+
+# Web framework
+actix-web = "4.11.0"
+actix-ws = "0.3.0"
+
+# Serialization
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.143"
+toml = "0.9.5"
+
+# Logging and tracing
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.20", features = ["env-filter", "json"] }
+
+# Database
+sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio", "migrate"] }
+
+# Monitoring
+prometheus = "0.14.0"
+
+# File watching
+notify = "8.2.0"
+
+# Error handling
+thiserror = "2.0.16"
+anyhow = "1.0.99"
+
+# Time handling
+chrono = "0.4.41"
+
+# HTTP client
+reqwest = { version = "0.12.23", features = ["json"] }
+
+# UUID generation
+uuid = { version = "1.18.1", features = ["v4", "serde"] }
+
+# Async traits
+async-trait = "0.1.89"
+
+# Command line parsing
+clap = { version = "4.5.47", features = ["derive", "env"] }
+
+# OpenTelemetry (for later PRPs)
+opentelemetry = { version = "0.30.0", optional = true }
+opentelemetry-otlp = { version = "0.30.0", optional = true }
+
+[dev-dependencies]
+tempfile = "3.21.0"
+mockito = "1.7.0"
+
+[features]
+default = []
+telemetry = ["opentelemetry", "opentelemetry-otlp"]
+nvidia = []  # For NVIDIA inference support (PRP-21)
