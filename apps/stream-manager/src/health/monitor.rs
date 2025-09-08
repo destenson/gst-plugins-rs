@@ -155,11 +155,12 @@ impl HealthMonitor {
             // Get all streams
             let stream_ids = stream_manager.list_streams().await;
             
-            for stream_id in stream_ids {
-                if let Some(stream) = stream_manager.get_stream(&stream_id).await {
+            for stream_info in stream_ids.iter() {
+                let stream_id = &stream_info.id;
+                if let Some(stream) = stream_manager.get_stream(stream_id).await {
                     // Update metrics for this stream
                     let mut metrics_map = metrics.write().await;
-                    let stream_metrics = metrics_map.entry(stream_id.clone())
+                    let stream_metrics = metrics_map.entry(stream_id.to_string())
                         .or_insert_with(HealthMetrics::default);
                     
                     // Check health based on stream statistics
@@ -169,7 +170,7 @@ impl HealthMonitor {
                     // Handle state changes
                     if stream_metrics.state != previous_state {
                         Self::handle_state_change(
-                            &stream_id,
+                            stream_id,
                             &previous_state,
                             &stream_metrics.state,
                             &stream_manager,

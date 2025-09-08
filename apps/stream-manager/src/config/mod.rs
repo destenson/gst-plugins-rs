@@ -64,6 +64,7 @@ pub struct StorageConfig {
 pub struct StreamConfig {
     pub id: String,
     pub name: String,
+    #[serde(alias = "uri")]
     pub source_uri: String,
     pub enabled: bool,
     pub recording_enabled: bool,
@@ -71,6 +72,12 @@ pub struct StreamConfig {
     pub reconnect_timeout_seconds: u64,
     pub max_reconnect_attempts: u32,
     pub buffer_size_mb: u32,
+}
+
+impl StreamConfig {
+    pub fn uri(&self) -> &str {
+        &self.source_uri
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

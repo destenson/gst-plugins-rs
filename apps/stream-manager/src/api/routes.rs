@@ -4,20 +4,14 @@ use serde_json::json;
 use tracing::debug;
 
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
+    // Configure the stream control API endpoints from PRP-12
+    crate::api::streams::configure(cfg);
+    
     cfg.service(
         web::scope("/api/v1")
             .route("/health", web::get().to(health_check))
             .route("/health/liveness", web::get().to(liveness_check))
             .route("/health/readiness", web::get().to(readiness_check))
-            .service(
-                web::scope("/streams")
-                    .route("", web::get().to(list_streams))
-                    .route("", web::post().to(add_stream))
-                    .route("/{stream_id}", web::get().to(get_stream))
-                    .route("/{stream_id}", web::delete().to(remove_stream))
-                    .route("/{stream_id}/start", web::post().to(start_stream))
-                    .route("/{stream_id}/stop", web::post().to(stop_stream))
-            )
             .service(
                 web::scope("/config")
                     .route("", web::get().to(get_config))
@@ -54,81 +48,6 @@ async fn readiness_check(_state: web::Data<AppState>) -> Result<HttpResponse, Ap
     })))
 }
 
-async fn list_streams(state: web::Data<AppState>) -> Result<HttpResponse, ApiError> {
-    let streams = state.stream_manager.list_streams().await;
-    Ok(HttpResponse::Ok().json(streams))
-}
-
-async fn add_stream(
-    state: web::Data<AppState>,
-    req: web::Json<crate::api::dto::AddStreamRequest>,
-) -> Result<HttpResponse, ApiError> {
-    let config: crate::config::StreamConfig = req.into_inner().into();
-    state.stream_manager
-        .add_stream(config.id.clone(), config)
-        .await
-        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
-    
-    Ok(HttpResponse::Created().json(json!({
-        "message": "Stream added successfully"
-    })))
-}
-
-async fn get_stream(
-    state: web::Data<AppState>,
-    path: web::Path<String>,
-) -> Result<HttpResponse, ApiError> {
-    let stream_id = path.into_inner();
-    let _stream = state.stream_manager
-        .get_stream(&stream_id)
-        .await
-        .ok_or_else(|| ApiError::NotFound(format!("Stream not found: {}", stream_id)))?;
-    
-    // TODO: Convert ManagedStream to StreamResponse
-    Ok(HttpResponse::Ok().json(json!({
-        "id": stream_id,
-        "status": "active"
-    })))
-}
-
-async fn remove_stream(
-    state: web::Data<AppState>,
-    path: web::Path<String>,
-) -> Result<HttpResponse, ApiError> {
-    let stream_id = path.into_inner();
-    state.stream_manager
-        .remove_stream(&stream_id)
-        .await
-        .map_err(|e| ApiError::NotFound(e.to_string()))?;
-    
-    Ok(HttpResponse::Ok().json(json!({
-        "message": "Stream removed successfully"
-    })))
-}
-
-async fn start_stream(
-    _state: web::Data<AppState>,
-    path: web::Path<String>,
-) -> Result<HttpResponse, ApiError> {
-    let stream_id = path.into_inner();
-    // TODO: Implement individual stream start/stop in future PRP
-    Ok(HttpResponse::Ok().json(json!({
-        "message": format!("Stream {} start requested", stream_id),
-        "note": "Individual stream control will be implemented in a future PRP"
-    })))
-}
-
-async fn stop_stream(
-    _state: web::Data<AppState>,
-    path: web::Path<String>,
-) -> Result<HttpResponse, ApiError> {
-    let stream_id = path.into_inner();
-    // TODO: Implement individual stream start/stop in future PRP
-    Ok(HttpResponse::Ok().json(json!({
-        "message": format!("Stream {} stop requested", stream_id),
-        "note": "Individual stream control will be implemented in a future PRP"
-    })))
-}
 
 async fn get_config(state: web::Data<AppState>) -> Result<HttpResponse, ApiError> {
     Ok(HttpResponse::Ok().json(&*state.config))
@@ -151,12 +70,11 @@ async fn reload_config(_state: web::Data<AppState>) -> Result<HttpResponse, ApiE
     })))
 }
 
-async fn get_metrics(state: web::Data<AppState>) -> Result<HttpResponse, ApiError> {
-    // TODO: Implement actual metrics collection
-    let streams = state.stream_manager.list_streams().await;
+async fn get_metrics(_state: web::Data<AppState>) -> Result<HttpResponse, ApiError> {
+    // TODO: Implement actual metrics collection in PRP-13
     Ok(HttpResponse::Ok().json(json!({
-        "total_streams": streams.len(),
-        "active_streams": 0 // TODO: count active streams properly
+        "total_streams": 0,
+        "active_streams": 0
     })))
 }
 
