@@ -18,6 +18,7 @@ pub mod telemetry;
 
 // Re-export commonly used types
 pub use config::{Config, ConfigManager};
+pub use pipeline::{Pipeline, PipelineManager, PipelineState, PipelineError, PipelineMessage};
 
 // Common error types
 use thiserror::Error;
@@ -28,7 +29,10 @@ pub enum StreamManagerError {
     StreamNotFound(String),
     
     #[error("Pipeline error: {0}")]
-    PipelineError(#[from] gst::glib::Error),
+    Pipeline(String),
+    
+    #[error("GStreamer pipeline error: {0}")]
+    GStreamerPipelineError(#[from] gst::glib::Error),
     
     #[error("GStreamer boolean error: {0}")]
     GstBoolError(#[from] gst::glib::BoolError),
