@@ -19,13 +19,35 @@ pub use dto::*;
 pub struct AppState {
     pub stream_manager: Arc<StreamManager>,
     pub config: Arc<Config>,
+    pub metrics_collector: Arc<crate::metrics::MetricsCollector>,
 }
 
 impl AppState {
     pub fn new(stream_manager: Arc<StreamManager>, config: Arc<Config>) -> Self {
+        let metrics_collector = Arc::new(
+            crate::metrics::MetricsCollector::new(
+                stream_manager.clone(),
+                Some(&config.monitoring.metrics),
+            )
+            .expect("Failed to create metrics collector")
+        );
+        
         Self {
             stream_manager,
             config,
+            metrics_collector,
+        }
+    }
+    
+    pub fn with_metrics(
+        stream_manager: Arc<StreamManager>,
+        config: Arc<Config>,
+        metrics_collector: Arc<crate::metrics::MetricsCollector>,
+    ) -> Self {
+        Self {
+            stream_manager,
+            config,
+            metrics_collector,
         }
     }
 }

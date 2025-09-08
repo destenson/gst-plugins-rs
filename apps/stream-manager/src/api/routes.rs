@@ -70,17 +70,33 @@ async fn reload_config(_state: web::Data<AppState>) -> Result<HttpResponse, ApiE
     })))
 }
 
-async fn get_metrics(_state: web::Data<AppState>) -> Result<HttpResponse, ApiError> {
-    // TODO: Implement actual metrics collection in PRP-13
+pub async fn get_metrics(state: web::Data<AppState>) -> Result<HttpResponse, ApiError> {
+    // Get stream statistics
+    let streams = state.stream_manager.list_streams().await;
+    let active_streams = streams.iter()
+        .filter(|s| matches!(s.state, crate::manager::StreamState::Running))
+        .count();
+    
+    
     Ok(HttpResponse::Ok().json(json!({
-        "total_streams": 0,
-        "active_streams": 0
+        "total_streams": streams.len(),
+        "active_streams": active_streams,
+        "timestamp": chrono::Utc::now().to_rfc3339(),
     })))
 }
 
-async fn get_prometheus_metrics(_state: web::Data<AppState>) -> Result<HttpResponse, ApiError> {
-    // TODO: Implement Prometheus metrics in PRP-13
-    Ok(HttpResponse::NotImplemented().body("Prometheus metrics will be implemented in PRP-13"))
+pub async fn get_prometheus_metrics(state: web::Data<AppState>) -> Result<HttpResponse, ApiError> {
+    match state.metrics_collector.export_prometheus().await {
+        Ok(metrics) => {
+            Ok(HttpResponse::Ok()
+                .content_type("text/plain; version=0.0.4")
+                .body(metrics))
+        }
+        Err(e) => {
+            tracing::error!("Failed to export Prometheus metrics: {}", e);
+            Err(ApiError::InternalError(format!("Failed to export metrics: {}", e)))
+        }
+    }
 }
 
 #[cfg(test)]
