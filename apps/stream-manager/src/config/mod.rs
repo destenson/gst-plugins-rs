@@ -9,6 +9,7 @@ use tracing::{info, warn, error};
 #[serde(default)]
 pub struct Config {
     pub app: AppConfig,
+    pub api: ApiConfig,
     pub server: ServerConfig,
     pub storage: StorageConfig,
     pub recording: RecordingConfig,
@@ -25,6 +26,16 @@ pub struct AppConfig {
     pub log_level: String,
     pub max_concurrent_streams: usize,
     pub shutdown_timeout_seconds: u64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct ApiConfig {
+    pub host: String,
+    pub port: u16,
+    pub worker_threads: Option<usize>,
+    pub request_timeout_seconds: u64,
+    pub cors_enabled: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -107,6 +118,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             app: AppConfig::default(),
+            api: ApiConfig::default(),
             server: ServerConfig::default(),
             storage: StorageConfig::default(),
             recording: RecordingConfig::default(),
@@ -125,6 +137,18 @@ impl Default for AppConfig {
             log_level: "info".to_string(),
             max_concurrent_streams: 10,
             shutdown_timeout_seconds: 30,
+        }
+    }
+}
+
+impl Default for ApiConfig {
+    fn default() -> Self {
+        Self {
+            host: "0.0.0.0".to_string(),
+            port: 8080,
+            worker_threads: None,
+            request_timeout_seconds: 30,
+            cors_enabled: true,
         }
     }
 }
@@ -300,6 +324,9 @@ impl Config {
         if let Some(app) = partial.app {
             self.app = app;
         }
+        if let Some(api) = partial.api {
+            self.api = api;
+        }
         if let Some(server) = partial.server {
             self.server = server;
         }
@@ -324,6 +351,7 @@ impl Config {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PartialConfig {
     pub app: Option<AppConfig>,
+    pub api: Option<ApiConfig>,
     pub server: Option<ServerConfig>,
     pub storage: Option<StorageConfig>,
     pub recording: Option<RecordingConfig>,
@@ -584,6 +612,7 @@ api_port = 9090
                 name: "Updated".to_string(),
                 ..Default::default()
             }),
+            api: None,
             server: None,
             storage: None,
             recording: None,
