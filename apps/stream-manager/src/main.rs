@@ -61,15 +61,19 @@ async fn main() -> Result<()> {
     }
 
     // Load configuration
-    let mut config_manager = ConfigManager::new(args.config).await?;
+    let mut config_manager = ConfigManager::new(args.config.clone()).await?;
     let config = config_manager.get().await;
     info!("Configuration loaded successfully");
     info!("App name: {}", config.app.name);
     info!("Configured {} streams", config.streams.len());
     
-    // Start configuration file watching
-    config_manager.start_watching().await?;
-    info!("Configuration hot-reload enabled");
+    // Start configuration file watching only if config file exists
+    if args.config.exists() {
+        config_manager.start_watching().await?;
+        info!("Configuration hot-reload enabled");
+    } else {
+        info!("Running with default configuration (no hot-reload)");
+    }
     
     // TODO: Initialize pipeline manager (PRP-04)
     // TODO: Start stream manager (PRP-09)

@@ -143,8 +143,15 @@ impl Default for ServerConfig {
 
 impl Default for StorageConfig {
     fn default() -> Self {
+        // Use platform-appropriate default paths
+        let base_path = if cfg!(windows) {
+            PathBuf::from("C:\\ProgramData\\stream-manager\\recordings")
+        } else {
+            PathBuf::from("/var/lib/stream-manager/recordings")
+        };
+        
         Self {
-            base_path: PathBuf::from("/var/lib/stream-manager/recordings"),
+            base_path,
             max_disk_usage_percent: 80.0,
             rotation_enabled: true,
             retention_days: 7,
@@ -220,18 +227,36 @@ impl Default for StreamConfig {
 
 impl Config {
     pub async fn from_file(path: &PathBuf) -> crate::Result<Self> {
-        let content = tokio::fs::read_to_string(path).await?;
+        // Check if file exists and provide helpful error message
+        if !path.exists() {
+            return Err(crate::StreamManagerError::ConfigError(
+                format!(
+                    "Configuration file not found: {:?}\n\
+                    Please create a config.toml file or specify the path with --config\n\
+                    You can use config.example.toml as a template",
+                    path
+                )
+            ));
+        }
+        
+        let content = tokio::fs::read_to_string(path).await
+            .map_err(|e| crate::StreamManagerError::ConfigError(
+                format!("Failed to read configuration file {:?}: {}", path, e)
+            ))?;
+            
         let config: Config = toml::from_str(&content)
-            .map_err(|e| crate::StreamManagerError::ConfigError(e.to_string()))?;
+            .map_err(|e| crate::StreamManagerError::ConfigError(
+                format!("Failed to parse configuration file {:?}: {}", path, e)
+            ))?;
         
         config.validate()?;
         Ok(config)
     }
     
     pub fn validate(&self) -> crate::Result<()> {
-        // Validate storage path
+        // Validate storage path (just warn if it doesn't exist - we'll create it later)
         if !self.storage.base_path.exists() {
-            warn!("Storage path does not exist: {:?}", self.storage.base_path);
+            warn!("Storage path does not exist: {:?} - will be created when needed", self.storage.base_path);
         }
         
         // Validate disk usage percentage
@@ -315,7 +340,22 @@ pub struct ConfigManager {
 
 impl ConfigManager {
     pub async fn new(config_path: PathBuf) -> crate::Result<Self> {
-        let config = Config::from_file(&config_path).await?;
+        // Check if config file exists
+        let config = if config_path.exists() {
+            info!("Loading configuration from {:?}", config_path);
+            Config::from_file(&config_path).await
+                .map_err(|e| {
+                    error!("Failed to load configuration: {}", e);
+                    e
+                })?
+        } else {
+            warn!("Configuration file {:?} not found, using defaults", config_path);
+            info!("To customize settings, create a config.toml file or copy config.example.toml");
+            Config::default()
+        };
+            
+        info!("Configuration loaded successfully");
+        
         Ok(Self {
             config: Arc::new(RwLock::new(config)),
             config_path,
@@ -427,6 +467,12 @@ impl ConfigManager {
     }
     
     pub async fn start_watching(&mut self) -> crate::Result<()> {
+        // Only start watching if the config file actually exists
+        if !self.config_path.exists() {
+            info!("Config file does not exist, hot-reload disabled. File will be watched once created.");
+            return Ok(());
+        }
+        
         let config_path = self.config_path.clone();
         let config_arc = self.config.clone();
         
@@ -440,8 +486,19 @@ impl ConfigManager {
             }
         }).map_err(|e| crate::StreamManagerError::ConfigError(e.to_string()))?;
         
-        watcher.watch(&self.config_path, RecursiveMode::NonRecursive)
-            .map_err(|e| crate::StreamManagerError::ConfigError(e.to_string()))?;
+        // Watch the parent directory if the file doesn't exist yet, otherwise watch the file
+        let watch_path = if self.config_path.exists() {
+            self.config_path.clone()
+        } else if let Some(parent) = self.config_path.parent() {
+            parent.to_path_buf()
+        } else {
+            self.config_path.clone()
+        };
+        
+        watcher.watch(&watch_path, RecursiveMode::NonRecursive)
+            .map_err(|e| crate::StreamManagerError::ConfigError(
+                format!("Failed to start config file watcher: {}", e)
+            ))?;
         
         self.watcher = Some(watcher);
         
