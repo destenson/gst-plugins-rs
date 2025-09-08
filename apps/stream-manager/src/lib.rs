@@ -29,7 +29,7 @@ pub enum StreamManagerError {
     StreamNotFound(String),
     
     #[error("Pipeline error: {0}")]
-    Pipeline(String),
+    PipelineError(String),
     
     #[error("GStreamer pipeline error: {0}")]
     GStreamerPipelineError(#[from] gst::glib::Error),
@@ -51,6 +51,9 @@ pub enum StreamManagerError {
     
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
+    
+    #[error("Other error: {0}")]
+    Other(String),
 }
 
 pub type Result<T> = std::result::Result<T, StreamManagerError>;
