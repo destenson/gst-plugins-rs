@@ -110,6 +110,21 @@ pub struct MonitoringConfig {
     pub metrics_enabled: bool,
     pub telemetry_enabled: bool,
     pub prometheus_port: u16,
+    pub metrics: MetricsConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct MetricsConfig {
+    pub collection_interval_seconds: u64,
+    pub system_metrics_interval_seconds: u64,
+    pub retain_metrics_hours: u64,
+    pub export_endpoint: String,
+    pub prometheus_enabled: bool,
+    pub include_stream_metrics: bool,
+    pub include_system_metrics: bool,
+    pub include_pipeline_metrics: bool,
+    pub include_recording_metrics: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -226,6 +241,23 @@ impl Default for MonitoringConfig {
             metrics_enabled: true,
             telemetry_enabled: false,
             prometheus_port: 9090,
+            metrics: MetricsConfig::default(),
+        }
+    }
+}
+
+impl Default for MetricsConfig {
+    fn default() -> Self {
+        Self {
+            collection_interval_seconds: 5,
+            system_metrics_interval_seconds: 10,
+            retain_metrics_hours: 24,
+            export_endpoint: "/api/v1/metrics".to_string(),
+            prometheus_enabled: true,
+            include_stream_metrics: true,
+            include_system_metrics: true,
+            include_pipeline_metrics: true,
+            include_recording_metrics: true,
         }
     }
 }

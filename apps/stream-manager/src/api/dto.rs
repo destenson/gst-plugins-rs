@@ -92,7 +92,7 @@ pub enum HealthStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemMetrics {
     pub cpu_usage_percent: f64,
-    pub memory_usage_mb: u64,
+    pub memory_usage_mb: f64,
     pub disk_usage_gb: f64,
     pub network_throughput_mbps: f64,
 }

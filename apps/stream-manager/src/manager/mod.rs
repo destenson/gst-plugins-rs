@@ -8,6 +8,20 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info, warn};
 
+fn calculate_bitrate(bytes: u64, duration: std::time::Duration) -> f64 {
+    if duration.as_secs() == 0 {
+        return 0.0;
+    }
+    (bytes as f64 * 8.0) / duration.as_secs_f64()
+}
+
+fn calculate_fps(frames: u64, duration: std::time::Duration) -> f64 {
+    if duration.as_secs() == 0 {
+        return 0.0;
+    }
+    frames as f64 / duration.as_secs_f64()
+}
+
 mod stream_info;
 pub use stream_info::{StreamInfo, StreamState, StreamHealth, RecordingState};
 
@@ -225,6 +239,29 @@ impl StreamManager {
         }
         
         result
+    }
+    
+    pub async fn get_all_stream_statistics(&self) -> Result<Vec<(String, crate::api::dto::StreamStatistics)>> {
+        let streams = self.streams.read().await;
+        let mut result = Vec::new();
+        
+        for (id, stream) in streams.iter() {
+            // Create StreamStatistics from the internal statistics
+            let stats = crate::api::dto::StreamStatistics {
+                frames_processed: stream.statistics.packets_received,
+                bytes_processed: stream.statistics.bytes_received,
+                dropped_frames: stream.statistics.dropped_frames,
+                bitrate: calculate_bitrate(stream.statistics.bytes_received, stream.statistics.last_update.elapsed()),
+                fps: calculate_fps(stream.statistics.packets_received, stream.statistics.last_update.elapsed()),
+                latency_ms: 0.0, // Would need actual latency measurement
+                uptime_seconds: stream.statistics.last_update.elapsed().as_secs(),
+                last_frame_time: Some(chrono::Utc::now().to_rfc3339()),
+            };
+            
+            result.push((id.clone(), stats));
+        }
+        
+        Ok(result)
     }
 
     pub async fn update_stream_health(&self, id: &str, status: HealthStatus) {
