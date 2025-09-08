@@ -1,4 +1,5 @@
 pub mod config;
+pub mod gst_utils;
 pub mod pipeline;
 pub mod stream;
 pub mod recording;
