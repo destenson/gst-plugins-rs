@@ -342,6 +342,90 @@ impl ConfigManager {
         Ok(())
     }
     
+    /// Save current configuration to a file (snapshot)
+    pub async fn save_snapshot(&self, path: &PathBuf) -> crate::Result<()> {
+        let config = self.config.read().await;
+        let toml_string = toml::to_string_pretty(&*config)
+            .map_err(|e| crate::StreamManagerError::ConfigError(
+                format!("Failed to serialize config: {}", e)
+            ))?;
+        
+        // Create parent directory if it doesn't exist
+        if let Some(parent) = path.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        
+        // Write configuration with timestamp header
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        let content = format!(
+            "# Configuration snapshot created at {}\n# Original file: {:?}\n\n{}",
+            timestamp,
+            self.config_path,
+            toml_string
+        );
+        
+        tokio::fs::write(path, content).await?;
+        info!("Configuration snapshot saved to {:?}", path);
+        Ok(())
+    }
+    
+    /// Save snapshot with automatic timestamp-based naming
+    pub async fn save_timestamped_snapshot(&self) -> crate::Result<PathBuf> {
+        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+        let filename = format!("config_snapshot_{}.toml", timestamp);
+        
+        // Save in same directory as original config
+        let snapshot_path = self.config_path
+            .parent()
+            .unwrap_or(std::path::Path::new("."))
+            .join("snapshots")
+            .join(filename);
+        
+        self.save_snapshot(&snapshot_path).await?;
+        Ok(snapshot_path)
+    }
+    
+    /// List available configuration snapshots
+    pub async fn list_snapshots(&self) -> crate::Result<Vec<PathBuf>> {
+        let snapshot_dir = self.config_path
+            .parent()
+            .unwrap_or(std::path::Path::new("."))
+            .join("snapshots");
+        
+        if !snapshot_dir.exists() {
+            return Ok(Vec::new());
+        }
+        
+        let mut entries = tokio::fs::read_dir(&snapshot_dir).await?;
+        let mut snapshots = Vec::new();
+        
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("toml") {
+                snapshots.push(path);
+            }
+        }
+        
+        // Sort by modification time (newest first)
+        snapshots.sort_by_key(|p| {
+            std::fs::metadata(p)
+                .and_then(|m| m.modified())
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+        });
+        snapshots.reverse();
+        
+        Ok(snapshots)
+    }
+    
+    /// Load configuration from a snapshot file
+    pub async fn load_snapshot(&mut self, snapshot_path: &PathBuf) -> crate::Result<()> {
+        info!("Loading configuration from snapshot: {:?}", snapshot_path);
+        let new_config = Config::from_file(snapshot_path).await?;
+        *self.config.write().await = new_config;
+        info!("Snapshot loaded successfully");
+        Ok(())
+    }
+    
     pub async fn start_watching(&mut self) -> crate::Result<()> {
         let config_path = self.config_path.clone();
         let config_arc = self.config.clone();
@@ -453,5 +537,58 @@ api_port = 9090
         
         config.merge(partial);
         assert_eq!(config.app.name, "Updated");
+    }
+    
+    #[tokio::test]
+    async fn test_config_snapshot() {
+        use tempfile::TempDir;
+        
+        // Create a temporary directory for testing
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.toml");
+        
+        // Write initial config
+        let config_content = r#"
+[app]
+name = "Test Manager"
+
+[server]
+api_port = 8080
+        "#;
+        tokio::fs::write(&config_path, config_content).await.unwrap();
+        
+        // Create config manager
+        let manager = ConfigManager::new(config_path.clone()).await.unwrap();
+        
+        // Save snapshot
+        let snapshot_path = temp_dir.path().join("snapshot.toml");
+        manager.save_snapshot(&snapshot_path).await.unwrap();
+        
+        // Verify snapshot exists and contains correct data
+        assert!(snapshot_path.exists());
+        let snapshot_content = tokio::fs::read_to_string(&snapshot_path).await.unwrap();
+        assert!(snapshot_content.contains("Test Manager"));
+        assert!(snapshot_content.contains("Configuration snapshot created at"));
+    }
+    
+    #[tokio::test]
+    async fn test_timestamped_snapshot() {
+        use tempfile::TempDir;
+        
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.toml");
+        
+        // Write initial config
+        tokio::fs::write(&config_path, "[app]\nname = \"Test\"").await.unwrap();
+        
+        let manager = ConfigManager::new(config_path).await.unwrap();
+        
+        // Save timestamped snapshot
+        let snapshot_path = manager.save_timestamped_snapshot().await.unwrap();
+        
+        // Verify snapshot was created with timestamp in filename
+        assert!(snapshot_path.exists());
+        assert!(snapshot_path.to_string_lossy().contains("config_snapshot_"));
+        assert!(snapshot_path.to_string_lossy().contains("snapshots"));
     }
 }
