@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 use stream_manager::config::ConfigManager;
+use stream_manager::gst_utils;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -19,6 +20,10 @@ struct Args {
     /// Bind address for REST API
     #[arg(long, default_value = "0.0.0.0:8080")]
     bind: String,
+    
+    /// Check available GStreamer plugins and exit
+    #[arg(long)]
+    check_plugins: bool,
 }
 
 #[tokio::main]
@@ -45,9 +50,15 @@ async fn main() -> Result<()> {
     info!("Configuration file: {:?}", args.config);
     info!("API bind address: {}", args.bind);
 
-    // Initialize GStreamer
-    gst::init()?;
+    // Initialize GStreamer and discover plugins
+    let gst_capabilities = gst_utils::initialize()?;
     info!("GStreamer initialized successfully");
+    
+    // If --check-plugins flag is set, print info and exit
+    if args.check_plugins {
+        gst_utils::print_plugin_info(&gst_capabilities);
+        return Ok(());
+    }
 
     // Load configuration
     let mut config_manager = ConfigManager::new(args.config).await?;
