@@ -93,7 +93,7 @@ impl Pipeline {
         sender: mpsc::UnboundedSender<PipelineMessage>
     ) -> crate::Result<()> {
         let bus = self.pipeline.bus().ok_or_else(|| {
-            crate::StreamManagerError::Pipeline("Failed to get pipeline bus".to_string())
+            crate::StreamManagerError::PipelineError("Failed to get pipeline bus".to_string())
         })?;
         
         let state = self.state.clone();
@@ -159,7 +159,7 @@ impl Pipeline {
             }
             
             glib::ControlFlow::Continue
-        }).map_err(|_| crate::StreamManagerError::Pipeline("Failed to add bus watch".to_string()))?;
+        }).map_err(|_| crate::StreamManagerError::PipelineError("Failed to add bus watch".to_string()))?;
         
         self.message_sender = Some(sender);
         self._bus_watch = Some(bus_watch);

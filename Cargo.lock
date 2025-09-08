@@ -8490,6 +8490,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "clap",
+ "futures",
  "gstreamer",
  "gstreamer-app",
  "gstreamer-audio",
