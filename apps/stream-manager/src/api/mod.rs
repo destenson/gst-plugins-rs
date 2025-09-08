@@ -10,6 +10,7 @@ pub mod routes;
 pub mod dto;
 pub mod error;
 pub mod middleware;
+pub mod streams;
 
 pub use error::ApiError;
 pub use dto::*;

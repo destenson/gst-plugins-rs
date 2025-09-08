@@ -9,6 +9,9 @@ use crate::config::StreamConfig;
 pub mod source;
 pub mod branching;
 
+#[cfg(test)]
+pub mod test_utils;
+
 pub use source::{StreamSource, SourceType, SourceHealth, SourceStatistics, SourceMessage};
 pub use branching::{BranchManager, StreamBranch, QueueConfig, BranchingError};
 

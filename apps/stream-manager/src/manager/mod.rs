@@ -8,6 +8,12 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info, warn};
 
+mod stream_info;
+pub use stream_info::{StreamInfo, StreamState, StreamHealth, RecordingState};
+
+#[cfg(test)]
+pub mod test_utils;
+
 #[derive(Debug)]
 pub struct ManagedStream {
     pub id: String,
@@ -208,9 +214,17 @@ impl StreamManager {
         streams.get(id).cloned()
     }
 
-    pub async fn list_streams(&self) -> Vec<String> {
+    pub async fn list_streams(&self) -> Vec<StreamInfo> {
         let streams = self.streams.read().await;
-        streams.keys().cloned().collect()
+        let mut result = Vec::new();
+        
+        for id in streams.keys() {
+            if let Ok(info) = self.get_stream_info(id).await {
+                result.push(info);
+            }
+        }
+        
+        result
     }
 
     pub async fn update_stream_health(&self, id: &str, status: HealthStatus) {
@@ -313,6 +327,79 @@ impl StreamManager {
         self.event_rx.clone()
     }
 
+    pub async fn get_stream_info(&self, id: &str) -> Result<StreamInfo> {
+        let streams = self.streams.read().await;
+        let stream = streams.get(id)
+            .ok_or_else(|| crate::StreamManagerError::StreamNotFound(id.to_string()))?;
+        
+        // Convert ManagedStream to StreamInfo
+        let health = StreamHealth::from(&stream.statistics);
+        let health = StreamHealth {
+            is_healthy: stream.health_status == HealthStatus::Healthy,
+            ..health
+        };
+        
+        let recording_state = if let Some(_recording) = &stream.recording_branch {
+            RecordingState {
+                is_recording: true, // TODO: Get actual state from recording branch
+                current_file: Some(format!("stream-{}.mp4", id)),
+                duration: Some(std::time::Duration::from_secs(0)),
+                bytes_written: Some(0),
+            }
+        } else {
+            RecordingState::default()
+        };
+        
+        // Get config from somewhere - for now use a default
+        let config = StreamConfig {
+            id: id.to_string(),
+            name: id.to_string(),
+            source_uri: format!("rtsp://localhost:8554/{}", id),
+            enabled: true,
+            recording_enabled: stream.recording_branch.is_some(),
+            inference_enabled: false,
+            reconnect_timeout_seconds: 5,
+            max_reconnect_attempts: 3,
+            buffer_size_mb: 10,
+        };
+        
+        Ok(StreamInfo {
+            id: stream.id.clone(),
+            config,
+            state: StreamState::Running,
+            health,
+            recording_state,
+        })
+    }
+    
+    pub async fn start_recording(&self, id: &str) -> Result<()> {
+        let streams = self.streams.read().await;
+        let stream = streams.get(id)
+            .ok_or_else(|| crate::StreamManagerError::StreamNotFound(id.to_string()))?;
+        
+        if let Some(_recording) = &stream.recording_branch {
+            // TODO: Implement actual start recording
+            info!("Starting recording for stream: {}", id);
+            Ok(())
+        } else {
+            Err(crate::StreamManagerError::Other("Recording not configured for stream".to_string()))
+        }
+    }
+    
+    pub async fn stop_recording(&self, id: &str) -> Result<()> {
+        let streams = self.streams.read().await;
+        let stream = streams.get(id)
+            .ok_or_else(|| crate::StreamManagerError::StreamNotFound(id.to_string()))?;
+        
+        if let Some(_recording) = &stream.recording_branch {
+            // TODO: Implement actual stop recording
+            info!("Stopping recording for stream: {}", id);
+            Ok(())
+        } else {
+            Err(crate::StreamManagerError::Other("Recording not configured for stream".to_string()))
+        }
+    }
+
     pub async fn handle_events(&self) {
         let mut event_rx = self.event_rx.write().await;
         
@@ -406,7 +493,7 @@ mod tests {
         // List streams
         let streams = manager.list_streams().await;
         assert_eq!(streams.len(), 1);
-        assert!(streams.contains(&"test-stream".to_string()));
+        assert!(streams.iter().any(|s| s.id == "test-stream"));
         
         // Remove stream
         let result = manager.remove_stream("test-stream").await;
