@@ -103,6 +103,15 @@ pub struct BranchManager {
     branches: Arc<RwLock<HashMap<String, BranchInfo>>>,
 }
 
+impl std::fmt::Debug for BranchManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BranchManager")
+            .field("pipeline", &self.pipeline.name())
+            .field("branches_count", &self.branches.read().unwrap().len())
+            .finish()
+    }
+}
+
 impl BranchManager {
     pub fn new(pipeline: &gst::Pipeline) -> Result<Self, BranchingError> {
         let tee = gst::ElementFactory::make("tee")

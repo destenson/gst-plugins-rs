@@ -15,6 +15,7 @@ pub mod webrtc;
 pub mod backup;
 pub mod service;
 pub mod telemetry;
+pub mod manager;
 
 // Re-export commonly used types
 pub use config::{Config, ConfigManager};
