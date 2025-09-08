@@ -7,7 +7,10 @@ use tracing::{debug, error, info};
 use crate::config::StreamConfig;
 
 pub mod source;
+pub mod branching;
+
 pub use source::{StreamSource, SourceType, SourceHealth, SourceStatistics, SourceMessage};
+pub use branching::{BranchManager, StreamBranch, QueueConfig, BranchingError};
 
 #[derive(Debug, Clone)]
 pub struct Stream {
@@ -32,6 +35,7 @@ pub enum StreamStatus {
 pub struct StreamManager {
     streams: Arc<RwLock<Vec<Stream>>>,
     sources: Arc<RwLock<HashMap<String, StreamSource>>>,
+    branch_managers: Arc<RwLock<HashMap<String, BranchManager>>>,
     message_receiver: Option<mpsc::UnboundedReceiver<(String, SourceMessage)>>,
     message_sender: mpsc::UnboundedSender<(String, SourceMessage)>,
 }
@@ -43,6 +47,7 @@ impl StreamManager {
         Self {
             streams: Arc::new(RwLock::new(Vec::new())),
             sources: Arc::new(RwLock::new(HashMap::new())),
+            branch_managers: Arc::new(RwLock::new(HashMap::new())),
             message_receiver: Some(message_receiver),
             message_sender,
         }
@@ -277,12 +282,72 @@ impl StreamManager {
 
         let mut streams = self.streams.write().await;
         let mut sources = self.sources.write().await;
+        let mut branch_managers = self.branch_managers.write().await;
 
         // Remove from collections
         streams.retain(|s| s.id != stream_id);
         sources.remove(stream_id);
+        branch_managers.remove(stream_id);
 
         info!("Stream {} removed successfully", stream_id);
         Ok(())
+    }
+
+    /// Get or create branch manager for a stream
+    pub async fn get_or_create_branch_manager(
+        &self,
+        stream_id: &str,
+        pipeline: &gst::Pipeline,
+    ) -> crate::Result<BranchManager> {
+        let mut managers = self.branch_managers.write().await;
+        
+        if let Some(manager) = managers.get(stream_id) {
+            Ok(manager.clone())
+        } else {
+            let manager = BranchManager::new(pipeline)
+                .map_err(|e| crate::StreamManagerError::Other(format!("Failed to create branch manager: {}", e)))?;
+            managers.insert(stream_id.to_string(), manager.clone());
+            Ok(manager)
+        }
+    }
+
+    /// Get branch manager for a stream
+    pub async fn get_branch_manager(&self, stream_id: &str) -> Option<BranchManager> {
+        let managers = self.branch_managers.read().await;
+        managers.get(stream_id).cloned()
+    }
+
+    /// Create a branch for a stream
+    pub async fn create_stream_branch(
+        &self,
+        stream_id: &str,
+        branch_type: StreamBranch,
+        pipeline: &gst::Pipeline,
+    ) -> crate::Result<gst::Element> {
+        let manager = self.get_or_create_branch_manager(stream_id, pipeline).await?;
+        manager.create_branch(branch_type)
+            .map_err(|e| crate::StreamManagerError::Other(format!("Failed to create branch: {}", e)))
+    }
+
+    /// Remove a branch from a stream
+    pub async fn remove_stream_branch(
+        &self,
+        stream_id: &str,
+        branch_type: &StreamBranch,
+    ) -> crate::Result<()> {
+        let manager = self.get_branch_manager(stream_id).await
+            .ok_or_else(|| crate::StreamManagerError::StreamNotFound(stream_id.to_string()))?;
+        
+        manager.remove_branch(branch_type)
+            .map_err(|e| crate::StreamManagerError::Other(format!("Failed to remove branch: {}", e)))
+    }
+
+    /// List branches for a stream
+    pub async fn list_stream_branches(&self, stream_id: &str) -> Vec<StreamBranch> {
+        if let Some(manager) = self.get_branch_manager(stream_id).await {
+            manager.list_branches()
+        } else {
+            Vec::new()
+        }
     }
 }
