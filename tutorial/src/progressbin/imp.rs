@@ -19,7 +19,7 @@ use super::ProgressBinOutput;
 
 // This module contains the private implementation details of our element
 
-const DEFAULT_OUTPUT_TYPE: ProgressBinOutput = ProgressBinOutput::Println;
+const DEFAULT_OUTPUT_TYPE: ProgressBinOutput = ProgressBinOutput::EPrintln;
 
 static CAT: LazyLock<gst::DebugCategory> = LazyLock::new(|| {
     gst::DebugCategory::new(
@@ -75,7 +75,7 @@ impl ObjectSubclass for ProgressBin {
             progress,
             srcpad,
             sinkpad,
-            output_type: Mutex::new(ProgressBinOutput::Println),
+            output_type: Mutex::new(ProgressBinOutput::EPrintln),
         }
     }
 }
@@ -237,6 +237,7 @@ impl BinImpl for ProgressBin {
                         ProgressBinOutput::DebugCategory => {
                             gst::info!(CAT, imp = self, "progress: {:5.1}%", percent);
                         }
+                        ProgressBinOutput::EPrintln => eprintln!("progress: {percent:5.1}%"),
                     };
                 }
             }

@@ -30,6 +30,11 @@ pub enum ProgressBinOutput {
         nick = "debug-category"
     )]
     DebugCategory = 1,
+    #[enum_value(
+        name = "EPrintln: Outputs the progress using an eprintln! macro.",
+        nick = "eprintln"
+    )]
+    EPrintln = 2,
 }
 
 // The public Rust wrapper type for our element
