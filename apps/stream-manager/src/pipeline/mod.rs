@@ -1,3 +1,7 @@
+pub mod inter;
+
+pub use inter::{InterPipelineManager, InterConnection, InterPipelineError, ConnectionState};
+
 use gst::prelude::*;
 use gst::{MessageView, glib};
 use std::collections::HashMap;
@@ -294,6 +298,7 @@ pub struct PipelineManager {
     pipelines: Arc<RwLock<HashMap<Uuid, Arc<Pipeline>>>>,
     message_receiver: Arc<Mutex<Option<mpsc::UnboundedReceiver<(Uuid, PipelineMessage)>>>>,
     message_sender: mpsc::UnboundedSender<(Uuid, PipelineMessage)>,
+    inter_manager: InterPipelineManager,
 }
 
 impl PipelineManager {
@@ -304,7 +309,13 @@ impl PipelineManager {
             pipelines: Arc::new(RwLock::new(HashMap::new())),
             message_receiver: Arc::new(Mutex::new(Some(receiver))),
             message_sender: sender,
+            inter_manager: InterPipelineManager::new(),
         }
+    }
+    
+    /// Get the inter-pipeline manager
+    pub fn inter_manager(&self) -> &InterPipelineManager {
+        &self.inter_manager
     }
     
     /// Create a new pipeline and add it to the manager
