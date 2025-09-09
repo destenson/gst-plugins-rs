@@ -1,0 +1,42 @@
+PRP-14: WebSocket Event Streaming - COMPLETED
+
+Implemented comprehensive WebSocket support for real-time event streaming:
+
+✓ WebSocket server integration with Actix:
+  - WebSocket upgrade handler
+  - Per-connection actor model
+  - Ping/pong heartbeat support
+  - Clean connection lifecycle
+
+✓ Event broadcasting system:
+  - Central EventBroadcaster managing all connections
+  - Efficient fan-out to multiple clients
+  - Backpressure handling
+  - Thread-safe event distribution
+
+✓ Event subscription model:
+  - Subscribe to specific event types
+  - Filter by stream IDs
+  - Dynamic subscription updates
+  - Confirmation messages
+
+✓ Event types supported:
+  - StreamAdded/Removed
+  - StreamHealthChanged
+  - RecordingStarted/Stopped (mapped to health events)
+  - StatisticsUpdate
+  - SystemAlert
+  - ConfigChanged
+  - ErrorOccurred
+
+✓ Integration with stream manager:
+  - EventIntegration module bridges manager events to WebSocket
+  - Automatic event conversion and broadcasting
+  - Health status and statistics updates
+
+✓ WebSocket endpoint:
+  - Available at /ws
+  - JSON message format
+  - Support for concurrent connections
+
+All validation tests passing (4 websocket tests, 87 total tests).
