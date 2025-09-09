@@ -69,7 +69,6 @@ check_tool() {
 }
 
 check_tool cargo
-check_tool cargo-c "cargo install cargo-c"
 check_tool cargo-deb "cargo install cargo-deb"
 check_tool dpkg
 check_tool dpkg-architecture
@@ -127,12 +126,12 @@ else
     BUILD_FLAGS=""
 fi
 
-# Build the plugin library with cargo-c in release mode
-echo -e "${BLUE}Building plugin library with cargo-c...${NC}"
+# Build the plugin library with cargo in release mode
+echo -e "${BLUE}Building plugin library...${NC}"
 if [ "$VERBOSE" = true ]; then
-    cargo cbuild -p gst-plugin-fallbackswitch --release $BUILD_FLAGS --verbose
+    cargo build -p gst-plugin-fallbackswitch --release $BUILD_FLAGS --verbose
 else
-    cargo cbuild -p gst-plugin-fallbackswitch --release $BUILD_FLAGS
+    cargo build -p gst-plugin-fallbackswitch --release $BUILD_FLAGS
 fi
 
 # Verify the library was built
