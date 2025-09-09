@@ -84,7 +84,7 @@ impl From<crate::StreamManagerError> for ApiError {
         match err {
             crate::StreamManagerError::StreamNotFound(msg) => ApiError::NotFound(msg),
             crate::StreamManagerError::ConfigError(msg) => ApiError::BadRequest(msg),
-            crate::StreamManagerError::StorageError(msg) => ApiError::InternalError(msg),
+            crate::StreamManagerError::StorageError(err) => ApiError::InternalError(err.to_string()),
             crate::StreamManagerError::ApiError(msg) => ApiError::BadRequest(msg),
             _ => ApiError::InternalError(err.to_string()),
         }
