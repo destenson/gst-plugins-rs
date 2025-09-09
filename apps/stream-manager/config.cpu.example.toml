@@ -1,0 +1,118 @@
+# Stream Manager Configuration with CPU Inference Support
+# This example demonstrates CPU-based inference fallback configuration
+
+[app]
+name = "Stream Manager with CPU Inference"
+log_level = "info"
+max_concurrent_streams = 10
+shutdown_timeout_seconds = 30
+
+[api]
+host = "0.0.0.0"
+port = 8080
+worker_threads = 4
+request_timeout_seconds = 30
+cors_enabled = true
+
+[server]
+bind_address = "0.0.0.0"
+rtsp_port = 8554
+webrtc_port = 8555
+api_port = 8080
+websocket_port = 8081
+
+[storage]
+base_path = "/var/lib/stream-manager/recordings"
+max_disk_usage_percent = 80.0
+rotation_enabled = true
+retention_days = 7
+min_free_space_gb = 10.0
+check_interval_seconds = 60
+
+[recording]
+segment_duration_seconds = 300
+format = "mp4"
+video_codec = "h264"
+audio_codec = "aac"
+video_bitrate_kbps = 2000
+audio_bitrate_kbps = 128
+keyframe_interval = 30
+
+# CPU Inference Configuration
+[inference]
+enabled = true
+gpu_enabled = false           # Set to false to use CPU inference
+cpu_enabled = true            # Enable CPU inference backend
+batch_size = 1                # CPU batch size (usually smaller than GPU)
+# model_path = "/models/deepstream/model.engine"  # NVIDIA TensorRT model
+onnx_model_path = "/models/onnx/yolov8.onnx"     # ONNX model for CPU inference
+confidence_threshold = 0.5
+inference_interval_ms = 200  # Higher interval for CPU to reduce load
+cpu_threads = 4              # Number of CPU threads for inference
+cpu_skip_frames = 5          # Process every 5th frame to reduce CPU load
+cpu_max_concurrent = 2       # Maximum concurrent CPU inference pipelines
+fallback_to_cpu = true       # Automatically fallback to CPU if GPU fails
+
+[monitoring]
+health_check_interval_seconds = 10
+metrics_enabled = true
+telemetry_enabled = false
+prometheus_port = 9090
+
+[monitoring.metrics]
+collection_interval_seconds = 5
+system_metrics_interval_seconds = 10
+retain_metrics_hours = 24
+export_endpoint = "/api/v1/metrics"
+prometheus_enabled = true
+include_stream_metrics = true
+include_system_metrics = true
+include_pipeline_metrics = true
+include_recording_metrics = true
+
+[stream_defaults]
+reconnect_timeout_seconds = 5
+max_reconnect_attempts = 10
+buffer_size_mb = 50
+
+# Example streams with inference enabled
+[[streams]]
+id = "camera-1"
+name = "Front Camera"
+source_uri = "rtsp://admin:password@192.168.1.100:554/stream1"
+enabled = true
+recording_enabled = true
+inference_enabled = true  # This stream will use CPU inference
+reconnect_timeout_seconds = 5
+max_reconnect_attempts = 10
+buffer_size_mb = 50
+
+[[streams]]
+id = "camera-2"
+name = "Back Camera"
+source_uri = "rtsp://admin:password@192.168.1.101:554/stream1"
+enabled = true
+recording_enabled = true
+inference_enabled = true  # This stream will use CPU inference
+reconnect_timeout_seconds = 5
+max_reconnect_attempts = 10
+buffer_size_mb = 50
+
+# CPU Inference Performance Notes:
+# 
+# 1. CPU inference is significantly slower than GPU inference
+# 2. Use cpu_skip_frames to reduce processing load (e.g., process every 5th frame)
+# 3. Limit cpu_max_concurrent based on your CPU cores
+# 4. Consider using smaller models optimized for CPU (MobileNet, YOLO-Lite)
+# 5. ONNX Runtime will use available CPU optimizations (AVX, SSE, etc.)
+# 
+# Model Conversion:
+# - Convert TensorRT models to ONNX: trtexec --loadEngine=model.engine --onnx=model.onnx
+# - Convert PyTorch to ONNX: torch.onnx.export()
+# - Convert TensorFlow to ONNX: tf2onnx
+#
+# Optimization Tips:
+# - Use quantized models (INT8) for better CPU performance
+# - Consider model pruning to reduce size and computation
+# - Use batch_size=1 for lower latency
+# - Increase cpu_skip_frames during high load

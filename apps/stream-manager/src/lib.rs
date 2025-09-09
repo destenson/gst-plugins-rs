@@ -20,6 +20,7 @@ pub mod manager;
 // Re-export commonly used types
 pub use config::{Config, ConfigManager};
 pub use pipeline::{Pipeline, PipelineManager, PipelineState, PipelineError, PipelineMessage};
+pub use database::{Database, DatabaseConfig, DatabaseError as DbError};
 
 // Common error types
 use thiserror::Error;
@@ -42,7 +43,7 @@ pub enum StreamManagerError {
     ConfigError(String),
     
     #[error("Storage error: {0}")]
-    StorageError(String),
+    StorageError(#[from] storage::StorageError),
     
     #[error("Database error: {0}")]
     DatabaseError(#[from] sqlx::Error),
@@ -52,6 +53,9 @@ pub enum StreamManagerError {
     
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
+    
+    #[error("RTSP sink error: {0}")]
+    RtspSinkError(#[from] stream::RtspSinkError),
     
     #[error("Other error: {0}")]
     Other(String),

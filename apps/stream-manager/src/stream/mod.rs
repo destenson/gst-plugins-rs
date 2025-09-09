@@ -8,12 +8,14 @@ use crate::config::StreamConfig;
 
 pub mod source;
 pub mod branching;
+pub mod rtsp_sink;
 
 #[cfg(test)]
 pub mod test_utils;
 
 pub use source::{StreamSource, SourceType, SourceHealth, SourceStatistics, SourceMessage};
 pub use branching::{BranchManager, StreamBranch, QueueConfig, BranchingError};
+pub use rtsp_sink::{RtspSinkBuilder, RtspSinkManager, RtspSinkError};
 
 #[derive(Debug, Clone)]
 pub struct Stream {
@@ -39,6 +41,7 @@ pub struct StreamManager {
     streams: Arc<RwLock<Vec<Stream>>>,
     sources: Arc<RwLock<HashMap<String, StreamSource>>>,
     branch_managers: Arc<RwLock<HashMap<String, BranchManager>>>,
+    rtsp_sink_managers: Arc<RwLock<HashMap<String, RtspSinkManager>>>,
     message_receiver: Option<mpsc::UnboundedReceiver<(String, SourceMessage)>>,
     message_sender: mpsc::UnboundedSender<(String, SourceMessage)>,
 }
@@ -51,6 +54,7 @@ impl StreamManager {
             streams: Arc::new(RwLock::new(Vec::new())),
             sources: Arc::new(RwLock::new(HashMap::new())),
             branch_managers: Arc::new(RwLock::new(HashMap::new())),
+            rtsp_sink_managers: Arc::new(RwLock::new(HashMap::new())),
             message_receiver: Some(message_receiver),
             message_sender,
         }
@@ -67,6 +71,7 @@ impl StreamManager {
             reconnect_timeout_seconds: 5,
             max_reconnect_attempts: 10,
             buffer_size_mb: 50,
+            rtsp_outputs: None,
         }).await
     }
 
@@ -291,6 +296,12 @@ impl StreamManager {
         streams.retain(|s| s.id != stream_id);
         sources.remove(stream_id);
         branch_managers.remove(stream_id);
+        
+        // Remove RTSP sinks if any
+        let mut rtsp_managers = self.rtsp_sink_managers.write().await;
+        if let Some(mut manager) = rtsp_managers.remove(stream_id) {
+            let _ = manager.remove_all();
+        }
 
         info!("Stream {} removed successfully", stream_id);
         Ok(())
@@ -352,5 +363,74 @@ impl StreamManager {
         } else {
             Vec::new()
         }
+    }
+    
+    /// Enable RTSP output for a stream
+    pub async fn enable_rtsp_output(
+        &self,
+        stream_id: &str,
+        config: crate::config::RtspSinkConfig,
+        pipeline: &gst::Pipeline,
+    ) -> crate::Result<()> {
+        info!("Enabling RTSP output for stream: {}", stream_id);
+        
+        // Get or create branch manager for this stream
+        let branch_manager = self.get_or_create_branch_manager(stream_id, pipeline).await?;
+        let branch_manager = Arc::new(branch_manager);
+        
+        // Get or create RTSP sink manager
+        let mut rtsp_managers = self.rtsp_sink_managers.write().await;
+        let rtsp_manager = rtsp_managers.entry(stream_id.to_string())
+            .or_insert_with(|| RtspSinkManager::new(branch_manager.clone()));
+        
+        // Add the RTSP sink
+        rtsp_manager.add_sink(config, pipeline)?;
+        
+        info!("RTSP output enabled for stream: {}", stream_id);
+        Ok(())
+    }
+    
+    /// Disable RTSP output for a stream
+    pub async fn disable_rtsp_output(&self, stream_id: &str) -> crate::Result<()> {
+        info!("Disabling RTSP output for stream: {}", stream_id);
+        
+        let mut rtsp_managers = self.rtsp_sink_managers.write().await;
+        if let Some(mut manager) = rtsp_managers.remove(stream_id) {
+            manager.remove_all()?;
+        }
+        
+        info!("RTSP output disabled for stream: {}", stream_id);
+        Ok(())
+    }
+    
+    /// Get RTSP sink count for a stream
+    pub async fn get_rtsp_sink_count(&self, stream_id: &str) -> usize {
+        let rtsp_managers = self.rtsp_sink_managers.read().await;
+        rtsp_managers.get(stream_id)
+            .map(|m| m.sink_count())
+            .unwrap_or(0)
+    }
+    
+    /// Enable RTSP outputs from stream config
+    pub async fn enable_rtsp_from_config(
+        &self,
+        stream_id: &str,
+        pipeline: &gst::Pipeline,
+    ) -> crate::Result<()> {
+        // Get stream config
+        let streams = self.streams.read().await;
+        let stream = streams.iter()
+            .find(|s| s.id == stream_id)
+            .ok_or_else(|| crate::StreamManagerError::StreamNotFound(stream_id.to_string()))?;
+        
+        // Check if stream has RTSP outputs configured
+        let sources = self.sources.read().await;
+        if let Some(source) = sources.get(stream_id) {
+            // Note: We'd need to store the config in the source or stream
+            // For now, this is a placeholder
+            debug!("Checking RTSP config for stream: {}", stream_id);
+        }
+        
+        Ok(())
     }
 }

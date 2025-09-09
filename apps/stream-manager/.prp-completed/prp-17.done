@@ -1,0 +1,119 @@
+PRP-17: Disk Rotation and Hot-Swap Support
+Completed: 2025-01-09
+================================================================================
+
+IMPLEMENTATION INVENTORY
+================================================================================
+
+## Files Created:
+1. apps/stream-manager/src/storage/rotation.rs (730 lines)
+   - DiskRotationManager struct with full rotation lifecycle management
+   - DiskRotationConfig for configuration
+   - RotationError enum for error handling
+   - DiskInfo struct for disk metadata
+   - RotationState enum for tracking rotation progress
+   - WriteBuffer implementation for buffering during rotation
+   - RotationEvent enum for event broadcasting
+   - Platform-specific disk detection (Linux/Windows)
+   - Comprehensive test suite (7 tests)
+
+2. apps/stream-manager/src/api/rotation.rs (165 lines)
+   - REST API endpoints for disk rotation control
+   - DiskListResponse, TriggerRotationRequest, RotationStatusResponse DTOs
+   - DiskAction enum (Activate/Deactivate/Remove)
+   - Four API handlers:
+     * list_disks - Get all available disks and status
+     * trigger_rotation - Manually start rotation
+     * rotation_status - Get current rotation state
+     * mark_disk - Mark disk for specific action
+   - Route configuration and tests
+
+## Files Modified:
+1. apps/stream-manager/src/storage/mod.rs
+   - Added rotation module export
+   - Exported rotation types (DiskRotationManager, DiskRotationConfig, etc.)
+   - Added DiskStatus enum export
+
+2. apps/stream-manager/src/storage/manager.rs
+   - Added DiskStatus enum with states (Available, Active, Rotating, Unmounted, Failed)
+
+3. apps/stream-manager/src/api/mod.rs
+   - Added DiskRotationManager to AppState
+   - Updated AppState constructors to initialize DiskRotationManager
+   - Added disk_rotation_manager to HTTP server app_data
+
+4. apps/stream-manager/src/api/routes.rs
+   - Added rotation API route configuration
+
+5. apps/stream-manager/Cargo.toml
+   - Added windows-sys dependency for Windows disk space queries
+
+## Key Features Implemented:
+1. **Disk Detection & Monitoring**
+   - Filesystem watcher using notify crate
+   - Mount point polling (configurable interval)
+   - Platform-specific mount detection:
+     * Linux: /proc/mounts parsing, /media, /mnt monitoring
+     * Windows: Drive letter enumeration (A:\ to Z:\)
+   - Disk space calculation (available/total GB)
+
+2. **Hot-Swap Event Handling**
+   - DiskAdded event on new disk detection
+   - DiskRemoved/DiskUnmounted events on removal
+   - Emergency rotation on active disk removal
+   - Automatic rotation queue management
+
+3. **Recording Migration**
+   - Write buffering during rotation (configurable size)
+   - BufferedWrite struct with timestamps
+   - Graceful migration with progress tracking
+   - Data integrity preservation
+
+4. **Rotation State Management**
+   - State machine: Idle -> Preparing -> Migrating -> Completing
+   - Progress tracking during migration (0-100%)
+   - Failure handling with reason tracking
+   - Active disk tracking
+
+5. **API Endpoints**
+   - GET /rotation/disks - List all disks with metadata
+   - POST /rotation/trigger - Start rotation (manual or auto)
+   - GET /rotation/status - Current rotation state
+   - POST /rotation/mark - Mark disk for action
+
+## Configuration Options:
+- auto_rotate_on_unmount: Enable automatic rotation
+- buffer_size_mb: Write buffer size during rotation
+- migration_timeout_secs: Maximum migration time
+- poll_interval_secs: Mount point check interval
+- min_free_space_gb: Minimum required free space
+
+## Test Coverage:
+- test_disk_rotation_manager_creation
+- test_write_buffer
+- test_buffer_overflow
+- test_rotation_state_transitions
+- test_disk_info_creation
+- test_disk_space_check
+- test_disk_rotation_migration
+
+## Validation Results:
+✅ All code compiles successfully
+✅ All 7 rotation tests pass
+✅ API endpoint tests pass
+✅ Platform-specific code verified for Linux and Windows
+
+## Dependencies Added:
+- windows-sys 0.59 (Win32_Storage_FileSystem feature)
+- Already had: notify 8.2.0, nix 0.29
+
+## Integration Points:
+- Integrates with StorageManager for path management
+- Works with existing API framework (actix-web)
+- Compatible with WebSocket event broadcasting
+- Ready for systemd service integration (PRP-18)
+
+================================================================================
+This PRP successfully implements a robust disk rotation and hot-swap system that
+allows drives to be changed without stopping recording, maintaining data integrity
+throughout the process.

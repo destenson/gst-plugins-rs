@@ -1,16 +1,25 @@
 use anyhow::Result;
 use clap::Parser;
 use std::path::PathBuf;
-use tracing::info;
+use std::sync::Arc;
+use tracing::{info, error};
 use tracing_subscriber::EnvFilter;
-use stream_manager::config::ConfigManager;
-use stream_manager::gst_utils;
+use stream_manager::{
+    backup::BackupManager,
+    config::ConfigManager,
+    database::{Database, DatabaseConfig},
+    gst_utils,
+    manager::StreamManager,
+    recovery::{RecoveryManager, RecoveryConfig},
+    service::ServiceManager,
+    storage::{DiskRotationManager, DiskRotationConfig},
+};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Path to configuration file
-    #[arg(short, long, default_value = "config.toml")]
+    #[arg(short, long, default_value = "/etc/stream-manager/config.toml")]
     config: PathBuf,
 
     /// Enable debug logging
@@ -24,6 +33,14 @@ struct Args {
     /// Check available GStreamer plugins and exit
     #[arg(long)]
     check_plugins: bool,
+    
+    /// Run as systemd service
+    #[arg(long)]
+    service: bool,
+    
+    /// Run in foreground (don't daemonize)
+    #[arg(long)]
+    foreground: bool,
 }
 
 #[tokio::main]
@@ -38,15 +55,27 @@ async fn main() -> Result<()> {
             .unwrap_or_else(|_| EnvFilter::new("info"))
     };
 
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_target(true)
-        .with_thread_ids(true)
-        .with_file(true)
-        .with_line_number(true)
-        .init();
+    // Use different logging depending on if we're running as a service
+    if args.service && !args.foreground {
+        // When running as systemd service, use simpler output without timestamps
+        // (systemd adds its own timestamps)
+        tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_target(true)
+            .without_time()
+            .init();
+    } else {
+        // Full logging for interactive use
+        tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_target(true)
+            .with_thread_ids(true)
+            .with_file(true)
+            .with_line_number(true)
+            .init();
+    }
 
-    info!("Starting Stream Manager");
+    info!("Starting Stream Manager v{}", env!("CARGO_PKG_VERSION"));
     info!("Configuration file: {:?}", args.config);
     info!("API bind address: {}", args.bind);
 
@@ -62,27 +91,130 @@ async fn main() -> Result<()> {
 
     // Load configuration
     let mut config_manager = ConfigManager::new(args.config.clone()).await?;
-    let config = config_manager.get().await;
+    let config = Arc::new(config_manager.get().await.clone());
     info!("Configuration loaded successfully");
     info!("App name: {}", config.app.name);
-    info!("Configured {} streams", config.streams.len());
     
-    // Start configuration file watching only if config file exists
-    if args.config.exists() {
-        config_manager.start_watching().await?;
-        info!("Configuration hot-reload enabled");
+    // Initialize database
+    let db_config = DatabaseConfig {
+        url: config.database.as_ref()
+            .and_then(|d| d.url.clone())
+            .unwrap_or_else(|| "sqlite://stream_manager.db".to_string()),
+        ..Default::default()
+    };
+    let database = Arc::new(Database::new(db_config).await?);
+    info!("Database initialized");
+    
+    // Initialize recovery manager
+    let recovery_config = RecoveryConfig::default();
+    let recovery_manager = Arc::new(RecoveryManager::new(recovery_config));
+    info!("Recovery manager initialized");
+    
+    // Initialize recovery manager
+    let backup_config = config.backup.clone().unwrap_or_default();
+    let recordings_path = config.storage.as_ref()
+        .map(|s| s.base_path.clone())
+        .unwrap_or_else(|| PathBuf::from("./recordings"));
+    let mut backup_manager = BackupManager::new(backup_config, recordings_path);
+    backup_manager.set_database(database.clone());
+    if config.backup.as_ref().map(|b| b.enabled).unwrap_or(true) {
+        backup_manager.start().await.ok(); // Ignore error if it fails
+        info!("Recovery manager started");
     } else {
-        info!("Running with default configuration (no hot-reload)");
+        info!("Recovery manager disabled");
+    }
+    let backup_manager = Arc::new(backup_manager);
+    
+    // Initialize components
+    let stream_manager = Arc::new(StreamManager::new(config.clone())?);
+    info!("Stream manager initialized");
+    
+    // Register recovery handlers for streams
+    {
+        let sm = stream_manager.clone();
+        recovery_manager.register_recovery_handler(
+            "stream".to_string(),
+            Box::new(move |snapshot| {
+                // Recovery logic for streams will be implemented later
+                stream_manager::recovery::RecoveryResult::Recovered
+            }),
+        ).await;
     }
     
-    // TODO: Initialize pipeline manager (PRP-04)
-    // TODO: Start stream manager (PRP-09)
-    // TODO: Start REST API server (PRP-11)
-    // TODO: Start health monitoring (PRP-10)
-
-    // For now, just run a simple event loop
-    tokio::signal::ctrl_c().await?;
-    info!("Shutting down Stream Manager");
+    let disk_rotation_config = if let Some(ref storage_config) = config.storage {
+        DiskRotationConfig {
+            auto_rotate_on_unmount: storage_config.auto_rotate.unwrap_or(true),
+            buffer_size_mb: storage_config.buffer_size_mb.unwrap_or(512) as usize,
+            migration_timeout_secs: storage_config.migration_timeout_secs.unwrap_or(30),
+            poll_interval_secs: storage_config.poll_interval_secs.unwrap_or(5),
+            min_free_space_gb: storage_config.min_free_space_gb as f64,
+        }
+    } else {
+        DiskRotationConfig::default()
+    };
+    
+    let disk_rotation_manager = Arc::new(DiskRotationManager::new(disk_rotation_config));
+    info!("Disk rotation manager initialized");
+    
+    if args.service {
+        // Run as systemd service
+        info!("Running as systemd service");
+        
+        let service_manager = ServiceManager::new(
+            config.clone(),
+            stream_manager,
+            disk_rotation_manager,
+        )?.with_recovery_manager(recovery_manager.clone());
+        
+        // Run the service (blocks until shutdown)
+        if let Err(e) = service_manager.run().await {
+            error!("Service error: {}", e);
+            return Err(e.into());
+        }
+    } else {
+        // Run in standalone mode
+        info!("Running in standalone mode");
+        
+        // Start configuration file watching only if config file exists
+        if args.config.exists() {
+            config_manager.start_watching().await?;
+            info!("Configuration hot-reload enabled");
+        } else {
+            info!("Running with default configuration (no hot-reload)");
+        }
+        
+        // Start disk rotation monitoring
+        disk_rotation_manager.start_monitoring().await?;
+        
+        // Start API server (actix-web spawns its own runtime)
+        let api_config = config.clone();
+        let api_manager = stream_manager.clone();
+        std::thread::spawn(move || {
+            let runtime = actix_rt::System::new();
+            runtime.block_on(async move {
+                if let Err(e) = stream_manager::api::start_server(
+                    api_config,
+                    api_manager,
+                ).await {
+                    error!("API server error: {}", e);
+                }
+            });
+        });
+        
+        // Wait for shutdown signal
+        tokio::signal::ctrl_c().await?;
+        info!("Received Ctrl+C, shutting down");
+        
+        info!("Shutting down Stream Manager");
+        
+        // Cleanup
+        let streams = stream_manager.list_streams().await;
+        for stream in streams {
+            if let Err(e) = stream_manager.remove_stream(&stream.id).await {
+                error!("Failed to stop stream {}: {}", stream.id, e);
+            }
+        }
+    }
 
     Ok(())
 }

@@ -1,0 +1,92 @@
+PRP-16: Storage Management and Disk Monitoring
+===============================================
+Completed: 2025-01-09
+Status: ✅ Complete
+
+## Implemented Components
+
+### 1. Core Storage Manager (src/storage/manager.rs)
+- StorageManager struct with multi-path support
+- Configurable storage paths with priorities
+- Usage statistics tracking per path
+- Thread-safe state management with Arc<RwLock>
+
+### 2. Disk Monitoring System
+- Periodic space checking with configurable intervals
+- Platform-specific disk usage detection:
+  - Windows: GetDiskFreeSpaceExW via winapi
+  - Unix: statvfs via nix crate
+- Growth rate calculation and prediction
+- Path health status monitoring
+
+### 3. Cleanup Policies
+- Age-based deletion with max_age_days
+- Size-based limits with max_size_gb  
+- Minimum segments retention per stream
+- Priority-based retention for important streams
+- Automatic cleanup trigger on thresholds
+
+### 4. Multi-Path Support
+- Four selection strategies:
+  - RoundRobin: Cycle through available paths
+  - LeastUsed: Select path with most free space
+  - Priority: Use paths based on priority values
+  - Affinity: Stream-specific path preferences
+- Dynamic path addition/removal
+- Path enable/disable functionality
+
+### 5. Path Health Checks
+- Write permission verification
+- Mount status checking
+- Path accessibility tests
+- Automatic failover on path failure
+- Recovery detection and notifications
+
+### 6. Storage Event System
+- Event types:
+  - LowSpace(path, usage_percent)
+  - PathUnavailable(path)
+  - PathRecovered(path)
+  - CleanupStarted
+  - CleanupCompleted(files_deleted, bytes_freed)
+  - StorageFull(path)
+- Broadcast channel for event distribution
+- Subscriber support for monitoring
+
+### 7. Storage Configuration
+- StorageConfig with paths and policies
+- CleanupPolicy with retention rules
+- Per-path usage limits
+- Global storage constraints
+- Stream affinity configuration
+
+## Files Modified
+- apps/stream-manager/Cargo.toml - Added platform dependencies
+- apps/stream-manager/src/storage/mod.rs - Module exports
+- apps/stream-manager/src/storage/manager.rs - Full implementation
+- apps/stream-manager/src/lib.rs - StorageError integration
+- apps/stream-manager/src/api/error.rs - Error conversion
+
+## Validation Tests Passed
+✅ test_storage_manager_creation
+✅ test_path_selection_round_robin
+✅ test_path_selection_priority
+✅ test_path_affinity
+✅ test_total_stats_calculation
+✅ test_event_subscription
+✅ test_cleanup_policy_configuration
+✅ test_add_remove_paths
+✅ test_insufficient_space
+
+## Key Features
+- Non-blocking async monitoring
+- Platform-independent implementation
+- Graceful degradation on path failures
+- Automatic space management
+- Configurable retention policies
+- Real-time event notifications
+
+## Next Steps
+- PRP-17: Disk Rotation and Hot-Swap Support
+- Integration with recording pipelines
+- Storage metrics export to monitoring

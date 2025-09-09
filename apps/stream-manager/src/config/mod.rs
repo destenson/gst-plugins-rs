@@ -5,18 +5,24 @@ use tokio::sync::RwLock;
 use notify::{Watcher, RecursiveMode, Event};
 use tracing::{info, warn, error};
 
+pub mod reload;
+pub use reload::{ConfigReloader, ConfigReloadEvent, ConfigChange, ReloadRestriction, ReloadStatus};
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Config {
     pub app: AppConfig,
     pub api: ApiConfig,
     pub server: ServerConfig,
-    pub storage: StorageConfig,
+    pub storage: Option<StorageConfig>,
+    pub database: Option<DatabaseConfig>,
     pub recording: RecordingConfig,
     pub inference: InferenceConfig,
     pub monitoring: MonitoringConfig,
     pub stream_defaults: StreamDefaultConfig,
     pub streams: Vec<StreamConfig>,
+    pub backup: Option<crate::backup::BackupConfig>,
+    pub rtsp: Option<RtspConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -50,6 +56,24 @@ pub struct ServerConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
+pub struct DatabaseConfig {
+    pub url: Option<String>,
+    pub max_connections: Option<u32>,
+    pub enable_wal: Option<bool>,
+}
+
+impl Default for DatabaseConfig {
+    fn default() -> Self {
+        Self {
+            url: Some("sqlite://stream_manager.db".to_string()),
+            max_connections: Some(10),
+            enable_wal: Some(true),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
 pub struct StorageConfig {
     pub base_path: PathBuf,
     pub max_disk_usage_percent: f32,
@@ -57,6 +81,11 @@ pub struct StorageConfig {
     pub retention_days: u32,
     pub min_free_space_gb: f32,
     pub check_interval_seconds: u64,
+    // Disk rotation fields
+    pub auto_rotate: Option<bool>,
+    pub buffer_size_mb: Option<u32>,
+    pub migration_timeout_secs: Option<u64>,
+    pub poll_interval_secs: Option<u64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -72,6 +101,7 @@ pub struct StreamConfig {
     pub reconnect_timeout_seconds: u64,
     pub max_reconnect_attempts: u32,
     pub buffer_size_mb: u32,
+    pub rtsp_outputs: Option<Vec<RtspSinkConfig>>,
 }
 
 impl StreamConfig {
@@ -97,10 +127,16 @@ pub struct RecordingConfig {
 pub struct InferenceConfig {
     pub enabled: bool,
     pub gpu_enabled: bool,
+    pub cpu_enabled: bool,
     pub batch_size: usize,
     pub model_path: Option<PathBuf>,
+    pub onnx_model_path: Option<PathBuf>,
     pub confidence_threshold: f32,
     pub inference_interval_ms: u64,
+    pub cpu_threads: Option<usize>,
+    pub cpu_skip_frames: Option<usize>,
+    pub cpu_max_concurrent: Option<usize>,
+    pub fallback_to_cpu: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -135,6 +171,64 @@ pub struct StreamDefaultConfig {
     pub buffer_size_mb: u32,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct RtspConfig {
+    pub enabled: bool,
+    pub bind_address: String,
+    pub port: u16,
+    pub enable_auth: bool,
+    pub users: Option<std::collections::HashMap<String, String>>,
+    pub max_clients: usize,
+    pub protocols: Vec<String>,
+}
+
+impl Default for RtspConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bind_address: "0.0.0.0".to_string(),
+            port: 8554,
+            enable_auth: false,
+            users: None,
+            max_clients: 100,
+            protocols: vec!["tcp".to_string(), "udp".to_string()],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct RtspSinkConfig {
+    pub enabled: bool,
+    pub location: String,
+    pub codec: String,
+    pub bitrate_kbps: Option<u32>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub latency_ms: u32,
+    pub protocols: String,
+    pub username: Option<String>,
+    pub password: Option<String>,
+}
+
+impl Default for RtspSinkConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            location: "rtsp://localhost:8554/stream".to_string(),
+            codec: "h264".to_string(),
+            bitrate_kbps: Some(2000),
+            width: None,
+            height: None,
+            latency_ms: 100,
+            protocols: "tcp".to_string(),
+            username: None,
+            password: None,
+        }
+    }
+}
+
 // Default implementations
 impl Default for Config {
     fn default() -> Self {
@@ -142,12 +236,15 @@ impl Default for Config {
             app: AppConfig::default(),
             api: ApiConfig::default(),
             server: ServerConfig::default(),
-            storage: StorageConfig::default(),
+            storage: Some(StorageConfig::default()),
+            database: None,
             recording: RecordingConfig::default(),
             inference: InferenceConfig::default(),
             monitoring: MonitoringConfig::default(),
             stream_defaults: StreamDefaultConfig::default(),
             streams: Vec::new(),
+            backup: None,
+            rtsp: None,
         }
     }
 }
@@ -203,6 +300,10 @@ impl Default for StorageConfig {
             retention_days: 7,
             min_free_space_gb: 10.0,
             check_interval_seconds: 60,
+            auto_rotate: None,
+            buffer_size_mb: None,
+            migration_timeout_secs: None,
+            poll_interval_secs: None,
         }
     }
 }
@@ -226,10 +327,16 @@ impl Default for InferenceConfig {
         Self {
             enabled: false,
             gpu_enabled: false,
+            cpu_enabled: false,
             batch_size: 1,
             model_path: None,
+            onnx_model_path: None,
             confidence_threshold: 0.5,
             inference_interval_ms: 100,
+            cpu_threads: Some(4),
+            cpu_skip_frames: Some(5),
+            cpu_max_concurrent: Some(2),
+            fallback_to_cpu: true,
         }
     }
 }
@@ -289,6 +396,38 @@ impl Default for StreamConfig {
 }
 
 impl Config {
+    /// Validate the configuration
+    pub fn validate(&self) -> Result<(), String> {
+        // Validate app config
+        if self.app.max_concurrent_streams == 0 {
+            return Err("max_concurrent_streams must be greater than 0".to_string());
+        }
+        
+        // Validate API config
+        if self.api.port == 0 {
+            return Err("API port must be greater than 0".to_string());
+        }
+        
+        // Validate storage config if present
+        if let Some(ref storage) = self.storage {
+            if storage.max_disk_usage_percent > 100.0 {
+                return Err("max_disk_usage_percent cannot exceed 100".to_string());
+            }
+            if storage.min_free_space_gb < 0.0 {
+                return Err("min_free_space_gb cannot be negative".to_string());
+            }
+        }
+        
+        // Validate backup config if present
+        if let Some(ref backup) = self.backup {
+            if backup.enabled && backup.interval_secs == 0 {
+                return Err("backup interval_secs must be greater than 0 when enabled".to_string());
+            }
+        }
+        
+        Ok(())
+    }
+    
     pub async fn from_file(path: &PathBuf) -> crate::Result<Self> {
         // Check if file exists and provide helpful error message
         if !path.exists() {
@@ -312,21 +451,24 @@ impl Config {
                 format!("Failed to parse configuration file {:?}: {}", path, e)
             ))?;
         
-        config.validate()?;
+        config.validate().map_err(|e| crate::StreamManagerError::ConfigError(e))?;
         Ok(config)
     }
     
-    pub fn validate(&self) -> crate::Result<()> {
-        // Validate storage path (just warn if it doesn't exist - we'll create it later)
-        if !self.storage.base_path.exists() {
-            warn!("Storage path does not exist: {:?} - will be created when needed", self.storage.base_path);
-        }
-        
-        // Validate disk usage percentage
-        if self.storage.max_disk_usage_percent > 95.0 || self.storage.max_disk_usage_percent < 10.0 {
-            return Err(crate::StreamManagerError::ConfigError(
-                "max_disk_usage_percent must be between 10 and 95".to_string()
-            ));
+    pub fn validate_storage(&self) -> crate::Result<()> {
+        // Validate storage if configured
+        if let Some(ref storage) = self.storage {
+            // Validate storage path (just warn if it doesn't exist - we'll create it later)
+            if !storage.base_path.exists() {
+                warn!("Storage path does not exist: {:?} - will be created when needed", storage.base_path);
+            }
+            
+            // Validate disk usage percentage
+            if storage.max_disk_usage_percent > 95.0 || storage.max_disk_usage_percent < 10.0 {
+                return Err(crate::StreamManagerError::ConfigError(
+                    "max_disk_usage_percent must be between 10 and 95".to_string()
+                ));
+            }
         }
         
         // Validate ports
@@ -370,7 +512,7 @@ impl Config {
             self.server = server;
         }
         if let Some(storage) = partial.storage {
-            self.storage = storage;
+            self.storage = Some(storage);
         }
         if let Some(recording) = partial.recording {
             self.recording = recording;
@@ -445,7 +587,7 @@ impl ConfigManager {
     pub async fn update_partial(&self, partial: PartialConfig) -> crate::Result<()> {
         let mut config = self.config.write().await;
         config.merge(partial);
-        config.validate()?;
+        config.validate().map_err(|e| crate::StreamManagerError::ConfigError(e))?;
         Ok(())
     }
     
@@ -626,10 +768,14 @@ api_port = 9090
         assert!(config.validate().is_ok());
         
         // Test invalid disk usage
-        config.storage.max_disk_usage_percent = 99.0;
+        if let Some(ref mut storage) = config.storage {
+            storage.max_disk_usage_percent = 99.0;
+        }
         assert!(config.validate().is_err());
         
-        config.storage.max_disk_usage_percent = 80.0;
+        if let Some(ref mut storage) = config.storage {
+            storage.max_disk_usage_percent = 80.0;
+        }
         
         // Test duplicate stream IDs
         config.streams.push(StreamConfig {

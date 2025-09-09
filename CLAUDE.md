@@ -133,3 +133,16 @@ cargo doc --all --no-deps
 - Use `#[allow(clippy::non_send_fields_in_send_ty)]` in lib.rs files
 - Plugins use `gst_plugin_version_helper` in build.rs for version information
 - The threadshare plugin includes C code and requires special build handling
+
+## Critical Development Principles
+
+### The Compiler Is Always Right
+**NEVER blame the compiler for "misleading" errors.** The Rust compiler is meticulously designed and battle-tested. If you think the compiler is wrong or misleading, you are misunderstanding something fundamental about your code.
+
+When you encounter a confusing error:
+1. **Read the error message literally** - it's telling you exactly what's wrong
+2. **Question your assumptions** - what you think your code does vs. what it actually does
+3. **Examine the context** - imports, macro expansions, type inference, trait bounds
+4. **The compiler sees your code after all transformations** - you might be looking at the wrong abstraction level
+
+The compiler error is not a suggestion or approximation - it's a precise description of why your code cannot compile. Your job is to understand what the compiler is seeing, not to argue with it.

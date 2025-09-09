@@ -1,0 +1,14 @@
+PRP-23: Telemetry and Distributed Tracing - COMPLETED
+
+Implemented:
+✓ OpenTelemetry SDK integration with tracer and meter providers
+✓ OTLP exporter configuration for traces and metrics
+✓ Trace context propagation with W3C TraceContext standard
+✓ Span instrumentation for critical operations (streams, pipelines, API, inference, storage)
+✓ Performance metrics collection (counters, histograms, gauges)
+✓ Resource metrics tracking (CPU, memory, disk usage)
+✓ Integration with tracing subscriber for structured logging
+✓ Observable gauges for real-time metrics
+✓ Operation timer utility for performance tracking
+
+All validation tests pass successfully.
