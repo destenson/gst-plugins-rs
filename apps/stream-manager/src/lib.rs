@@ -42,7 +42,7 @@ pub enum StreamManagerError {
     ConfigError(String),
     
     #[error("Storage error: {0}")]
-    StorageError(String),
+    StorageError(#[from] storage::StorageError),
     
     #[error("Database error: {0}")]
     DatabaseError(#[from] sqlx::Error),
