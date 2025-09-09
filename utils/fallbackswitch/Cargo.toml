@@ -71,31 +71,36 @@ This plugin contains:
   - fallbackswitch: Automatically switch between sources based on availability
   - fallbacksrc: Composite source with fallback capabilities
 These elements are useful for live streaming applications requiring high availability."""
-depends = "$auto, gstreamer1.0-plugins-base (>= 1.16.0)"
+depends = "$auto, gstreamer1.0-plugins-base (>= 1.16.0), libgstreamer1.0-0 (>= 1.16.0)"
 section = "libs"
 priority = "optional"
-# Use cargo-deb's automatic library detection instead of hardcoded paths
-# This will properly handle multiarch paths
+# Multiarch-aware asset installation
+# cargo-deb will automatically handle the correct architecture path with the wildcard
 assets = [
     ["target/release/libgstfallbackswitch.so", "/usr/lib/*/gstreamer-1.0/", "644"],
     ["LICENSE-MPL-2.0", "/usr/share/doc/gst-plugin-fallbackswitch/", "644"],
-    ["README.md", "/usr/share/doc/gst-plugin-fallbackswitch/", "644"]
+    ["README.md", "/usr/share/doc/gst-plugin-fallbackswitch/", "644"],
+    ["debian/changelog", "/usr/share/doc/gst-plugin-fallbackswitch/changelog.Debian", "644"]
 ]
 # Additional cargo-deb configuration
 revision = "1"
 conf-files = []
-triggers-file = []
+# Trigger ldconfig after installation/removal for library cache update
+triggers-file = ["debian/triggers"]
 changelog = "debian/changelog"
 # Ensure proper stripping and compression
 separate-debug-symbols = true
 compress = true
+# Strip binaries for smaller package size
+strip = true
 # Architecture will be auto-detected based on build target
 preserve-symlinks = false
-# Build flags
+# Build flags - use release mode for optimized builds
 features = ["v1_16"]
 default-features = true
 # System dependencies for building (build-depends)
-build-depends = "cargo, rustc (>= 1.76), libgstreamer1.0-dev (>= 1.16.0), libgstreamer-plugins-base1.0-dev (>= 1.16.0), pkg-config"
+# Note: Rust toolchain (cargo, rustc, cargo-c) is assumed to be installed via rustup or other means
+build-depends = "libgstreamer1.0-dev (>= 1.16.0), libgstreamer-plugins-base1.0-dev (>= 1.16.0), pkg-config"
 # Suggests and recommends
 recommends = "gstreamer1.0-tools"
 suggests = "gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad"

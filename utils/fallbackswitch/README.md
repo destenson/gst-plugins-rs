@@ -31,19 +31,42 @@ cargo test --package gst-plugin-fallbackswitch
 
 This plugin can be packaged as a Debian package for easy installation on Debian-based systems.
 
+### Prerequisites for Building
+
+- Rust toolchain (installed via rustup or system package manager)
+- cargo-c (`cargo install cargo-c`)
+- cargo-deb (`cargo install cargo-deb`)
+- GStreamer development packages:
+  - libgstreamer1.0-dev (>= 1.16.0)
+  - libgstreamer-plugins-base1.0-dev (>= 1.16.0)
+- pkg-config
+
 ### Building the Debian package
 
-#### Using cargo-deb (recommended)
+#### Quick build with provided script
 ```bash
 cd utils/fallbackswitch
-cargo deb
+./scripts/build-deb.sh
 ```
 
-#### Using traditional Debian tools
+#### Manual build with cargo-deb
 ```bash
+# Build the library with cargo-c first
+cargo cbuild -p gst-plugin-fallbackswitch --release
+
+# Generate the Debian package
 cd utils/fallbackswitch
-dpkg-buildpackage -b -uc -us
+cargo deb --no-build
 ```
+
+### Package Installation Details
+
+The package installs the plugin library to the architecture-specific GStreamer plugin directory:
+- 64-bit: `/usr/lib/x86_64-linux-gnu/gstreamer-1.0/`
+- 32-bit: `/usr/lib/i386-linux-gnu/gstreamer-1.0/`
+- ARM64: `/usr/lib/aarch64-linux-gnu/gstreamer-1.0/`
+
+The installation triggers `ldconfig` to update the library cache, ensuring GStreamer can discover the plugin.
 
 ### Installing the package
 ```bash
@@ -57,6 +80,16 @@ After installation, verify the plugin is available:
 ```bash
 gst-inspect-1.0 fallbackswitch
 gst-inspect-1.0 fallbacksrc
+
+# Check if the library is in the correct path
+ls -la /usr/lib/*/gstreamer-1.0/libgstfallbackswitch.so
+```
+
+### Validation
+Run the validation script to check the package meets all requirements:
+```bash
+cd utils/fallbackswitch
+./scripts/validate-deb.sh
 ```
 
 ## Usage Examples
@@ -99,8 +132,12 @@ utils/fallbackswitch/
 
 The Debian packaging is being implemented through a series of PRPs (Project Request Proposals):
 
-1. **PRP-001**: cargo-deb Setup and Basic Configuration (Foundational)
-2. **PRP-002**: GStreamer Plugin Installation Path Configuration
+1. **PRP-001**: cargo-deb Setup and Basic Configuration (Foundational) ✓
+2. **PRP-002**: GStreamer Plugin Installation Path Configuration ✓
+   - Configured multiarch-aware installation paths
+   - Added ldconfig trigger for library cache updates
+   - Set proper file permissions (644) for the shared library
+   - Implemented build and validation scripts
 3. **PRP-003**: Debian Package Dependencies Configuration
 4. **PRP-004**: Automated Build Script for Debian Package Generation
 5. **PRP-005**: Debian Package Testing and Validation Framework
