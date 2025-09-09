@@ -43,6 +43,15 @@ pub enum PathSelectionStrategy {
     Affinity,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DiskStatus {
+    Available,
+    Active,
+    Rotating,
+    Unmounted,
+    Failed,
+}
+
 #[derive(Debug, Clone)]
 pub struct StorageStats {
     pub path: PathBuf,

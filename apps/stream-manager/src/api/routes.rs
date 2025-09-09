@@ -10,6 +10,9 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     // Configure WebSocket endpoint from PRP-14
     crate::api::websocket::configure(cfg);
     
+    // Configure disk rotation endpoints from PRP-17
+    crate::api::rotation::configure_routes(cfg);
+    
     cfg.service(
         web::scope("/api/v1")
             .route("/health", web::get().to(health_check))
