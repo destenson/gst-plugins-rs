@@ -14,7 +14,7 @@ pub struct Config {
     pub app: AppConfig,
     pub api: ApiConfig,
     pub server: ServerConfig,
-    pub storage: StorageConfig,
+    pub storage: Option<StorageConfig>,
     pub recording: RecordingConfig,
     pub inference: InferenceConfig,
     pub monitoring: MonitoringConfig,
@@ -60,6 +60,11 @@ pub struct StorageConfig {
     pub retention_days: u32,
     pub min_free_space_gb: f32,
     pub check_interval_seconds: u64,
+    // Disk rotation fields
+    pub auto_rotate: Option<bool>,
+    pub buffer_size_mb: Option<u32>,
+    pub migration_timeout_secs: Option<u64>,
+    pub poll_interval_secs: Option<u64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -145,7 +150,7 @@ impl Default for Config {
             app: AppConfig::default(),
             api: ApiConfig::default(),
             server: ServerConfig::default(),
-            storage: StorageConfig::default(),
+            storage: Some(StorageConfig::default()),
             recording: RecordingConfig::default(),
             inference: InferenceConfig::default(),
             monitoring: MonitoringConfig::default(),
@@ -206,6 +211,10 @@ impl Default for StorageConfig {
             retention_days: 7,
             min_free_space_gb: 10.0,
             check_interval_seconds: 60,
+            auto_rotate: None,
+            buffer_size_mb: None,
+            migration_timeout_secs: None,
+            poll_interval_secs: None,
         }
     }
 }
@@ -320,16 +329,19 @@ impl Config {
     }
     
     pub fn validate(&self) -> crate::Result<()> {
-        // Validate storage path (just warn if it doesn't exist - we'll create it later)
-        if !self.storage.base_path.exists() {
-            warn!("Storage path does not exist: {:?} - will be created when needed", self.storage.base_path);
-        }
-        
-        // Validate disk usage percentage
-        if self.storage.max_disk_usage_percent > 95.0 || self.storage.max_disk_usage_percent < 10.0 {
-            return Err(crate::StreamManagerError::ConfigError(
-                "max_disk_usage_percent must be between 10 and 95".to_string()
-            ));
+        // Validate storage if configured
+        if let Some(ref storage) = self.storage {
+            // Validate storage path (just warn if it doesn't exist - we'll create it later)
+            if !storage.base_path.exists() {
+                warn!("Storage path does not exist: {:?} - will be created when needed", storage.base_path);
+            }
+            
+            // Validate disk usage percentage
+            if storage.max_disk_usage_percent > 95.0 || storage.max_disk_usage_percent < 10.0 {
+                return Err(crate::StreamManagerError::ConfigError(
+                    "max_disk_usage_percent must be between 10 and 95".to_string()
+                ));
+            }
         }
         
         // Validate ports
@@ -373,7 +385,7 @@ impl Config {
             self.server = server;
         }
         if let Some(storage) = partial.storage {
-            self.storage = storage;
+            self.storage = Some(storage);
         }
         if let Some(recording) = partial.recording {
             self.recording = recording;
@@ -629,10 +641,14 @@ api_port = 9090
         assert!(config.validate().is_ok());
         
         // Test invalid disk usage
-        config.storage.max_disk_usage_percent = 99.0;
+        if let Some(ref mut storage) = config.storage {
+            storage.max_disk_usage_percent = 99.0;
+        }
         assert!(config.validate().is_err());
         
-        config.storage.max_disk_usage_percent = 80.0;
+        if let Some(ref mut storage) = config.storage {
+            storage.max_disk_usage_percent = 80.0;
+        }
         
         // Test duplicate stream IDs
         config.streams.push(StreamConfig {

@@ -1,0 +1,52 @@
+[Unit]
+Description=Multi-Stream Recording and Inference Manager
+Documentation=https://github.com/gstreamer/gst-plugins-rs
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+ExecStart=/usr/local/bin/stream-manager --config /etc/stream-manager/config.toml
+ExecReload=/bin/kill -HUP $MAINPID
+ExecStop=/bin/kill -TERM $MAINPID
+
+# Service configuration
+Restart=always
+RestartSec=10
+TimeoutStartSec=90
+TimeoutStopSec=90
+WatchdogSec=30
+NotifyAccess=main
+
+# Process management
+Nice=-5
+OOMScoreAdjust=-500
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Security hardening
+User=stream-manager
+Group=stream-manager
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+NoNewPrivileges=yes
+ReadWritePaths=/var/lib/stream-manager /var/log/stream-manager /media /mnt /run/media
+
+# Environment
+Environment="RUST_BACKTRACE=1"
+Environment="GST_DEBUG=2"
+Environment="RUST_LOG=info,stream_manager=debug"
+EnvironmentFile=-/etc/stream-manager/environment
+
+# Capabilities for disk management and network binding
+AmbientCapabilities=CAP_SYS_ADMIN CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_NET_BIND_SERVICE
+
+# Standard IO
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=stream-manager
+
+[Install]
+WantedBy=multi-user.target
