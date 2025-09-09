@@ -134,12 +134,15 @@ cargo doc --all --no-deps
 - Plugins use `gst_plugin_version_helper` in build.rs for version information
 - The threadshare plugin includes C code and requires special build handling
 
-## Debugging Lessons
+## Critical Development Principles
 
-### Trust the Compiler
-The Rust compiler provides precise error messages. When you see an error like "the async keyword is missing from the function declaration" on a non-async function, don't assume the compiler is wrong. Instead:
-1. Check for namespace collisions (e.g., importing `test` from a crate that shadows `#[test]`)
-2. Look at ALL imports in the module - they affect how attributes are resolved
-3. The compiler is telling you exactly what's wrong - if `#[test]` is being resolved to something that expects async, there's a namespace issue
+### The Compiler Is Always Right
+**NEVER blame the compiler for "misleading" errors.** The Rust compiler is meticulously designed and battle-tested. If you think the compiler is wrong or misleading, you are misunderstanding something fundamental about your code.
 
-Example from PRP-14: Importing `use actix_web::test` caused `#[test]` to resolve to `#[actix_web::test]` instead of the standard test attribute, requiring async functions. The fix was to remove the import or use fully qualified paths.
+When you encounter a confusing error:
+1. **Read the error message literally** - it's telling you exactly what's wrong
+2. **Question your assumptions** - what you think your code does vs. what it actually does
+3. **Examine the context** - imports, macro expansions, type inference, trait bounds
+4. **The compiler sees your code after all transformations** - you might be looking at the wrong abstraction level
+
+The compiler error is not a suggestion or approximation - it's a precise description of why your code cannot compile. Your job is to understand what the compiler is seeing, not to argue with it.
