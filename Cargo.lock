@@ -8520,11 +8520,14 @@ dependencies = [
  "notify",
  "opentelemetry",
  "opentelemetry-otlp",
+ "parking_lot",
  "prometheus",
+ "rand 0.8.5",
  "reqwest 0.12.23",
  "serde",
  "serde_json",
  "sqlx",
+ "sys-info",
  "tempfile",
  "thiserror 2.0.16",
  "tokio",
@@ -8696,6 +8699,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.106",
+]
+
+[[package]]
+name = "sys-info"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b3a0d0aba8bf96a0e1ddfdc352fc53b3df7f39318c71854910c3c4b024ae52c"
+dependencies = [
+ "cc",
+ "libc",
 ]
 
 [[package]]

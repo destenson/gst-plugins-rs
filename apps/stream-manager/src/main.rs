@@ -8,6 +8,7 @@ use stream_manager::{
     config::ConfigManager,
     gst_utils,
     manager::StreamManager,
+    recovery::{RecoveryManager, RecoveryConfig},
     service::ServiceManager,
     storage::{DiskRotationManager, DiskRotationConfig},
 };
@@ -92,9 +93,26 @@ async fn main() -> Result<()> {
     info!("Configuration loaded successfully");
     info!("App name: {}", config.app.name);
     
+    // Initialize recovery manager
+    let recovery_config = RecoveryConfig::default();
+    let recovery_manager = Arc::new(RecoveryManager::new(recovery_config));
+    info!("Recovery manager initialized");
+    
     // Initialize components
     let stream_manager = Arc::new(StreamManager::new(config.clone())?);
     info!("Stream manager initialized");
+    
+    // Register recovery handlers for streams
+    {
+        let sm = stream_manager.clone();
+        recovery_manager.register_recovery_handler(
+            "stream".to_string(),
+            Box::new(move |snapshot| {
+                // Recovery logic for streams will be implemented later
+                stream_manager::recovery::RecoveryResult::Recovered
+            }),
+        ).await;
+    }
     
     let disk_rotation_config = if let Some(ref storage_config) = config.storage {
         DiskRotationConfig {
@@ -119,7 +137,7 @@ async fn main() -> Result<()> {
             config.clone(),
             stream_manager,
             disk_rotation_manager,
-        )?;
+        )?.with_recovery_manager(recovery_manager.clone());
         
         // Run the service (blocks until shutdown)
         if let Err(e) = service_manager.run().await {
