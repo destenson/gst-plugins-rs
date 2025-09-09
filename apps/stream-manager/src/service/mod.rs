@@ -8,6 +8,7 @@ use thiserror::Error;
 
 use crate::{Config, manager::StreamManager};
 use crate::storage::DiskRotationManager;
+use crate::recovery::RecoveryManager;
 
 pub mod notify;
 pub mod signals;
@@ -37,6 +38,7 @@ pub struct ServiceManager {
     config: Arc<RwLock<Config>>,
     stream_manager: Arc<StreamManager>,
     disk_rotation_manager: Arc<DiskRotationManager>,
+    recovery_manager: Option<Arc<RecoveryManager>>,
     sd_notify: Option<SdNotify>,
     signal_handler: SignalHandler,
     watchdog_interval: Option<Duration>,
@@ -66,6 +68,7 @@ impl ServiceManager {
             config: Arc::new(RwLock::new((*config).clone())),
             stream_manager,
             disk_rotation_manager,
+            recovery_manager: None,  // Will be set separately if needed
             sd_notify,
             signal_handler,
             watchdog_interval,
@@ -73,6 +76,11 @@ impl ServiceManager {
             shutdown_tx,
             shutdown_rx: Arc::new(RwLock::new(shutdown_rx)),
         })
+    }
+    
+    pub fn with_recovery_manager(mut self, recovery_manager: Arc<RecoveryManager>) -> Self {
+        self.recovery_manager = Some(recovery_manager);
+        self
     }
     
     fn get_watchdog_interval() -> Option<Duration> {
@@ -373,6 +381,7 @@ impl Clone for ServiceManager {
             config: self.config.clone(),
             stream_manager: self.stream_manager.clone(),
             disk_rotation_manager: self.disk_rotation_manager.clone(),
+            recovery_manager: self.recovery_manager.clone(),
             sd_notify: self.sd_notify.clone(),
             signal_handler: self.signal_handler.clone(),
             watchdog_interval: self.watchdog_interval,
