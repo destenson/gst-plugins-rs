@@ -3,14 +3,20 @@ use actix_web::{
     middleware::{Logger, NormalizePath},
 };
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use tracing::info;
-use crate::{Config, manager::StreamManager};
+use crate::{Config, manager::StreamManager, config::ConfigReloader, storage::DiskRotationManager};
 
 pub mod routes;
 pub mod dto;
 pub mod error;
 pub mod middleware;
 pub mod streams;
+pub mod websocket;
+pub mod event_integration;
+pub mod rotation;
+pub mod backup;
+pub mod recovery;
 
 pub use error::ApiError;
 pub use dto::*;
@@ -18,8 +24,12 @@ pub use dto::*;
 #[derive(Clone)]
 pub struct AppState {
     pub stream_manager: Arc<StreamManager>,
-    pub config: Arc<Config>,
+    pub config: Arc<RwLock<Config>>,
+    pub config_reloader: Option<Arc<RwLock<ConfigReloader>>>,
     pub metrics_collector: Arc<crate::metrics::MetricsCollector>,
+    pub event_broadcaster: Arc<websocket::EventBroadcaster>,
+    pub disk_rotation_manager: Arc<DiskRotationManager>,
+    pub backup_manager: Option<Arc<crate::backup::BackupManager>>,
 }
 
 impl AppState {
@@ -32,10 +42,21 @@ impl AppState {
             .expect("Failed to create metrics collector")
         );
         
+        let event_broadcaster = Arc::new(websocket::EventBroadcaster::new());
+        event_broadcaster.start();
+        
+        let disk_rotation_manager = Arc::new(
+            DiskRotationManager::new(crate::storage::DiskRotationConfig::default())
+        );
+        
         Self {
             stream_manager,
-            config,
+            config: Arc::new(RwLock::new((*config).clone())),
+            config_reloader: None,
             metrics_collector,
+            event_broadcaster,
+            disk_rotation_manager,
+            backup_manager: None,
         }
     }
     
@@ -44,11 +65,29 @@ impl AppState {
         config: Arc<Config>,
         metrics_collector: Arc<crate::metrics::MetricsCollector>,
     ) -> Self {
+        let event_broadcaster = Arc::new(websocket::EventBroadcaster::new());
+        event_broadcaster.start();
+        
+        let disk_rotation_manager = Arc::new(
+            DiskRotationManager::new(crate::storage::DiskRotationConfig::default())
+        );
+        
         Self {
             stream_manager,
-            config,
+            config: Arc::new(RwLock::new((*config).clone())),
+            config_reloader: None,
             metrics_collector,
+            event_broadcaster,
+            disk_rotation_manager,
+            backup_manager: None,
         }
+    }
+    
+    pub fn with_reloader(mut self, config_path: std::path::PathBuf) -> Self {
+        if let Ok(reloader) = ConfigReloader::new(self.config.clone(), config_path) {
+            self.config_reloader = Some(Arc::new(RwLock::new(reloader)));
+        }
+        self
     }
 }
 
@@ -64,6 +103,8 @@ pub async fn start_server(
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(app_state.clone()))
+            .app_data(web::Data::new(app_state.event_broadcaster.clone()))
+            .app_data(web::Data::new(app_state.disk_rotation_manager.clone()))
             .wrap(Logger::default())
             .wrap(NormalizePath::trim())
             .wrap(middleware::error_handler())

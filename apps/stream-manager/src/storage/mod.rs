@@ -1,18 +1,13 @@
-// Storage management and disk monitoring
-// TODO: Implement in PRP-16
+pub mod manager;
+pub mod rotation;
 
-use std::path::PathBuf;
+pub use manager::{
+    StorageManager, StoragePath, StorageStats, CleanupPolicy,
+    PathSelectionStrategy, StorageEvent, StorageError, StorageConfig,
+    DiskStatus,
+};
 
-pub struct StorageManager {
-    base_path: PathBuf,
-    max_usage_percent: f32,
-}
-
-impl StorageManager {
-    pub fn new(base_path: PathBuf, max_usage_percent: f32) -> Self {
-        Self {
-            base_path,
-            max_usage_percent,
-        }
-    }
-}
+pub use rotation::{
+    DiskRotationManager, DiskRotationConfig, RotationError,
+    RotationState, DiskInfo, RotationEvent,
+};

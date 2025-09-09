@@ -1,6 +1,7 @@
 use crate::config::{Config, StreamConfig};
 use crate::stream::{BranchManager, StreamSource};
 use crate::recording::RecordingBranch;
+use crate::inference::{InferenceManager, InferenceBackend};
 use crate::Result;
 use gst::prelude::*;
 use std::collections::HashMap;
@@ -34,6 +35,7 @@ pub struct ManagedStream {
     pub source: Arc<StreamSource>,
     pub branch_manager: Arc<BranchManager>,
     pub recording_branch: Option<Arc<RecordingBranch>>,
+    pub inference_enabled: bool,
     pub statistics: StreamStatistics,
     pub health_status: HealthStatus,
 }
@@ -78,6 +80,7 @@ pub struct StreamManager {
     streams: Arc<RwLock<HashMap<String, Arc<ManagedStream>>>>,
     config: Arc<Config>,
     main_pipeline: Option<gst::Pipeline>,
+    inference_manager: Option<Arc<InferenceManager>>,
     shutdown_tx: mpsc::Sender<()>,
     shutdown_rx: Arc<RwLock<mpsc::Receiver<()>>>,
     event_tx: mpsc::UnboundedSender<StreamEvent>,
@@ -101,10 +104,18 @@ impl StreamManager {
         let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
         let (event_tx, event_rx) = mpsc::unbounded_channel();
 
+        // Create inference manager if NVIDIA support is configured
+        let inference_manager = if std::env::var("ENABLE_NVIDIA_INFERENCE").unwrap_or_default() == "true" {
+            Some(Arc::new(InferenceManager::with_nvidia_support(4, 8192)))
+        } else {
+            None
+        };
+
         Ok(Self {
             streams: Arc::new(RwLock::new(HashMap::new())),
             config,
             main_pipeline: None,
+            inference_manager,
             shutdown_tx,
             shutdown_rx: Arc::new(RwLock::new(shutdown_rx)),
             event_tx,
@@ -171,12 +182,29 @@ impl StreamManager {
             None
         };
 
+        // Setup inference if enabled
+        let inference_enabled = config.inference_enabled;
+        if inference_enabled {
+            if let Some(ref inference_mgr) = self.inference_manager {
+                // Default to NVIDIA inference if available
+                let nvidia_config = crate::inference::nvidia::NvidiaInferenceConfig::default();
+                let backend = InferenceBackend::Nvidia(nvidia_config);
+                
+                if let Err(e) = inference_mgr.add_inference_stream(id.clone(), backend).await {
+                    error!("Failed to add inference for stream {}: {}", id, e);
+                } else {
+                    info!("Inference enabled for stream {}", id);
+                }
+            }
+        }
+
         // Create managed stream
         let managed_stream = Arc::new(ManagedStream {
             id: id.clone(),
             source,
             branch_manager,
             recording_branch,
+            inference_enabled,
             statistics: StreamStatistics {
                 last_update: std::time::Instant::now(),
                 ..Default::default()
@@ -206,6 +234,15 @@ impl StreamManager {
         };
 
         if let Some(stream) = managed_stream {
+            // Stop inference if active
+            if stream.inference_enabled {
+                if let Some(ref inference_mgr) = self.inference_manager {
+                    if let Err(e) = inference_mgr.remove_inference_stream(id).await {
+                        error!("Failed to remove inference for stream {}: {}", id, e);
+                    }
+                }
+            }
+
             // Stop recording if active
             if let Some(_recording) = &stream.recording_branch {
                 // Note: recording.stop() will be called when the pipeline stops
@@ -284,6 +321,39 @@ impl StreamManager {
                 stats,
             ));
         }
+    }
+
+    pub async fn process_inference_results(&self) -> Result<()> {
+        if let Some(ref inference_mgr) = self.inference_manager {
+            inference_mgr.process_results().await
+                .map_err(|e| crate::StreamManagerError::Other(e.to_string()))?;
+        }
+        Ok(())
+    }
+
+    pub async fn enable_inference_for_stream(&self, id: &str, backend: InferenceBackend) -> Result<()> {
+        if let Some(ref inference_mgr) = self.inference_manager {
+            inference_mgr.add_inference_stream(id.to_string(), backend).await
+                .map_err(|e| crate::StreamManagerError::Other(e.to_string()))?;
+            
+            // Update stream state
+            let streams = self.streams.read().await;
+            if let Some(_stream) = streams.get(id) {
+                info!("Inference enabled for stream {}", id);
+            }
+        } else {
+            return Err(crate::StreamManagerError::Other("Inference manager not initialized".to_string()));
+        }
+        Ok(())
+    }
+
+    pub async fn disable_inference_for_stream(&self, id: &str) -> Result<()> {
+        if let Some(ref inference_mgr) = self.inference_manager {
+            inference_mgr.remove_inference_stream(id).await
+                .map_err(|e| crate::StreamManagerError::Other(e.to_string()))?;
+            info!("Inference disabled for stream {}", id);
+        }
+        Ok(())
     }
 
     pub async fn start_all(&self) -> Result<()> {
