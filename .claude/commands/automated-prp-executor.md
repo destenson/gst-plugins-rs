@@ -13,6 +13,8 @@ The unified system will run as a systemd service with robust error handling, dis
 
 ## Execution Instructions
 
+NOTE: Instructions use bash for clarity, but you need to use MCP tools and other tools you have available instead of bash whenever possible.
+
 ### Step 1: Determine Current State
 Check for the existence of these marker files to determine which PRPs are complete:
 ```bash
