@@ -22,6 +22,7 @@ pub struct Config {
     pub stream_defaults: StreamDefaultConfig,
     pub streams: Vec<StreamConfig>,
     pub backup: Option<crate::backup::BackupConfig>,
+    pub rtsp: Option<RtspConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -100,6 +101,7 @@ pub struct StreamConfig {
     pub reconnect_timeout_seconds: u64,
     pub max_reconnect_attempts: u32,
     pub buffer_size_mb: u32,
+    pub rtsp_outputs: Option<Vec<RtspSinkConfig>>,
 }
 
 impl StreamConfig {
@@ -169,6 +171,64 @@ pub struct StreamDefaultConfig {
     pub buffer_size_mb: u32,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct RtspConfig {
+    pub enabled: bool,
+    pub bind_address: String,
+    pub port: u16,
+    pub enable_auth: bool,
+    pub users: Option<std::collections::HashMap<String, String>>,
+    pub max_clients: usize,
+    pub protocols: Vec<String>,
+}
+
+impl Default for RtspConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bind_address: "0.0.0.0".to_string(),
+            port: 8554,
+            enable_auth: false,
+            users: None,
+            max_clients: 100,
+            protocols: vec!["tcp".to_string(), "udp".to_string()],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct RtspSinkConfig {
+    pub enabled: bool,
+    pub location: String,
+    pub codec: String,
+    pub bitrate_kbps: Option<u32>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub latency_ms: u32,
+    pub protocols: String,
+    pub username: Option<String>,
+    pub password: Option<String>,
+}
+
+impl Default for RtspSinkConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            location: "rtsp://localhost:8554/stream".to_string(),
+            codec: "h264".to_string(),
+            bitrate_kbps: Some(2000),
+            width: None,
+            height: None,
+            latency_ms: 100,
+            protocols: "tcp".to_string(),
+            username: None,
+            password: None,
+        }
+    }
+}
+
 // Default implementations
 impl Default for Config {
     fn default() -> Self {
@@ -184,6 +244,7 @@ impl Default for Config {
             stream_defaults: StreamDefaultConfig::default(),
             streams: Vec::new(),
             backup: None,
+            rtsp: None,
         }
     }
 }

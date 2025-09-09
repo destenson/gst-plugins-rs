@@ -475,6 +475,7 @@ mod tests {
             reconnect_timeout_seconds: 5,
             max_reconnect_attempts: 3,
             buffer_size_mb: 50,
+            rtsp_outputs: None,
         }
     }
 
