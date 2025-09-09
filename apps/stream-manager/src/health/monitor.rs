@@ -411,6 +411,7 @@ mod tests {
             source: dummy_source.clone(),
             branch_manager: dummy_branch_manager.clone(),
             recording_branch: None,
+            inference_enabled: false,
             statistics: StreamStatistics {
                 packets_received: 100,
                 bytes_received: 1000,
@@ -441,6 +442,7 @@ mod tests {
             source: dummy_source.clone(),
             branch_manager: dummy_branch_manager.clone(),
             recording_branch: None,
+            inference_enabled: false,
             statistics: StreamStatistics {
                 reconnect_count: 4,
                 ..stream.statistics.clone()
@@ -460,6 +462,7 @@ mod tests {
             source: dummy_source.clone(),
             branch_manager: dummy_branch_manager.clone(),
             recording_branch: None,
+            inference_enabled: false,
             statistics: StreamStatistics {
                 reconnect_count: 6,
                 ..stream.statistics.clone()
