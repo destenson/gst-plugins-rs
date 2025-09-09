@@ -128,22 +128,62 @@ utils/fallbackswitch/
 └── debian/             # Debian packaging files
 ```
 
-### Debian Packaging Implementation Plan
+### Testing the Package
 
-The Debian packaging is being implemented through a series of PRPs (Project Request Proposals):
+The package includes comprehensive testing scripts:
 
-1. **PRP-001**: cargo-deb Setup and Basic Configuration (Foundational) ✓
+```bash
+# Test the package across multiple distributions using Docker
+./scripts/test-deb-package.sh target/debian/gst-plugin-fallbackswitch_*.deb
+
+# Test on specific distribution
+./scripts/test-deb-package.sh --distro debian:bookworm target/debian/*.deb
+
+# Run tests locally without Docker (requires sudo)
+./scripts/test-deb-package.sh --no-docker target/debian/*.deb
+```
+
+### Cross-Architecture Building
+
+The build script supports cross-compilation for different architectures:
+
+```bash
+# Build for ARM64
+./scripts/build-deb.sh --arch arm64
+
+# Build for ARMhf (32-bit ARM)
+./scripts/build-deb.sh --arch armhf
+
+# Clean build with verbose output
+./scripts/build-deb.sh --clean --verbose
+```
+
+### Debian Packaging Implementation
+
+The Debian packaging has been implemented through a series of PRPs:
+
+1. **PRP-001**: cargo-deb Setup and Basic Configuration ✓
 2. **PRP-002**: GStreamer Plugin Installation Path Configuration ✓
-   - Configured multiarch-aware installation paths
-   - Added ldconfig trigger for library cache updates
-   - Set proper file permissions (644) for the shared library
-   - Implemented build and validation scripts
-3. **PRP-003**: Debian Package Dependencies Configuration
-4. **PRP-004**: Automated Build Script for Debian Package Generation
-5. **PRP-005**: Debian Package Testing and Validation Framework
-6. **PRP-006**: Post-Installation Configuration and Integration
-7. **PRP-007**: CI/CD Pipeline for Automated Debian Package Building
-8. **PRP-008**: Documentation and Release Management
+3. **PRP-003**: Debian Package Dependencies Configuration ✓
+   - Configured automatic dependency detection with $auto
+   - Added GStreamer runtime dependencies
+   - Set up recommends and suggests for companion packages
+4. **PRP-004**: Automated Build Script ✓
+   - Created build-deb.sh with cross-architecture support
+   - Added command-line options for flexibility
+   - Implemented proper error handling and validation
+5. **PRP-005**: Package Testing Framework ✓
+   - Created test-deb-package.sh for comprehensive testing
+   - Docker-based testing across multiple distributions
+   - Lintian policy compliance checking
+6. **PRP-006**: Post-Installation Configuration ✓
+   - Created maintainer scripts (postinst, prerm, postrm)
+   - Automatic GStreamer registry updates
+   - Clean removal and purge handling
+7. **PRP-008**: Documentation and Release Management ✓
+   - Created comprehensive README.Debian
+   - Updated main README with installation instructions
+   - Added troubleshooting and usage examples
 
 ## License
 
