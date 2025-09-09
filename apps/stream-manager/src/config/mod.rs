@@ -5,6 +5,9 @@ use tokio::sync::RwLock;
 use notify::{Watcher, RecursiveMode, Event};
 use tracing::{info, warn, error};
 
+pub mod reload;
+pub use reload::{ConfigReloader, ConfigReloadEvent, ConfigChange, ReloadRestriction, ReloadStatus};
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Config {

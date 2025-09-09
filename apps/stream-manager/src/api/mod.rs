@@ -3,8 +3,9 @@ use actix_web::{
     middleware::{Logger, NormalizePath},
 };
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use tracing::info;
-use crate::{Config, manager::StreamManager};
+use crate::{Config, manager::StreamManager, config::ConfigReloader};
 
 pub mod routes;
 pub mod dto;
@@ -20,7 +21,8 @@ pub use dto::*;
 #[derive(Clone)]
 pub struct AppState {
     pub stream_manager: Arc<StreamManager>,
-    pub config: Arc<Config>,
+    pub config: Arc<RwLock<Config>>,
+    pub config_reloader: Option<Arc<RwLock<ConfigReloader>>>,
     pub metrics_collector: Arc<crate::metrics::MetricsCollector>,
     pub event_broadcaster: Arc<websocket::EventBroadcaster>,
 }
@@ -40,7 +42,8 @@ impl AppState {
         
         Self {
             stream_manager,
-            config,
+            config: Arc::new(RwLock::new((*config).clone())),
+            config_reloader: None,
             metrics_collector,
             event_broadcaster,
         }
@@ -56,10 +59,18 @@ impl AppState {
         
         Self {
             stream_manager,
-            config,
+            config: Arc::new(RwLock::new((*config).clone())),
+            config_reloader: None,
             metrics_collector,
             event_broadcaster,
         }
+    }
+    
+    pub fn with_reloader(mut self, config_path: std::path::PathBuf) -> Self {
+        if let Ok(reloader) = ConfigReloader::new(self.config.clone(), config_path) {
+            self.config_reloader = Some(Arc::new(RwLock::new(reloader)));
+        }
+        self
     }
 }
 
