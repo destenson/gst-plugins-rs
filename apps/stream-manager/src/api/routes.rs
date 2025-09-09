@@ -7,6 +7,9 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     // Configure the stream control API endpoints from PRP-12
     crate::api::streams::configure(cfg);
     
+    // Configure WebSocket endpoint from PRP-14
+    crate::api::websocket::configure(cfg);
+    
     cfg.service(
         web::scope("/api/v1")
             .route("/health", web::get().to(health_check))

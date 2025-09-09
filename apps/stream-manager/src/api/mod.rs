@@ -11,6 +11,8 @@ pub mod dto;
 pub mod error;
 pub mod middleware;
 pub mod streams;
+pub mod websocket;
+pub mod event_integration;
 
 pub use error::ApiError;
 pub use dto::*;
@@ -20,6 +22,7 @@ pub struct AppState {
     pub stream_manager: Arc<StreamManager>,
     pub config: Arc<Config>,
     pub metrics_collector: Arc<crate::metrics::MetricsCollector>,
+    pub event_broadcaster: Arc<websocket::EventBroadcaster>,
 }
 
 impl AppState {
@@ -32,10 +35,14 @@ impl AppState {
             .expect("Failed to create metrics collector")
         );
         
+        let event_broadcaster = Arc::new(websocket::EventBroadcaster::new());
+        event_broadcaster.start();
+        
         Self {
             stream_manager,
             config,
             metrics_collector,
+            event_broadcaster,
         }
     }
     
@@ -44,10 +51,14 @@ impl AppState {
         config: Arc<Config>,
         metrics_collector: Arc<crate::metrics::MetricsCollector>,
     ) -> Self {
+        let event_broadcaster = Arc::new(websocket::EventBroadcaster::new());
+        event_broadcaster.start();
+        
         Self {
             stream_manager,
             config,
             metrics_collector,
+            event_broadcaster,
         }
     }
 }
@@ -64,6 +75,7 @@ pub async fn start_server(
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(app_state.clone()))
+            .app_data(web::Data::new(app_state.event_broadcaster.clone()))
             .wrap(Logger::default())
             .wrap(NormalizePath::trim())
             .wrap(middleware::error_handler())
