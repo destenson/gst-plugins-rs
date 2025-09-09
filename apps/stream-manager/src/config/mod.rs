@@ -15,6 +15,7 @@ pub struct Config {
     pub api: ApiConfig,
     pub server: ServerConfig,
     pub storage: Option<StorageConfig>,
+    pub database: Option<DatabaseConfig>,
     pub recording: RecordingConfig,
     pub inference: InferenceConfig,
     pub monitoring: MonitoringConfig,
@@ -49,6 +50,24 @@ pub struct ServerConfig {
     pub webrtc_port: u16,
     pub api_port: u16,
     pub websocket_port: u16,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct DatabaseConfig {
+    pub url: Option<String>,
+    pub max_connections: Option<u32>,
+    pub enable_wal: Option<bool>,
+}
+
+impl Default for DatabaseConfig {
+    fn default() -> Self {
+        Self {
+            url: Some("sqlite://stream_manager.db".to_string()),
+            max_connections: Some(10),
+            enable_wal: Some(true),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -151,6 +170,7 @@ impl Default for Config {
             api: ApiConfig::default(),
             server: ServerConfig::default(),
             storage: Some(StorageConfig::default()),
+            database: None,
             recording: RecordingConfig::default(),
             inference: InferenceConfig::default(),
             monitoring: MonitoringConfig::default(),

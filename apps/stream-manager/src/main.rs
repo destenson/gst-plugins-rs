@@ -6,6 +6,7 @@ use tracing::{info, error};
 use tracing_subscriber::EnvFilter;
 use stream_manager::{
     config::ConfigManager,
+    database::{Database, DatabaseConfig},
     gst_utils,
     manager::StreamManager,
     recovery::{RecoveryManager, RecoveryConfig},
@@ -92,6 +93,16 @@ async fn main() -> Result<()> {
     let config = Arc::new(config_manager.get().await.clone());
     info!("Configuration loaded successfully");
     info!("App name: {}", config.app.name);
+    
+    // Initialize database
+    let db_config = DatabaseConfig {
+        url: config.database.as_ref()
+            .and_then(|d| d.url.clone())
+            .unwrap_or_else(|| "sqlite://stream_manager.db".to_string()),
+        ..Default::default()
+    };
+    let database = Arc::new(Database::new(db_config).await?);
+    info!("Database initialized");
     
     // Initialize recovery manager
     let recovery_config = RecoveryConfig::default();
