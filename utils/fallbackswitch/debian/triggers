@@ -1,2 +1,0 @@
-# Trigger ldconfig when GStreamer plugin library is installed/removed
-activate-noawait ldconfig
