@@ -17,6 +17,7 @@ pub enum ApiError {
     Conflict(String),
     ValidationError(String),
     ServiceUnavailable(String),
+    NotImplemented(String),
 }
 
 impl fmt::Display for ApiError {
@@ -30,6 +31,7 @@ impl fmt::Display for ApiError {
             ApiError::Conflict(msg) => write!(f, "Conflict: {}", msg),
             ApiError::ValidationError(msg) => write!(f, "Validation Error: {}", msg),
             ApiError::ServiceUnavailable(msg) => write!(f, "Service Unavailable: {}", msg),
+            ApiError::NotImplemented(msg) => write!(f, "Not Implemented: {}", msg),
         }
     }
 }
@@ -45,6 +47,7 @@ impl ResponseError for ApiError {
             ApiError::Conflict(_) => StatusCode::CONFLICT,
             ApiError::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
             ApiError::ServiceUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
+            ApiError::NotImplemented(_) => StatusCode::NOT_IMPLEMENTED,
         }
     }
 
@@ -59,6 +62,7 @@ impl ResponseError for ApiError {
             ApiError::Conflict(_) => "conflict",
             ApiError::ValidationError(_) => "validation_error",
             ApiError::ServiceUnavailable(_) => "service_unavailable",
+            ApiError::NotImplemented(_) => "not_implemented",
         };
 
         let message = self.to_string();

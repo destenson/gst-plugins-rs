@@ -15,6 +15,8 @@ pub mod streams;
 pub mod websocket;
 pub mod event_integration;
 pub mod rotation;
+pub mod backup;
+pub mod recovery;
 
 pub use error::ApiError;
 pub use dto::*;
@@ -27,6 +29,7 @@ pub struct AppState {
     pub metrics_collector: Arc<crate::metrics::MetricsCollector>,
     pub event_broadcaster: Arc<websocket::EventBroadcaster>,
     pub disk_rotation_manager: Arc<DiskRotationManager>,
+    pub backup_manager: Option<Arc<crate::backup::BackupManager>>,
 }
 
 impl AppState {
@@ -53,6 +56,7 @@ impl AppState {
             metrics_collector,
             event_broadcaster,
             disk_rotation_manager,
+            backup_manager: None,
         }
     }
     
@@ -75,6 +79,7 @@ impl AppState {
             metrics_collector,
             event_broadcaster,
             disk_rotation_manager,
+            backup_manager: None,
         }
     }
     
