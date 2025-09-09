@@ -99,7 +99,7 @@ preserve-symlinks = false
 features = ["v1_16"]
 default-features = true
 # System dependencies for building (build-depends)
-# Note: Rust toolchain (cargo, rustc, cargo-c) is assumed to be installed via rustup or other means
+# Note: Rust toolchain is handled separately and not listed here
 build-depends = "libgstreamer1.0-dev (>= 1.16.0), libgstreamer-plugins-base1.0-dev (>= 1.16.0), pkg-config"
 # Suggests and recommends
 recommends = "gstreamer1.0-tools"
