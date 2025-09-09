@@ -27,6 +27,7 @@ pub enum StreamBranch {
     Recording,
     Inference,
     Preview,
+    Rtsp,
     Custom(String),
 }
 
@@ -36,6 +37,7 @@ impl StreamBranch {
             StreamBranch::Recording => "recording",
             StreamBranch::Inference => "inference",
             StreamBranch::Preview => "preview",
+            StreamBranch::Rtsp => "rtsp",
             StreamBranch::Custom(name) => name,
         }
     }
@@ -85,6 +87,15 @@ impl QueueConfig {
             max_size_buffers: 2,
             max_size_time: gst::ClockTime::from_mseconds(50),
             leaky: true, // Drop old buffers for smooth preview
+        }
+    }
+
+    pub fn for_rtsp() -> Self {
+        Self {
+            max_size_bytes: 0,
+            max_size_buffers: 100,
+            max_size_time: gst::ClockTime::from_seconds(2),
+            leaky: false, // Don't drop frames for RTSP clients
         }
     }
 }
@@ -153,6 +164,7 @@ impl BranchManager {
             StreamBranch::Recording => QueueConfig::for_recording(),
             StreamBranch::Inference => QueueConfig::for_inference(),
             StreamBranch::Preview => QueueConfig::for_preview(),
+            StreamBranch::Rtsp => QueueConfig::for_rtsp(),
             StreamBranch::Custom(_) => QueueConfig::default(),
         };
 

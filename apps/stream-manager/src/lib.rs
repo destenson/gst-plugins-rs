@@ -54,6 +54,9 @@ pub enum StreamManagerError {
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
     
+    #[error("RTSP sink error: {0}")]
+    RtspSinkError(#[from] stream::RtspSinkError),
+    
     #[error("Other error: {0}")]
     Other(String),
 }
