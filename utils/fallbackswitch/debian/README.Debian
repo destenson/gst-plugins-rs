@@ -1,0 +1,123 @@
+gst-plugin-fallbackswitch for Debian
+====================================
+
+This package provides GStreamer fallback switching elements for high-availability
+streaming applications.
+
+## Quick Start
+
+After installation, the plugin provides two main elements:
+
+1. **fallbackswitch** - Switches between multiple input streams based on availability
+2. **fallbacksrc** - Composite source element with automatic fallback capabilities
+
+Verify installation:
+```bash
+gst-inspect-1.0 fallbackswitch
+gst-inspect-1.0 fallbacksrc
+```
+
+## Basic Usage Examples
+
+### Simple Fallback Switch
+```bash
+# Switch between two video sources, fallback to second if first fails
+gst-launch-1.0 \
+    videotestsrc ! video/x-raw,width=640,height=480 ! fallbackswitch name=switch ! autovideosink \
+    videotestsrc pattern=snow ! video/x-raw,width=640,height=480 ! switch.
+```
+
+### Using fallbacksrc for RTSP streams
+```bash
+# Automatically fallback to test pattern if RTSP stream fails
+gst-launch-1.0 \
+    fallbacksrc \
+        uri=rtsp://camera.local:554/stream \
+        fallback-uri=test:// \
+        timeout=5000000000 \
+    ! autovideosink
+```
+
+## Common Use Cases
+
+1. **Live Streaming Redundancy**: Use multiple camera feeds with automatic failover
+2. **Network Stream Monitoring**: Fallback to placeholder when network streams fail  
+3. **Broadcasting**: Ensure continuous output even when input sources fail
+
+## Configuration
+
+The elements support various properties for customization:
+
+- `timeout`: Time to wait before switching (in nanoseconds)
+- `immediate-fallback`: Switch immediately on stream failure
+- `auto-switch`: Automatically switch back when primary recovers
+
+See `gst-inspect-1.0 <element>` for full property documentation.
+
+## Troubleshooting
+
+### Plugin Not Found
+If the plugin is not detected after installation:
+```bash
+# Force registry update
+rm -f ~/.cache/gstreamer-1.0/registry.*.bin
+gst-inspect-1.0 --gst-disable-registry-fork
+```
+
+### Permission Issues
+Ensure the plugin library has correct permissions:
+```bash
+ls -la /usr/lib/*/gstreamer-1.0/libgstfallbackswitch.so
+```
+
+### Debug Output
+Enable GStreamer debug output for troubleshooting:
+```bash
+GST_DEBUG=fallback*:5 gst-launch-1.0 [pipeline]
+```
+
+## Integration with Applications
+
+### Python Example
+```python
+import gi
+gi.require_version('Gst', '1.0')
+from gi.repository import Gst
+
+Gst.init(None)
+
+# Create pipeline with fallbackswitch
+pipeline = Gst.parse_launch("""
+    videotestsrc ! fallbackswitch name=switch ! autovideosink
+    videotestsrc pattern=snow ! switch.
+""")
+
+pipeline.set_state(Gst.State.PLAYING)
+```
+
+### C/C++ Integration
+Link against GStreamer libraries and use standard GStreamer APIs.
+The plugin will be automatically discovered if installed correctly.
+
+## Known Limitations
+
+- All input streams to fallbackswitch must have compatible formats
+- Switching may cause brief disruption in output  
+- Audio/video synchronization should be carefully managed
+
+## Support
+
+For issues specific to this Debian package:
+- Package Maintainer: gstreamer-rust@lists.freedesktop.org
+
+For upstream plugin issues:
+- Repository: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs
+- Issue Tracker: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs/-/issues
+
+## See Also
+
+- gst-inspect-1.0(1)
+- gst-launch-1.0(1)
+- GStreamer documentation: https://gstreamer.freedesktop.org/documentation/
+
+ -- GStreamer Rust Plugins Maintainers <gstreamer-rust@lists.freedesktop.org>
