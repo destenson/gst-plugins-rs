@@ -21,6 +21,7 @@ pub struct Config {
     pub monitoring: MonitoringConfig,
     pub stream_defaults: StreamDefaultConfig,
     pub streams: Vec<StreamConfig>,
+    pub backup: Option<crate::backup::BackupConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -182,6 +183,7 @@ impl Default for Config {
             monitoring: MonitoringConfig::default(),
             stream_defaults: StreamDefaultConfig::default(),
             streams: Vec::new(),
+            backup: None,
         }
     }
 }
@@ -333,6 +335,38 @@ impl Default for StreamConfig {
 }
 
 impl Config {
+    /// Validate the configuration
+    pub fn validate(&self) -> Result<(), String> {
+        // Validate app config
+        if self.app.max_concurrent_streams == 0 {
+            return Err("max_concurrent_streams must be greater than 0".to_string());
+        }
+        
+        // Validate API config
+        if self.api.port == 0 {
+            return Err("API port must be greater than 0".to_string());
+        }
+        
+        // Validate storage config if present
+        if let Some(ref storage) = self.storage {
+            if storage.max_disk_usage_percent > 100.0 {
+                return Err("max_disk_usage_percent cannot exceed 100".to_string());
+            }
+            if storage.min_free_space_gb < 0.0 {
+                return Err("min_free_space_gb cannot be negative".to_string());
+            }
+        }
+        
+        // Validate backup config if present
+        if let Some(ref backup) = self.backup {
+            if backup.enabled && backup.interval_secs == 0 {
+                return Err("backup interval_secs must be greater than 0 when enabled".to_string());
+            }
+        }
+        
+        Ok(())
+    }
+    
     pub async fn from_file(path: &PathBuf) -> crate::Result<Self> {
         // Check if file exists and provide helpful error message
         if !path.exists() {
@@ -356,11 +390,11 @@ impl Config {
                 format!("Failed to parse configuration file {:?}: {}", path, e)
             ))?;
         
-        config.validate()?;
+        config.validate().map_err(|e| crate::StreamManagerError::ConfigError(e))?;
         Ok(config)
     }
     
-    pub fn validate(&self) -> crate::Result<()> {
+    pub fn validate_storage(&self) -> crate::Result<()> {
         // Validate storage if configured
         if let Some(ref storage) = self.storage {
             // Validate storage path (just warn if it doesn't exist - we'll create it later)
@@ -492,7 +526,7 @@ impl ConfigManager {
     pub async fn update_partial(&self, partial: PartialConfig) -> crate::Result<()> {
         let mut config = self.config.write().await;
         config.merge(partial);
-        config.validate()?;
+        config.validate().map_err(|e| crate::StreamManagerError::ConfigError(e))?;
         Ok(())
     }
     

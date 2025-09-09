@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tracing::{info, error};
 use tracing_subscriber::EnvFilter;
 use stream_manager::{
+    backup::BackupManager,
     config::ConfigManager,
     database::{Database, DatabaseConfig},
     gst_utils,
@@ -108,6 +109,21 @@ async fn main() -> Result<()> {
     let recovery_config = RecoveryConfig::default();
     let recovery_manager = Arc::new(RecoveryManager::new(recovery_config));
     info!("Recovery manager initialized");
+    
+    // Initialize recovery manager
+    let backup_config = config.backup.clone().unwrap_or_default();
+    let recordings_path = config.storage.as_ref()
+        .map(|s| s.base_path.clone())
+        .unwrap_or_else(|| PathBuf::from("./recordings"));
+    let mut backup_manager = BackupManager::new(backup_config, recordings_path);
+    backup_manager.set_database(database.clone());
+    if config.backup.as_ref().map(|b| b.enabled).unwrap_or(true) {
+        backup_manager.start().await.ok(); // Ignore error if it fails
+        info!("Recovery manager started");
+    } else {
+        info!("Recovery manager disabled");
+    }
+    let backup_manager = Arc::new(backup_manager);
     
     // Initialize components
     let stream_manager = Arc::new(StreamManager::new(config.clone())?);

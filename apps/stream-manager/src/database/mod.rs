@@ -70,6 +70,11 @@ pub struct Database {
 }
 
 impl Database {
+    /// Get access to the underlying SQLite pool
+    pub fn pool(&self) -> &SqlitePool {
+        &self.pool
+    }
+    
     pub async fn new(config: DatabaseConfig) -> Result<Self> {
         let pool = Self::create_pool(&config).await?;
         
@@ -414,10 +419,6 @@ impl Database {
     // Restore streams on startup
     pub async fn restore_active_streams(&self) -> Result<Vec<StreamRecord>> {
         self.list_streams(true).await
-    }
-
-    pub fn pool(&self) -> &SqlitePool {
-        &self.pool
     }
 }
 
