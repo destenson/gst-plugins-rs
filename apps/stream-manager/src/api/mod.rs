@@ -5,7 +5,7 @@ use actix_web::{
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::info;
-use crate::{Config, manager::StreamManager, config::ConfigReloader};
+use crate::{Config, manager::StreamManager, config::ConfigReloader, storage::DiskRotationManager};
 
 pub mod routes;
 pub mod dto;
@@ -14,6 +14,7 @@ pub mod middleware;
 pub mod streams;
 pub mod websocket;
 pub mod event_integration;
+pub mod rotation;
 
 pub use error::ApiError;
 pub use dto::*;
@@ -25,6 +26,7 @@ pub struct AppState {
     pub config_reloader: Option<Arc<RwLock<ConfigReloader>>>,
     pub metrics_collector: Arc<crate::metrics::MetricsCollector>,
     pub event_broadcaster: Arc<websocket::EventBroadcaster>,
+    pub disk_rotation_manager: Arc<DiskRotationManager>,
 }
 
 impl AppState {
@@ -40,12 +42,17 @@ impl AppState {
         let event_broadcaster = Arc::new(websocket::EventBroadcaster::new());
         event_broadcaster.start();
         
+        let disk_rotation_manager = Arc::new(
+            DiskRotationManager::new(crate::storage::DiskRotationConfig::default())
+        );
+        
         Self {
             stream_manager,
             config: Arc::new(RwLock::new((*config).clone())),
             config_reloader: None,
             metrics_collector,
             event_broadcaster,
+            disk_rotation_manager,
         }
     }
     
@@ -57,12 +64,17 @@ impl AppState {
         let event_broadcaster = Arc::new(websocket::EventBroadcaster::new());
         event_broadcaster.start();
         
+        let disk_rotation_manager = Arc::new(
+            DiskRotationManager::new(crate::storage::DiskRotationConfig::default())
+        );
+        
         Self {
             stream_manager,
             config: Arc::new(RwLock::new((*config).clone())),
             config_reloader: None,
             metrics_collector,
             event_broadcaster,
+            disk_rotation_manager,
         }
     }
     
@@ -87,6 +99,7 @@ pub async fn start_server(
         App::new()
             .app_data(web::Data::new(app_state.clone()))
             .app_data(web::Data::new(app_state.event_broadcaster.clone()))
+            .app_data(web::Data::new(app_state.disk_rotation_manager.clone()))
             .wrap(Logger::default())
             .wrap(NormalizePath::trim())
             .wrap(middleware::error_handler())

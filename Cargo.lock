@@ -8643,6 +8643,7 @@ dependencies = [
  "uuid",
  "validator",
  "winapi",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
