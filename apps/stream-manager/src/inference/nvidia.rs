@@ -16,6 +16,9 @@ pub struct NvidiaInferenceConfig {
     pub max_gpu_memory_mb: u64,
     pub enable_dla: bool,
     pub dla_core: u32,
+    pub mux_width: u32,
+    pub mux_height: u32,
+    pub batched_push_timeout: i32,
 }
 
 impl Default for NvidiaInferenceConfig {
@@ -29,6 +32,9 @@ impl Default for NvidiaInferenceConfig {
             max_gpu_memory_mb: 2048,
             enable_dla: false,
             dla_core: 0,
+            mux_width: 1920,
+            mux_height: 1080,
+            batched_push_timeout: 40000,
         }
     }
 }
@@ -126,6 +132,16 @@ impl NvidiaInference {
             )
             .build()?;
 
+        // Create nvstreammux for batching
+        let nvstreammux = gst::ElementFactory::make("nvstreammux")
+            .property("batch-size", self.config.batch_size)
+            .property("width", self.config.mux_width)
+            .property("height", self.config.mux_height)
+            .property("gpu-id", self.config.gpu_device_id)
+            .property("live-source", true)
+            .property("batched-push-timeout", self.config.batched_push_timeout)
+            .build()?;
+
         // Create nvinfer element with configuration
         let nvinfer = gst::ElementFactory::make("nvinfer")
             .property("config-file-path", self.config.model_config_path.to_str().unwrap())
@@ -150,15 +166,28 @@ impl NvidiaInference {
             &intersrc,
             &nvvideoconvert,
             &capsfilter,
+            &nvstreammux,
             &nvinfer,
             &fakesink,
         ])?;
 
-        // Link elements
+        // Link elements up to capsfilter
         gst::Element::link_many(&[
             &intersrc,
             &nvvideoconvert,
             &capsfilter,
+        ])?;
+
+        // Connect capsfilter to nvstreammux sink pad
+        let sink_pad = nvstreammux.request_pad_simple("sink_0")
+            .ok_or("Failed to get sink pad from nvstreammux")?;
+        let src_pad = capsfilter.static_pad("src")
+            .ok_or("Failed to get src pad from capsfilter")?;
+        src_pad.link(&sink_pad)?;
+
+        // Link nvstreammux to nvinfer and fakesink
+        gst::Element::link_many(&[
+            &nvstreammux,
             &nvinfer,
             &fakesink,
         ])?;
