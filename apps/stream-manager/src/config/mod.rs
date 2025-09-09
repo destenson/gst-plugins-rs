@@ -124,10 +124,16 @@ pub struct RecordingConfig {
 pub struct InferenceConfig {
     pub enabled: bool,
     pub gpu_enabled: bool,
+    pub cpu_enabled: bool,
     pub batch_size: usize,
     pub model_path: Option<PathBuf>,
+    pub onnx_model_path: Option<PathBuf>,
     pub confidence_threshold: f32,
     pub inference_interval_ms: u64,
+    pub cpu_threads: Option<usize>,
+    pub cpu_skip_frames: Option<usize>,
+    pub cpu_max_concurrent: Option<usize>,
+    pub fallback_to_cpu: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -258,10 +264,16 @@ impl Default for InferenceConfig {
         Self {
             enabled: false,
             gpu_enabled: false,
+            cpu_enabled: false,
             batch_size: 1,
             model_path: None,
+            onnx_model_path: None,
             confidence_threshold: 0.5,
             inference_interval_ms: 100,
+            cpu_threads: Some(4),
+            cpu_skip_frames: Some(5),
+            cpu_max_concurrent: Some(2),
+            fallback_to_cpu: true,
         }
     }
 }
