@@ -20,6 +20,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
                     .route("", web::get().to(get_config))
                     .route("", web::put().to(update_config))
                     .route("/reload", web::post().to(reload_config))
+                    .route("/reload/status", web::get().to(get_reload_status))
             )
             .service(
                 web::scope("/metrics")
@@ -53,24 +54,65 @@ async fn readiness_check(_state: web::Data<AppState>) -> Result<HttpResponse, Ap
 
 
 async fn get_config(state: web::Data<AppState>) -> Result<HttpResponse, ApiError> {
-    Ok(HttpResponse::Ok().json(&*state.config))
+    let config = state.config.read().await;
+    Ok(HttpResponse::Ok().json(&*config))
 }
 
 async fn update_config(
-    _state: web::Data<AppState>,
-    _config: web::Json<crate::Config>,
+    state: web::Data<AppState>,
+    new_config: web::Json<crate::Config>,
 ) -> Result<HttpResponse, ApiError> {
-    // TODO: Implement config update logic in PRP-15
-    Ok(HttpResponse::NotImplemented().json(json!({
-        "message": "Config update will be implemented in PRP-15"
+    // Validate the new configuration
+    new_config.validate().map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    
+    // Update the configuration
+    let mut config = state.config.write().await;
+    *config = new_config.into_inner();
+    
+    // Notify components about config change if reloader is available
+    if let Some(reloader) = &state.config_reloader {
+        let reloader = reloader.read().await;
+        // The reloader will detect and broadcast changes
+    }
+    
+    Ok(HttpResponse::Ok().json(json!({
+        "message": "Configuration updated successfully",
+        "timestamp": chrono::Utc::now().to_rfc3339()
     })))
 }
 
-async fn reload_config(_state: web::Data<AppState>) -> Result<HttpResponse, ApiError> {
-    // TODO: Implement config reload logic in PRP-15
-    Ok(HttpResponse::NotImplemented().json(json!({
-        "message": "Config reload will be implemented in PRP-15"
-    })))
+async fn reload_config(state: web::Data<AppState>) -> Result<HttpResponse, ApiError> {
+    if let Some(reloader) = &state.config_reloader {
+        let reloader = reloader.read().await;
+        match reloader.reload_now().await {
+            Ok(reload_event) => {
+                Ok(HttpResponse::Ok().json(json!({
+                    "message": "Configuration reloaded successfully",
+                    "timestamp": reload_event.timestamp.to_rfc3339(),
+                    "changes": reload_event.changes.len(),
+                    "requires_restart": reload_event.requires_restart
+                })))
+            }
+            Err(e) => {
+                Err(ApiError::InternalError(format!("Failed to reload configuration: {}", e)))
+            }
+        }
+    } else {
+        Err(ApiError::InternalError("Configuration hot-reload is not enabled".to_string()))
+    }
+}
+
+async fn get_reload_status(state: web::Data<AppState>) -> Result<HttpResponse, ApiError> {
+    if let Some(reloader) = &state.config_reloader {
+        let reloader = reloader.read().await;
+        let status = reloader.get_status().await;
+        Ok(HttpResponse::Ok().json(status))
+    } else {
+        Ok(HttpResponse::Ok().json(json!({
+            "watching": false,
+            "message": "Configuration hot-reload is not enabled"
+        })))
+    }
 }
 
 pub async fn get_metrics(state: web::Data<AppState>) -> Result<HttpResponse, ApiError> {
@@ -113,7 +155,7 @@ mod tests {
         let stream_manager = std::sync::Arc::new(
             crate::manager::StreamManager::new(config.clone()).unwrap()
         );
-        let app_state = AppState::new(stream_manager, config);
+        let app_state = AppState::new(stream_manager, config.clone());
         
         let app = test::init_service(
             App::new()
