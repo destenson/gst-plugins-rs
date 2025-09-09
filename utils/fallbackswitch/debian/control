@@ -1,0 +1,31 @@
+Source: gst-plugin-fallbackswitch
+Section: libs
+Priority: optional
+Maintainer: GStreamer Rust Plugins Maintainers <gstreamer-rust@lists.freedesktop.org>
+Build-Depends: debhelper-compat (= 13),
+               cargo,
+               rustc (>= 1.83),
+               libgstreamer1.0-dev (>= 1.18.0),
+               libgstreamer-plugins-base1.0-dev (>= 1.18.0),
+               pkg-config
+Standards-Version: 4.6.2
+Homepage: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs
+Vcs-Browser: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs
+Vcs-Git: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs.git
+Rules-Requires-Root: no
+
+Package: gst-plugin-fallbackswitch
+Architecture: any
+Multi-Arch: same
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         gstreamer1.0-plugins-base (>= 1.18.0)
+Description: GStreamer fallback switching and source plugin
+ GStreamer plugin providing fallback switching and source elements.
+ This plugin contains:
+  - fallbackswitch: Automatically switch between sources based on availability
+  - fallbacksrc: Composite source with fallback capabilities
+ .
+ These elements are useful for live streaming applications requiring high
+ availability, allowing seamless switching to backup sources when the primary
+ source becomes unavailable.
