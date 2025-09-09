@@ -38,10 +38,12 @@ required-features = ["gtk", "gio", "gst-plugin-gtk4"]
 gst-plugin-version-helper.workspace = true
 
 [features]
-default = ["v1_20"]
+default = ["v1_16"]
 static = []
 capi = []
 doc = ["gst/v1_18"]
+v1_16 = ["gst/v1_16"]
+v1_18 = ["gst/v1_18"]
 v1_20 = ["gst/v1_20"]
 
 [package.metadata.capi]
@@ -69,14 +71,34 @@ This plugin contains:
   - fallbackswitch: Automatically switch between sources based on availability
   - fallbacksrc: Composite source with fallback capabilities
 These elements are useful for live streaming applications requiring high availability."""
-depends = "$auto, gstreamer1.0-plugins-base (>= 1.18.0)"
+depends = "$auto, gstreamer1.0-plugins-base (>= 1.16.0)"
 section = "libs"
 priority = "optional"
+# Use cargo-deb's automatic library detection instead of hardcoded paths
+# This will properly handle multiarch paths
 assets = [
-    ["target/release/libgstfallbackswitch.so", "usr/lib/x86_64-linux-gnu/gstreamer-1.0/", "644"],
-    ["LICENSE-MPL-2.0", "usr/share/doc/gst-plugin-fallbackswitch/", "644"],
-    ["README.md", "usr/share/doc/gst-plugin-fallbackswitch/", "644"]
+    ["target/release/libgstfallbackswitch.so", "/usr/lib/*/gstreamer-1.0/", "644"],
+    ["LICENSE-MPL-2.0", "/usr/share/doc/gst-plugin-fallbackswitch/", "644"],
+    ["README.md", "/usr/share/doc/gst-plugin-fallbackswitch/", "644"]
 ]
+# Additional cargo-deb configuration
+revision = "1"
+conf-files = []
+triggers-file = []
+changelog = "debian/changelog"
+# Ensure proper stripping and compression
+separate-debug-symbols = true
+compress = true
+# Architecture will be auto-detected based on build target
+preserve-symlinks = false
+# Build flags
+features = ["v1_16"]
+default-features = true
+# System dependencies for building (build-depends)
+build-depends = "cargo, rustc (>= 1.76), libgstreamer1.0-dev (>= 1.16.0), libgstreamer-plugins-base1.0-dev (>= 1.16.0), pkg-config"
+# Suggests and recommends
+recommends = "gstreamer1.0-tools"
+suggests = "gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad"
 
 [package.metadata.gstreamer]
 release_date = "2025-07-16"
