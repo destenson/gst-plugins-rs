@@ -58,5 +58,25 @@ import_library = false
 [package.metadata.capi.pkg_config]
 requires_private = "gstreamer-1.0, gstreamer-base-1.0, gstreamer-audio-1.0, gstreamer-video-1.0, gobject-2.0, glib-2.0, gmodule-2.0"
 
+[package.metadata.deb]
+name = "gst-plugin-fallbackswitch"
+maintainer = "GStreamer Rust Plugins Maintainers <gstreamer-rust@lists.freedesktop.org>"
+copyright = "2020-2024, Sebastian Dröge <sebastian@centricular.com>, Jan Schmidt <jan@centricular.com>"
+license-file = ["LICENSE-MPL-2.0", "4"]
+extended-description = """\
+GStreamer plugin providing fallback switching and source elements.
+This plugin contains:
+  - fallbackswitch: Automatically switch between sources based on availability
+  - fallbacksrc: Composite source with fallback capabilities
+These elements are useful for live streaming applications requiring high availability."""
+depends = "$auto, gstreamer1.0-plugins-base (>= 1.18.0)"
+section = "libs"
+priority = "optional"
+assets = [
+    ["target/release/libgstfallbackswitch.so", "usr/lib/x86_64-linux-gnu/gstreamer-1.0/", "644"],
+    ["LICENSE-MPL-2.0", "usr/share/doc/gst-plugin-fallbackswitch/", "644"],
+    ["README.md", "usr/share/doc/gst-plugin-fallbackswitch/", "644"]
+]
+
 [package.metadata.gstreamer]
 release_date = "2025-07-16"

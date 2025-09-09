@@ -1,0 +1,26 @@
+#!/usr/bin/make -f
+
+export DH_VERBOSE = 1
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+export DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	# No configure step needed for Rust projects
+
+override_dh_auto_build:
+	cargo build --release --package gst-plugin-fallbackswitch
+
+override_dh_auto_install:
+	# Install the plugin to the correct multiarch location
+	install -Dm644 target/release/libgstfallbackswitch.so \
+		debian/gst-plugin-fallbackswitch/usr/lib/$(DEB_HOST_MULTIARCH)/gstreamer-1.0/libgstfallbackswitch.so
+
+override_dh_auto_test:
+	# Run tests if available
+	cargo test --release --package gst-plugin-fallbackswitch || true
+
+override_dh_shlibdeps:
+	dh_shlibdeps -- --ignore-missing-info
