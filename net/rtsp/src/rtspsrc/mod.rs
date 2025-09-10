@@ -36,6 +36,7 @@ use gst::glib;
 use gst::prelude::*;
 
 mod body;
+mod connection_racer;
 mod imp;
 mod retry;
 mod sdp;
