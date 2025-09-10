@@ -74,19 +74,9 @@ These elements are useful for live streaming applications requiring high availab
 depends = "$auto, gstreamer1.0-plugins-base (>= 1.16.0), libgstreamer1.0-0 (>= 1.16.0)"
 section = "libs"
 priority = "optional"
-# Asset installation for Debian package
-# cargo-deb will automatically handle multiarch paths when multiarch = "same" is set
-assets = [
-    ["target/release/libgstfallbackswitch.so", "usr/lib/gstreamer-1.0/", "644"],
-    ["LICENSE-MPL-2.0", "usr/share/doc/gst-plugin-fallbackswitch/", "644"],
-    ["README.md", "usr/share/doc/gst-plugin-fallbackswitch/", "644"],
-    ["debian/changelog", "usr/share/doc/gst-plugin-fallbackswitch/changelog.Debian", "644"]
-]
 # Additional cargo-deb configuration
 revision = "1"
 conf-files = []
-# Enable multiarch support - this will automatically adjust library paths
-multiarch = "same"
 # Changelog for version tracking
 changelog = "debian/changelog"
 # Ensure proper stripping and compression
@@ -105,6 +95,15 @@ default-features = true
 # Suggests and recommends
 recommends = "gstreamer1.0-tools"
 suggests = "gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad"
+
+# [package.metadata.$().deb]
+# Asset installation for Debian package
+assets = [
+    ["target/release/libgstfallbackswitch.so", "usr/lib/gstreamer-1.0/libgstfallbackswitch.so", "644"],
+    ["LICENSE-MPL-2.0", "usr/share/doc/gst-plugin-fallbackswitch/", "644"],
+    ["README.md", "usr/share/doc/gst-plugin-fallbackswitch/", "644"],
+    ["debian/changelog", "usr/share/doc/gst-plugin-fallbackswitch/changelog.Debian", "644"]
+]
 
 [package.metadata.gstreamer]
 release_date = "2025-07-16"

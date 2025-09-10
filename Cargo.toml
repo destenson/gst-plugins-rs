@@ -130,7 +130,8 @@ default-members = [
 [profile.release]
 lto = "thin"
 opt-level = 3
-debug = true
+# debug = true
+debug = "line-tables-only"
 panic = 'unwind'
 
 [profile.dev]
