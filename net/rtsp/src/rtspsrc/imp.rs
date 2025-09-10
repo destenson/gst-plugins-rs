@@ -1739,9 +1739,8 @@ impl RtspSrc {
             }
         }
 
-        obj.no_more_pads();
-
-        // Expose RTP srcpads
+        // Setup RTP srcpad handling first, before signaling no_more_pads
+        // This ensures ghost pad targets are set before element claims to be ready
         manager.recv.connect_pad_added(|manager, pad| {
             if pad.direction() != gst::PadDirection::Src {
                 return;
@@ -1779,6 +1778,10 @@ impl RtspSrc {
                             ),
                             ["pt: {pt}, ssrc: {ssrc}"]
                         );
+                    } else {
+                        gst::info!(CAT, "Successfully set ghostpad {} target - signaling no_more_pads", ghostpad.name());
+                        // Signal that pads are ready now that ghost pad has a target
+                        obj.no_more_pads();
                     }
                 }
                 _ => {
@@ -1811,10 +1814,21 @@ impl RtspSrc {
                         let mut buffer = gst::Buffer::from_slice(data.into_body());
                         let bufref = buffer.make_mut();
                         bufref.set_dts(t);
-                        // TODO: Allow unlinked source pads
-                        if let Err(err) = appsrc.push_buffer(buffer) {
-                            gst::error!(CAT, "Failed to push buffer on pad {} for channel {}", appsrc.name(), channel_id);
-                            return Err(err.into());
+                        // Handle flow errors gracefully - unlinked pads are expected during setup
+                        match appsrc.push_buffer(buffer) {
+                            Ok(_) => {
+                                gst::trace!(CAT, "Successfully pushed buffer on pad {} for channel {}", appsrc.name(), channel_id);
+                            }
+                            Err(gst::FlowError::NotLinked) => {
+                                gst::debug!(CAT, "Pad {} for channel {} not linked yet - continuing", appsrc.name(), channel_id);
+                            }
+                            Err(gst::FlowError::Flushing) => {
+                                gst::debug!(CAT, "Pad {} for channel {} is flushing - continuing", appsrc.name(), channel_id);
+                            }
+                            Err(err) => {
+                                gst::error!(CAT, "Failed to push buffer on pad {} for channel {}: {}", appsrc.name(), channel_id, err);
+                                return Err(err.into());
+                            }
                         }
                     }
                     Some(Ok(rtsp_types::Message::Request(req))) => {
@@ -2152,6 +2166,7 @@ struct RtspTaskState {
     setup_params: Vec<RtspSetupParams>,
     handles: Vec<JoinHandle<()>>,
     session_manager: super::session_manager::SessionManager,
+    
 }
 
 struct RtspSetupParams {
@@ -3245,8 +3260,25 @@ async fn udp_rtp_task(
                 bufref.set_dts(t);
                 gst_net::NetAddressMeta::add(bufref, &gio_addr);
                 gst::trace!(CAT, "received RTP packet from {addr:?}");
-                if let Err(err) = appsrc.push_buffer(buffer) {
-                    break format!("UDP buffer push failed: {err:?}");
+                
+                match appsrc.push_buffer(buffer) {
+                    Ok(_) => {
+                        gst::trace!(CAT, "Successfully pushed UDP RTP buffer");
+                    }
+                    Err(gst::FlowError::NotLinked) => {
+                        gst::debug!(CAT, "UDP RTP pad not linked yet - continuing");
+                    }
+                    Err(gst::FlowError::Flushing) => {
+                        gst::debug!(CAT, "UDP RTP pad is flushing - continuing");
+                    }
+                    Err(gst::FlowError::Eos) => {
+                        gst::debug!(CAT, "UDP RTP stream ended");
+                        break "UDP RTP stream ended".to_string();
+                    }
+                    Err(err) => {
+                        gst::error!(CAT, "Failed to push UDP RTP buffer: {}", err);
+                        break format!("UDP RTP buffer push failed: {err:?}");
+                    }
                 }
             }
             Ok(Err(_elapsed)) => {
@@ -3314,8 +3346,24 @@ async fn udp_rtcp_task(
                         gio::InetSocketAddress::new(&inet_addr, addr.port())
                     });
                     gst_net::NetAddressMeta::add(bufref, gio_addr);
-                    if let Err(err) = appsrc.push_buffer(buffer) {
-                        break format!("UDP buffer push failed: {err:?}");
+                    match appsrc.push_buffer(buffer) {
+                        Ok(_) => {
+                            gst::trace!(CAT, "Successfully pushed UDP RTCP buffer");
+                        }
+                        Err(gst::FlowError::NotLinked) => {
+                            gst::debug!(CAT, "UDP RTCP pad not linked yet - continuing");
+                        }
+                        Err(gst::FlowError::Flushing) => {
+                            gst::debug!(CAT, "UDP RTCP pad is flushing - continuing");
+                        }
+                        Err(gst::FlowError::Eos) => {
+                            gst::debug!(CAT, "UDP RTCP stream ended");
+                            break "UDP RTCP stream ended".to_string();
+                        }
+                        Err(err) => {
+                            gst::error!(CAT, "Failed to push UDP RTCP buffer: {}", err);
+                            break format!("UDP RTCP buffer push failed: {err:?}");
+                        }
                     }
                 }
                 Err(err) => break format!("UDP socket was closed: {err:?}"),
