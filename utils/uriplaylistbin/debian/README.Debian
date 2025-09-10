@@ -1,0 +1,53 @@
+gst-plugin-uriplaylistbin for Debian
+=====================================
+
+This package provides the GStreamer uriplaylistbin plugin, built from
+the Rust implementation in the gst-plugins-rs repository.
+
+Plugin Location
+---------------
+The plugin is installed to the standard GStreamer plugin directory:
+  /usr/lib/{arch}/gstreamer-1.0/libgsturiplaylistbin.so
+
+Where {arch} is your system's multiarch triplet (e.g., x86_64-linux-gnu).
+
+Verification
+------------
+After installation, you can verify the plugin is correctly installed:
+
+  $ gst-inspect-1.0 uriplaylistbin
+
+This should display detailed information about the uriplaylistbin element.
+
+Usage Example
+-------------
+Basic usage with gst-launch-1.0:
+
+  $ gst-launch-1.0 uriplaylistbin \
+      uris="file:///path/to/file1.mp4,file:///path/to/file2.mp4" \
+      ! autovideosink
+
+Dependencies
+------------
+This plugin requires GStreamer 1.24 or later. It will automatically
+pull in the necessary GStreamer base plugins as dependencies.
+
+Troubleshooting
+---------------
+If the plugin is not detected after installation, try these steps:
+
+1. Clear the GStreamer registry cache:
+   $ rm ~/.cache/gstreamer-1.0/registry.*.bin
+
+2. Force a registry rebuild:
+   $ gst-inspect-1.0 --gst-disable-registry-fork
+
+3. Check the plugin is in the correct location:
+   $ ls -la /usr/lib/*/gstreamer-1.0/libgsturiplaylistbin.so
+
+Bug Reports
+-----------
+Please report bugs to the upstream repository:
+https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs/-/issues
+
+ -- GStreamer Rust Plugins Maintainers <gstreamer-rust@lists.freedesktop.org>  Wed, 09 Jan 2025 12:00:00 +0000

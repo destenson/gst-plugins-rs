@@ -1,33 +1,79 @@
 gst-plugin-livesync for Debian
-====================================
+=====================================
 
-This package provides GStreamer livesync element for high-availability
-streaming applications.
+This package provides the GStreamer livesync plugin, built from
+the Rust implementation in the gst-plugins-rs repository.
 
-## Quick Start
+Plugin Location
+---------------
+The plugin is installed to the standard GStreamer plugin directory:
+  /usr/lib/{arch}/gstreamer-1.0/libgstlivesync.so
 
-After installation, the plugin provides one main element:
+Where {arch} is your system's multiarch triplet (e.g., x86_64-linux-gnu).
 
-1. **livesync** - Keeps live streams valid despite packet/frame loss
+Verification
+------------
+After installation, you can verify the plugin is correctly installed:
 
-Verify installation:
-```bash
-gst-inspect-1.0 livesync
-```
+  $ gst-inspect-1.0 livesync
 
-## Support
+This should display detailed information about the livesync element.
 
-For issues specific to this Debian package:
-- Package Maintainer: gstreamer-rust@lists.freedesktop.org
+Usage Examples
+--------------
+Basic usage with live source:
 
-For upstream plugin issues:
-- Repository: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs
-- Issue Tracker: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs/-/issues
+  $ gst-launch-1.0 videotestsrc is-live=true ! livesync ! autovideosink
 
-## See Also
+Synchronizing an RTSP stream:
 
-- gst-inspect-1.0(1)
-- gst-launch-1.0(1)
-- GStreamer documentation: https://gstreamer.freedesktop.org/documentation/
+  $ gst-launch-1.0 rtspsrc location=rtsp://camera.local:554/stream latency=0 ! \
+      rtph264depay ! h264parse ! livesync ! decodebin ! autovideosink
 
- -- GStreamer Rust Plugins Maintainers <gstreamer-rust@lists.freedesktop.org>
+Element Properties
+------------------
+The livesync element provides these key properties:
+  - latency: Additional latency to add (in nanoseconds)
+  - single-segment: Produce a single segment
+  - upstream-latency: Upstream latency (read-only)
+
+Dependencies
+------------
+This plugin requires GStreamer 1.16 or later. It will automatically
+pull in the necessary GStreamer base plugins as dependencies.
+
+Troubleshooting
+---------------
+If the plugin is not detected after installation, try these steps:
+
+1. Clear the GStreamer registry cache:
+   $ rm ~/.cache/gstreamer-1.0/registry.*.bin
+
+2. Force a registry rebuild:
+   $ gst-inspect-1.0 --gst-disable-registry-fork
+
+3. Check the plugin is in the correct location:
+   $ ls -la /usr/lib/*/gstreamer-1.0/libgstlivesync.so
+
+For latency issues, enable debug output:
+   $ GST_DEBUG=livesync:6 gst-launch-1.0 your-pipeline
+
+Common Use Cases
+----------------
+- Live Streaming: Maintains synchronization in live broadcast pipelines
+- Network Streams: Handles jitter and packet loss in RTSP/RTP streams
+- Multi-Source Sync: Keeps multiple live sources synchronized
+- Failover Systems: Essential for high-availability streaming setups
+
+Performance Notes
+-----------------
+- The element adds minimal processing overhead
+- Latency can be tuned based on network conditions
+- Suitable for both low-latency and high-reliability scenarios
+
+Bug Reports
+-----------
+Please report bugs to the upstream repository:
+https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs/-/issues
+
+ -- GStreamer Rust Plugins Maintainers <gstreamer-rust@lists.freedesktop.org>  Wed, 09 Jan 2025 12:00:00 +0000

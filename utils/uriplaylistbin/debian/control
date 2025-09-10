@@ -1,0 +1,35 @@
+Source: gst-plugin-uriplaylistbin
+Section: libs
+Priority: optional
+Maintainer: GStreamer Rust Plugins Maintainers <gstreamer-rust@lists.freedesktop.org>
+Build-Depends: debhelper-compat (= 13),
+               cargo (>= 0.70.0),
+               rustc (>= 1.70.0),
+               libgstreamer1.0-dev (>= 1.24.0),
+               libgstreamer-plugins-base1.0-dev (>= 1.24.0),
+               pkg-config
+Standards-Version: 4.6.2
+Homepage: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs
+Vcs-Browser: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs
+Vcs-Git: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs.git
+Rules-Requires-Root: no
+
+Package: gst-plugin-uriplaylistbin
+Architecture: any
+Multi-Arch: same
+Depends: ${misc:Depends},
+         ${shlibs:Depends},
+         libgstreamer1.0-0 (>= 1.24.0),
+         gstreamer1.0-plugins-base (>= 1.24.0)
+Recommends: gstreamer1.0-tools
+Suggests: gstreamer1.0-plugins-good,
+          gstreamer1.0-plugins-bad
+Description: GStreamer plugin for playlist playback
+ This package contains the GStreamer uriplaylistbin plugin, which provides
+ seamless playlist playback functionality for GStreamer applications.
+ .
+ The plugin includes:
+  - uriplaylistbin: Element for continuous playback of multiple media files
+ .
+ This element is particularly useful for applications requiring uninterrupted
+ playback of media playlists, such as media players and streaming applications.
