@@ -7,3 +7,4 @@ builddir
 .meson-subproject-wrap-hash.txt
 **/*.local.*
 **/target/
+**/.*/**
