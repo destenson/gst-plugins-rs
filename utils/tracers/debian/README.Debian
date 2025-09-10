@@ -1,0 +1,173 @@
+gst-plugin-tracers for Debian
+=============================
+
+This package provides GStreamer debugging and monitoring tracers for analyzing
+pipeline performance and behavior.
+
+## Quick Start
+
+After installation, the plugin provides several tracers for debugging:
+
+1. **buffer-lateness** - Track buffer lateness in pipelines
+2. **queue-levels** - Monitor queue fill levels over time
+3. **pad-push-timings** - Measure pad push operation timings
+4. **pcap-writer** - Capture pipeline data in PCAP format for analysis
+5. **pipeline-snapshot** - Generate pipeline state snapshots (Unix only)
+6. **memory-tracer** - Track memory usage (requires GStreamer >= 1.26)
+
+Verify installation:
+```bash
+GST_TRACERS=help gst-launch-1.0
+```
+
+## Basic Usage Examples
+
+### Enable Queue Level Monitoring
+```bash
+GST_TRACERS=queue-levels GST_DEBUG=GST_TRACER:7 \
+    gst-launch-1.0 videotestsrc ! queue ! autovideosink
+```
+
+### Track Buffer Lateness
+```bash
+GST_TRACERS=buffer-lateness GST_DEBUG=GST_TRACER:7 \
+    gst-launch-1.0 audiotestsrc ! queue ! autoaudiosink
+```
+
+### Capture Pipeline Data to PCAP
+```bash
+GST_TRACERS="pcap-writer(file=/tmp/pipeline.pcap)" \
+    gst-launch-1.0 videotestsrc ! fakesink
+```
+
+### Generate Pipeline Snapshot (Unix only)
+```bash
+GST_TRACERS=pipeline-snapshot GST_DEBUG=GST_TRACER:7 \
+    gst-launch-1.0 playbin uri=file:///path/to/media.mp4
+# Send SIGUSR1 to generate snapshot
+```
+
+### Monitor Pad Push Timings
+```bash
+GST_TRACERS=pad-push-timings GST_DEBUG=GST_TRACER:7 \
+    gst-launch-1.0 videotestsrc ! videoconvert ! autovideosink
+```
+
+## Multiple Tracers
+
+You can enable multiple tracers simultaneously:
+```bash
+GST_TRACERS="queue-levels;buffer-lateness" GST_DEBUG=GST_TRACER:7 \
+    gst-launch-1.0 [pipeline]
+```
+
+## Common Use Cases
+
+1. **Performance Analysis**: Use pad-push-timings to identify bottlenecks
+2. **Queue Monitoring**: Track queue levels to optimize buffer sizes
+3. **Network Analysis**: Use pcap-writer to capture and analyze streaming data
+4. **Latency Debugging**: Track buffer lateness to identify timing issues
+5. **Memory Profiling**: Monitor memory usage patterns (GStreamer >= 1.26)
+
+## Output Formats
+
+### Queue Levels Output
+The queue-levels tracer outputs CSV-like data showing queue fill levels:
+```
+timestamp,element-name,level-bytes,level-time,level-buffers
+```
+
+### PCAP Writer
+Creates standard PCAP files that can be analyzed with Wireshark or tcpdump.
+
+### Pipeline Snapshot
+Generates DOT files that can be converted to images:
+```bash
+dot -Tpng pipeline.dot -o pipeline.png
+```
+
+## Environment Variables
+
+- `GST_TRACERS`: Comma or semicolon-separated list of tracers to enable
+- `GST_DEBUG`: Control debug output level (GST_TRACER:7 for tracer output)
+- `GST_DEBUG_FILE`: Redirect debug output to a file
+
+## Troubleshooting
+
+### Tracers Not Available
+If tracers are not detected after installation:
+```bash
+# Force registry update
+rm -f ~/.cache/gstreamer-1.0/registry.*.bin
+GST_TRACERS=help gst-launch-1.0
+```
+
+### No Output from Tracers
+Ensure debug level is set correctly:
+```bash
+GST_DEBUG=GST_TRACER:7 GST_TRACERS=queue-levels gst-launch-1.0 [pipeline]
+```
+
+### Permission Issues
+Ensure the plugin library has correct permissions:
+```bash
+ls -la /usr/lib/*/gstreamer-1.0/libgstrstracers.so
+```
+
+## Integration with Applications
+
+### Python Example
+```python
+import gi
+gi.require_version('Gst', '1.0')
+from gi.repository import Gst
+import os
+
+# Enable tracers via environment
+os.environ['GST_TRACERS'] = 'queue-levels'
+os.environ['GST_DEBUG'] = 'GST_TRACER:7'
+
+Gst.init(None)
+
+pipeline = Gst.parse_launch("videotestsrc ! queue ! autovideosink")
+pipeline.set_state(Gst.State.PLAYING)
+```
+
+### C/C++ Integration
+```c
+// Set environment before gst_init()
+setenv("GST_TRACERS", "buffer-lateness", 1);
+setenv("GST_DEBUG", "GST_TRACER:7", 1);
+
+gst_init(&argc, &argv);
+```
+
+## Known Limitations
+
+- Tracers add overhead to pipeline execution
+- PCAP files can grow large quickly with high-bandwidth streams
+- Pipeline snapshot requires Unix signals (not available on Windows)
+- Some tracers may not work with all pipeline configurations
+
+## Performance Considerations
+
+- Tracers impact pipeline performance; disable in production
+- Use GST_DEBUG_FILE to avoid console output overhead
+- Consider sampling strategies for long-running pipelines
+
+## Support
+
+For issues specific to this Debian package:
+- Package Maintainer: gstreamer-rust@lists.freedesktop.org
+
+For upstream plugin issues:
+- Repository: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs
+- Issue Tracker: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs/-/issues
+
+## See Also
+
+- gst-launch-1.0(1)
+- GStreamer Debug Documentation: https://gstreamer.freedesktop.org/documentation/tutorials/basic/debugging-tools.html
+- GStreamer Tracer Documentation: https://gstreamer.freedesktop.org/documentation/design/tracing.html
+
+ -- GStreamer Rust Plugins Maintainers <gstreamer-rust@lists.freedesktop.org>

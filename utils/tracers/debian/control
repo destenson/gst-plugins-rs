@@ -1,0 +1,34 @@
+Source: gst-plugin-tracers
+Section: libs
+Priority: optional
+Maintainer: GStreamer Rust Plugins Maintainers <gstreamer-rust@lists.freedesktop.org>
+Build-Depends: debhelper-compat (= 13),
+               cargo,
+               rustc (>= 1.83),
+               libgstreamer1.0-dev (>= 1.18.0),
+               libgstreamer-plugins-base1.0-dev (>= 1.18.0),
+               pkg-config
+Standards-Version: 4.6.2
+Homepage: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs
+Vcs-Browser: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs
+Vcs-Git: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs.git
+Rules-Requires-Root: no
+
+Package: gst-plugin-tracers
+Architecture: any
+Multi-Arch: same
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         gstreamer1.0-plugins-base (>= 1.18.0)
+Description: GStreamer debugging and monitoring tracers plugin
+ GStreamer plugin providing various debugging and monitoring tracers.
+ This plugin contains:
+  - buffer_lateness: Track buffer lateness in pipelines
+  - queue_levels: Monitor queue fill levels
+  - pad_push_timings: Measure pad push operation timings
+  - pcap_writer: Capture pipeline data in PCAP format
+  - pipeline_snapshot: Generate pipeline state snapshots (Unix only)
+  - memory_tracer: Track memory usage (requires GStreamer >= 1.26)
+ .
+ These tracers are useful for debugging, profiling, and monitoring
+ GStreamer pipelines in development and production environments.
