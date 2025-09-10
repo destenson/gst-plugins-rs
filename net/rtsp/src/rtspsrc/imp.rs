@@ -2100,12 +2100,12 @@ impl RtspManager {
             
             if buffer_mode != BufferMode::Auto {
                 // Direct mode setting (non-auto modes)
-                rtpbin.set_property_as_str("buffer-mode", buffer_mode.as_str());
+                rtpbin.set_property_from_str("buffer-mode", buffer_mode.as_str());
             } else {
                 // Auto mode - let rtpbin decide based on conditions
                 // For now, default to Buffer mode for auto
                 gst::debug!(CAT, "Auto buffer mode - using buffer(2) as default");
-                rtpbin.set_property_as_str("buffer-mode", "buffer"); // Buffer mode
+                rtpbin.set_property_from_str("buffer-mode", "buffer"); // Buffer mode
             }
         } else {
             gst::warning!(CAT, "rtpbin does not support buffer-mode property");
