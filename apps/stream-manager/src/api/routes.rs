@@ -19,6 +19,9 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     // Configure recovery endpoints (new simplified approach)
     crate::api::recovery::configure(cfg);
     
+    // Configure WebRTC endpoints from PRP-26
+    crate::api::webrtc::configure(cfg);
+    
     cfg.service(
         web::scope("/api/v1")
             .route("/health", web::get().to(health_check))
