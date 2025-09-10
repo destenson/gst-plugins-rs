@@ -672,19 +672,24 @@ impl RtspSrc {
                 gst::warning!(CAT, "appsrc {} is overrunning: enough data!", appsrc.name());
             })
             .build();
-        let appsrc = gst_app::AppSrc::builder()
+        let builder = gst_app::AppSrc::builder()
             .name(format!("rtp_appsrc_{rtpsession_n}"))
-            .format(gst::Format::Time)
-            .handle_segment_change(true)
+            .format(gst::Format::Time);
+        
+        #[cfg(feature = "v1_18")]
+        let builder = builder.handle_segment_change(true);
+        
+        let appsrc = builder
             .caps(caps)
             .stream_type(gst_app::AppStreamType::Stream)
             .max_bytes(0)
-            .max_buffers(0)
-            .max_time(Some(gst::ClockTime::from_seconds(2)))
-            .leaky_type(gst_app::AppLeakyType::Downstream)
             .callbacks(callbacks)
             .is_live(true)
             .build();
+        
+        // Set properties for v1_16 compatibility
+        appsrc.set_property("leaky-type", 2i32); // 2 = downstream
+        appsrc.set_property("max-time", 2_000_000_000u64); // 2 seconds in nanoseconds
         let obj = self.obj();
         obj.add(&appsrc)?;
         appsrc
@@ -707,10 +712,14 @@ impl RtspSrc {
         rtpsession_n: usize,
         manager: &RtspManager,
     ) -> Result<gst_app::AppSrc> {
-        let appsrc = gst_app::AppSrc::builder()
+        let builder = gst_app::AppSrc::builder()
             .name(format!("rtcp_appsrc_{rtpsession_n}"))
-            .format(gst::Format::Time)
-            .handle_segment_change(true)
+            .format(gst::Format::Time);
+        
+        #[cfg(feature = "v1_18")]
+        let builder = builder.handle_segment_change(true);
+        
+        let appsrc = builder
             .caps(&RTCP_CAPS)
             .stream_type(gst_app::AppStreamType::Stream)
             .is_live(true)

@@ -63,6 +63,21 @@ yet:
 * iface
 * user-agent
 
+## Testing
+
+Unit tests have been added for the RTSP plugin. Run them with:
+
+```bash
+cargo test -p gst-plugin-rtsp
+```
+
+The test suite includes:
+* Element registration and creation tests
+* Property getter/setter validation  
+* State transition testing
+* Protocol parsing tests
+* Basic harness preparation for future mock server tests
+
 ## Maintenance and future cleanup
 
 * Test with market RTSP cameras
