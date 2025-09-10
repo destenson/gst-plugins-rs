@@ -1,0 +1,135 @@
+# GitLab CI configuration for Debian package building
+# Following PRP-007: CI/CD Integration
+# Include this in main .gitlab-ci.yml or run separately
+
+variables:
+  CARGO_HOME: $CI_PROJECT_DIR/.cargo
+
+stages:
+  - build-deb
+  - test-deb
+  - package-publish
+
+# Build Debian packages for multiple architectures
+build-rtsp-deb:
+  stage: build-deb
+  image: debian:bookworm
+  variables:
+    DEBIAN_FRONTEND: noninteractive
+  before_script:
+    - apt-get update
+    - apt-get install -y 
+        build-essential 
+        pkg-config 
+        libgstreamer1.0-dev 
+        libgstreamer-plugins-base1.0-dev 
+        libglib2.0-dev 
+        curl 
+        lintian
+        git
+    # Install Rust
+    - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    - source $HOME/.cargo/env
+    - cargo install cargo-deb
+  script:
+    - cd net/rtsp
+    - cargo build --release
+    - cargo deb
+    - find target/debian -name "*.deb" -exec ls -la {} \;
+    # Basic validation
+    - deb_file=$(find target/debian -name "*.deb" | head -n 1)
+    - dpkg-deb --info "$deb_file"
+    - lintian "$deb_file" || true
+  artifacts:
+    name: "rtsp-debian-packages-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - net/rtsp/target/debian/*.deb
+    expire_in: 1 week
+    reports:
+      # Store package info as artifact
+      junit: net/rtsp/target/debian/package-info.xml
+  cache:
+    key: cargo-cache-rtsp
+    paths:
+      - .cargo/
+      - target/
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# Test package installation on multiple distributions
+test-rtsp-deb-ubuntu:
+  stage: test-deb
+  image: ubuntu:22.04
+  needs: ["build-rtsp-deb"]
+  variables:
+    DEBIAN_FRONTEND: noninteractive
+  before_script:
+    - apt-get update
+    - apt-get install -y gstreamer1.0-tools
+  script:
+    - deb_file=$(find net/rtsp/target/debian -name "*.deb" | head -n 1)
+    - echo "Testing package: $deb_file"
+    - dpkg -i "$deb_file" || apt-get install -f -y
+    - gst-inspect-1.0 rtspsrc
+    - gst-inspect-1.0 | grep rsrtsp
+    - echo "Ubuntu 22.04 test passed"
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+test-rtsp-deb-debian:
+  stage: test-deb
+  image: debian:bookworm
+  needs: ["build-rtsp-deb"]
+  variables:
+    DEBIAN_FRONTEND: noninteractive
+  before_script:
+    - apt-get update
+    - apt-get install -y gstreamer1.0-tools
+  script:
+    - deb_file=$(find net/rtsp/target/debian -name "*.deb" | head -n 1)
+    - echo "Testing package: $deb_file"
+    - dpkg -i "$deb_file" || apt-get install -f -y
+    - gst-inspect-1.0 rtspsrc
+    - gst-inspect-1.0 | grep rsrtsp
+    - echo "Debian bookworm test passed"
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Publish packages (for tagged releases)
+publish-rtsp-deb:
+  stage: package-publish
+  image: debian:bookworm
+  needs: ["build-rtsp-deb", "test-rtsp-deb-ubuntu", "test-rtsp-deb-debian"]
+  before_script:
+    - apt-get update
+    - apt-get install -y curl jq
+  script:
+    - echo "Publishing Debian packages for tag $CI_COMMIT_TAG"
+    - deb_file=$(find net/rtsp/target/debian -name "*.deb" | head -n 1)
+    - echo "Package to publish: $deb_file"
+    # Upload to GitLab Package Registry or external repository
+    # This would require additional configuration for your package repository
+    # For now, just create a release
+    - |
+      curl --header "JOB-TOKEN: $CI_JOB_TOKEN" \
+           --upload-file "$deb_file" \
+           "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/gst-plugin-rtsp/${CI_COMMIT_TAG}/$(basename "$deb_file")"
+  rules:
+    - if: $CI_COMMIT_TAG
+  artifacts:
+    name: "rtsp-release-packages-$CI_COMMIT_TAG"
+    paths:
+      - net/rtsp/target/debian/*.deb
+    expire_in: 1 year
+
+# Optional: Nightly builds
+build-rtsp-deb-nightly:
+  extends: build-rtsp-deb
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+  artifacts:
+    expire_in: 3 days

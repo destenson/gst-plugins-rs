@@ -1,0 +1,225 @@
+gst-plugin-rtsp for Debian
+==========================
+
+This package provides GStreamer RTSP client functionality implemented in Rust.
+
+## Quick Start
+
+After installation, the plugin provides RTSP client capabilities:
+
+1. **rtspsrc** - RTSP client source element
+
+Verify installation:
+```bash
+gst-inspect-1.0 rtspsrc
+```
+
+## Basic Usage Examples
+
+### Simple RTSP Stream Playback
+```bash
+# Play RTSP stream to auto video/audio sinks
+gst-launch-1.0 \
+    rtspsrc location=rtsp://camera.local:554/stream ! \
+    decodebin ! autovideosink
+```
+
+### RTSP with Authentication
+```bash
+# RTSP stream with username/password
+gst-launch-1.0 \
+    rtspsrc location=rtsp://user:pass@camera.local:554/stream ! \
+    decodebin ! autovideosink
+```
+
+### Record RTSP Stream to File
+```bash
+# Record RTSP stream to MP4 file
+gst-launch-1.0 \
+    rtspsrc location=rtsp://camera.local:554/stream ! \
+    decodebin ! x264enc ! mp4mux ! filesink location=recording.mp4
+```
+
+### Multiple RTSP Streams
+```bash
+# Display multiple RTSP streams side by side
+gst-launch-1.0 \
+    compositor name=mix ! autovideosink \
+    rtspsrc location=rtsp://cam1.local:554/stream ! decodebin ! videoconvert ! videoscale ! mix.sink_0 \
+    rtspsrc location=rtsp://cam2.local:554/stream ! decodebin ! videoconvert ! videoscale ! mix.sink_1
+```
+
+## Common Use Cases
+
+1. **IP Camera Monitoring**: Connect to network cameras via RTSP
+2. **Video Surveillance**: Record streams from security cameras
+3. **Broadcasting**: Receive RTSP feeds for rebroadcast
+4. **Live Streaming**: Integrate RTSP sources into streaming pipelines
+
+## Configuration Properties
+
+The rtspsrc element supports various properties for customization:
+
+- `location`: RTSP URL (rtsp://host:port/path)
+- `protocols`: Transport protocol (TCP, UDP, etc.)
+- `latency`: Buffer latency in milliseconds
+- `user-id` / `user-pw`: Authentication credentials
+- `timeout`: Connection timeout
+- `retry`: Number of retry attempts
+
+See `gst-inspect-1.0 rtspsrc` for complete property documentation.
+
+## Advanced Features
+
+### Transport Protocols
+```bash
+# Force TCP transport (more reliable through firewalls)
+gst-launch-1.0 \
+    rtspsrc location=rtsp://camera.local:554/stream protocols=tcp ! \
+    decodebin ! autovideosink
+
+# Force UDP transport (lower latency)
+gst-launch-1.0 \
+    rtspsrc location=rtsp://camera.local:554/stream protocols=udp ! \
+    decodebin ! autovideosink
+```
+
+### Connection Management
+```bash
+# Set connection timeout and retry behavior
+gst-launch-1.0 \
+    rtspsrc location=rtsp://camera.local:554/stream \
+            timeout=30000000000 \
+            retry=5 ! \
+    decodebin ! autovideosink
+```
+
+## Troubleshooting
+
+### Plugin Not Found
+If the plugin is not detected after installation:
+```bash
+# Force registry update
+rm -f ~/.cache/gstreamer-1.0/registry.*.bin
+gst-inspect-1.0 --gst-disable-registry-fork
+```
+
+### Connection Issues
+For RTSP connection problems:
+```bash
+# Enable debug output
+GST_DEBUG=rtsp*:5,rtspsrc:5 gst-launch-1.0 \
+    rtspsrc location=rtsp://camera.local:554/stream ! fakesink
+
+# Test with minimal pipeline
+gst-launch-1.0 \
+    rtspsrc location=rtsp://camera.local:554/stream ! fakesink dump=true
+```
+
+### Authentication Problems
+```bash
+# Test authentication separately
+gst-launch-1.0 \
+    rtspsrc location=rtsp://user:password@camera.local:554/stream \
+            debug=true ! \
+    fakesink
+```
+
+### Firewall Issues
+```bash
+# Try TCP-only transport for firewall traversal
+gst-launch-1.0 \
+    rtspsrc location=rtsp://camera.local:554/stream \
+            protocols=tcp \
+            port-range=5000-5010 ! \
+    decodebin ! autovideosink
+```
+
+## Integration with Applications
+
+### Python Example
+```python
+import gi
+gi.require_version('Gst', '1.0')
+from gi.repository import Gst
+
+Gst.init(None)
+
+# Create RTSP source pipeline
+pipeline = Gst.parse_launch("""
+    rtspsrc location=rtsp://camera.local:554/stream !
+    decodebin ! autovideosink
+""")
+
+pipeline.set_state(Gst.State.PLAYING)
+```
+
+### C/C++ Integration
+Link against GStreamer libraries and use standard GStreamer APIs.
+The plugin will be automatically discovered if installed correctly.
+
+```c
+#include <gst/gst.h>
+
+GstElement *pipeline;
+pipeline = gst_parse_launch(
+    "rtspsrc location=rtsp://camera.local:554/stream ! "
+    "decodebin ! autovideosink", 
+    NULL);
+```
+
+## Performance Tuning
+
+### Latency Optimization
+```bash
+# Minimize latency for live applications
+gst-launch-1.0 \
+    rtspsrc location=rtsp://camera.local:554/stream \
+            latency=100 \
+            buffer-mode=0 ! \
+    decodebin max-size-time=100000000 ! \
+    autovideosink sync=false
+```
+
+### Bandwidth Management
+```bash
+# Limit buffer sizes for bandwidth-constrained environments
+gst-launch-1.0 \
+    rtspsrc location=rtsp://camera.local:554/stream \
+            buffer-mode=1 \
+            connection-speed=1000 ! \
+    decodebin ! autovideosink
+```
+
+## Known Limitations
+
+- Some proprietary RTSP implementations may require specific configuration
+- UDP transport may not work through all network configurations
+- Authentication methods depend on server support
+
+## Supported RTSP Features
+
+- RTSP 1.0 and 2.0 protocol support
+- Basic and Digest authentication
+- TCP and UDP transport
+- Multicast support
+- RTCP feedback
+- Session management and keepalive
+
+## Support
+
+For issues specific to this Debian package:
+- Package Maintainer: gstreamer-rust@lists.freedesktop.org
+
+For upstream plugin issues:
+- Repository: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs
+- Issue Tracker: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs/-/issues
+
+## See Also
+
+- gst-inspect-1.0(1)
+- gst-launch-1.0(1)  
+- GStreamer documentation: https://gstreamer.freedesktop.org/documentation/
+- RTSP specification: RFC 2326, RFC 7826
+
+ -- GStreamer Rust Plugins Maintainers <gstreamer-rust@lists.freedesktop.org>

@@ -196,6 +196,45 @@ audio = true
 onvif = true
 ```
 
+## Installation
+
+### From Debian Package
+
+The easiest way to install the plugin is via the Debian package:
+
+```bash
+# Download and install the package
+wget https://github.com/gstreamer/gst-plugins-rs/releases/latest/download/gst-plugin-rtsp_*.deb
+sudo dpkg -i gst-plugin-rtsp_*.deb
+
+# Or install dependencies if needed
+sudo apt-get install -f
+
+# Verify installation
+gst-inspect-1.0 rtspsrc
+```
+
+### From Source
+
+```bash
+# Build and install from source
+cargo build --release -p gst-plugin-rtsp
+sudo cp target/release/libgstrsrtsp.so /usr/lib/x86_64-linux-gnu/gstreamer-1.0/
+
+# Update GStreamer registry
+gst-inspect-1.0 --gst-disable-registry-fork rtspsrc
+```
+
+## Package Information
+
+This plugin is available as a Debian package (`gst-plugin-rtsp`) with the following features:
+- Automatic GStreamer plugin registry integration
+- Proper dependency management
+- System-wide installation support
+- Documentation and examples included
+
+For build scripts and packaging tools, see the `scripts/` directory.
+
 ## Maintenance and future cleanup
 
 * Test with market RTSP cameras
