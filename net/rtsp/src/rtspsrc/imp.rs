@@ -1408,7 +1408,10 @@ impl RtspSrc {
                 )
                 .await?
         };
-        let manager = RtspManager::new(std::env::var("USE_RTP2").is_ok_and(|s| s == "1"));
+        let manager = RtspManager::new_with_settings(
+            std::env::var("USE_RTP2").is_ok_and(|s| s == "1"), 
+            Some(&settings)
+        );
 
         let obj = self.obj();
         manager
@@ -1476,6 +1479,9 @@ impl RtspSrc {
 
                     let rtp_appsrc = self.make_rtp_appsrc(rtpsession_n, &p.caps, &manager)?;
                     p.rtp_appsrc = Some(rtp_appsrc.clone());
+                    
+                    // Configure probation on the RTP session
+                    manager.configure_session(rtpsession_n as u32, settings.probation)?;
                     // Spawn RTP udp receive task
                     state.handles.push(RUNTIME.spawn(async move {
                         udp_rtp_task(
@@ -1529,6 +1535,9 @@ impl RtspSrc {
                     // Spawn RTP udp receive task
                     let rtp_appsrc = self.make_rtp_appsrc(rtpsession_n, &p.caps, &manager)?;
                     p.rtp_appsrc = Some(rtp_appsrc.clone());
+                    
+                    // Configure probation on the RTP session
+                    manager.configure_session(rtpsession_n as u32, settings.probation)?;
                     state.handles.push(RUNTIME.spawn(async move {
                         udp_rtp_task(
                             &rtp_socket,
@@ -1555,6 +1564,9 @@ impl RtspSrc {
                 } => {
                     let rtp_appsrc = self.make_rtp_appsrc(rtpsession_n, &p.caps, &manager)?;
                     p.rtp_appsrc = Some(rtp_appsrc.clone());
+                    
+                    // Configure probation on the RTP session
+                    manager.configure_session(rtpsession_n as u32, settings.probation)?;
                     tcp_interleave_appsrcs.insert(*rtp_channel, rtp_appsrc);
 
                     if let Some(rtcp_channel) = rtcp_channel {
@@ -1815,6 +1827,10 @@ struct RtspManager {
 
 impl RtspManager {
     fn new(rtp2: bool) -> Self {
+        Self::new_with_settings(rtp2, None)
+    }
+
+    fn new_with_settings(rtp2: bool, jitter_settings: Option<&Settings>) -> Self {
         let (recv, send) = if rtp2 {
             let recv = gst::ElementFactory::make_with_name("rtprecv", None)
                 .unwrap_or_else(|_| panic!("rtprecv not found"));
@@ -1826,6 +1842,13 @@ impl RtspManager {
         } else {
             let e = gst::ElementFactory::make_with_name("rtpbin", None)
                 .unwrap_or_else(|_| panic!("rtpbin not found"));
+                
+            // Apply jitterbuffer settings to rtpbin (similar to original rtspsrc)
+            if let Some(settings) = jitter_settings {
+                e.set_property("latency", settings.latency_ms);
+                e.set_property("drop-on-latency", settings.drop_on_latency);
+            }
+            
             (e.clone(), e)
         };
         if !rtp2 {
@@ -1890,6 +1913,20 @@ impl RtspManager {
         } else {
             bin.add_many([&self.recv])?;
             self.recv.sync_state_with_parent()?;
+        }
+        Ok(())
+    }
+
+    fn configure_session(&self, session_id: u32, probation: u32) -> Result<(), RtspError> {
+        // Configure probation on the RTP session (similar to original rtspsrc)
+        if !self.using_rtp2 {
+            // Use get-internal-session signal to get the rtpsession object
+            if let Some(session) = self.recv.emit_by_name::<Option<glib::Object>>("get-internal-session", &[&session_id]) {
+                session.set_property("probation", probation);
+                gst::debug!(CAT, "Set probation={} on session {}", probation, session_id);
+            } else {
+                gst::warning!(CAT, "Could not get internal session {}", session_id);
+            }
         }
         Ok(())
     }

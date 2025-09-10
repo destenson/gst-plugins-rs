@@ -117,6 +117,13 @@ fn test_jitterbuffer_properties() {
     
     element.set_property("probation", 10u32);
     assert_eq!(element.property::<u32>("probation"), 10);
+    
+    // Test edge values
+    element.set_property("latency", 0u32);
+    assert_eq!(element.property::<u32>("latency"), 0);
+    
+    element.set_property("latency", u32::MAX);
+    assert_eq!(element.property::<u32>("latency"), u32::MAX);
 }
 
 #[test]
