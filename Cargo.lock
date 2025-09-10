@@ -3732,6 +3732,7 @@ dependencies = [
  "gstreamer-net",
  "gstreamer-pbutils",
  "lru 0.14.0",
+ "rand 0.9.2",
  "rtsp-types",
  "sdp-types",
  "serial_test",

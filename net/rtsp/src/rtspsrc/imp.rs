@@ -100,6 +100,11 @@ struct Settings {
     protocols: Vec<RtspProtocol>,
     timeout: gst::ClockTime,
     receive_mtu: u32,
+    retry_strategy: super::retry::RetryStrategy,
+    max_reconnection_attempts: i32,
+    reconnection_timeout: gst::ClockTime,
+    initial_retry_delay: gst::ClockTime,
+    linear_retry_step: gst::ClockTime,
 }
 
 impl Default for Settings {
@@ -110,6 +115,11 @@ impl Default for Settings {
             timeout: DEFAULT_TIMEOUT,
             protocols: parse_protocols_str(DEFAULT_PROTOCOLS).unwrap(),
             receive_mtu: DEFAULT_RECEIVE_MTU,
+            retry_strategy: super::retry::RetryStrategy::default(),
+            max_reconnection_attempts: 5,
+            reconnection_timeout: gst::ClockTime::from_seconds(30),
+            initial_retry_delay: gst::ClockTime::from_seconds(1),
+            linear_retry_step: gst::ClockTime::from_seconds(2),
         }
     }
 }
@@ -120,6 +130,7 @@ enum Commands {
     //Pause,
     Teardown(Option<oneshot::Sender<()>>),
     Data(rtsp_types::Data<Body>),
+    Reconnect,
 }
 
 #[derive(Debug, Default)]
@@ -308,6 +319,40 @@ impl ObjectImpl for RtspSrc {
                     .default_value(DEFAULT_TIMEOUT.into())
                     .mutable_ready()
                     .build(),
+                glib::ParamSpecString::builder("retry-strategy")
+                    .nick("Retry Strategy")
+                    .blurb("Connection retry strategy: auto, adaptive, none, immediate, linear, exponential, exponential-jitter")
+                    .default_value("auto")
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecInt::builder("max-reconnection-attempts")
+                    .nick("Maximum Reconnection Attempts")
+                    .blurb("Maximum number of reconnection attempts (-1 for infinite, 0 for no retry)")
+                    .minimum(-1)
+                    .default_value(5)
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecUInt64::builder("reconnection-timeout")
+                    .nick("Reconnection Timeout")
+                    .blurb("Maximum backoff delay between retry attempts in nanoseconds")
+                    .maximum(gst::ClockTime::MAX.into())
+                    .default_value(30_000_000_000) // 30 seconds
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecUInt64::builder("initial-retry-delay")
+                    .nick("Initial Retry Delay")
+                    .blurb("Initial delay between retry attempts in nanoseconds")
+                    .maximum(gst::ClockTime::MAX.into())
+                    .default_value(1_000_000_000) // 1 second
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecUInt64::builder("linear-retry-step")
+                    .nick("Linear Retry Step")
+                    .blurb("Step increment for linear retry strategy in nanoseconds")
+                    .maximum(gst::ClockTime::MAX.into())
+                    .default_value(2_000_000_000) // 2 seconds
+                    .mutable_ready()
+                    .build(),
             ]
         });
 
@@ -346,6 +391,35 @@ impl ObjectImpl for RtspSrc {
                 let mut settings = self.settings.lock().unwrap();
                 let timeout = value.get().expect("type checked upstream");
                 settings.timeout = timeout;
+                Ok(())
+            }
+            "retry-strategy" => {
+                let mut settings = self.settings.lock().unwrap();
+                let strategy = value.get::<Option<&str>>().expect("type checked upstream");
+                settings.retry_strategy = super::retry::RetryStrategy::from_string(strategy.unwrap_or("auto"));
+                Ok(())
+            }
+            "max-reconnection-attempts" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.max_reconnection_attempts = value.get::<i32>().expect("type checked upstream");
+                Ok(())
+            }
+            "reconnection-timeout" => {
+                let mut settings = self.settings.lock().unwrap();
+                let timeout = value.get().expect("type checked upstream");
+                settings.reconnection_timeout = timeout;
+                Ok(())
+            }
+            "initial-retry-delay" => {
+                let mut settings = self.settings.lock().unwrap();
+                let delay = value.get().expect("type checked upstream");
+                settings.initial_retry_delay = delay;
+                Ok(())
+            }
+            "linear-retry-step" => {
+                let mut settings = self.settings.lock().unwrap();
+                let step = value.get().expect("type checked upstream");
+                settings.linear_retry_step = step;
                 Ok(())
             }
             name => unimplemented!("Property '{name}'"),
@@ -391,6 +465,26 @@ impl ObjectImpl for RtspSrc {
             "timeout" => {
                 let settings = self.settings.lock().unwrap();
                 settings.timeout.to_value()
+            }
+            "retry-strategy" => {
+                let settings = self.settings.lock().unwrap();
+                settings.retry_strategy.as_str().to_value()
+            }
+            "max-reconnection-attempts" => {
+                let settings = self.settings.lock().unwrap();
+                settings.max_reconnection_attempts.to_value()
+            }
+            "reconnection-timeout" => {
+                let settings = self.settings.lock().unwrap();
+                settings.reconnection_timeout.to_value()
+            }
+            "initial-retry-delay" => {
+                let settings = self.settings.lock().unwrap();
+                settings.initial_retry_delay.to_value()
+            }
+            "linear-retry-step" => {
+                let settings = self.settings.lock().unwrap();
+                settings.linear_retry_step.to_value()
             }
             name => unimplemented!("Property '{name}'"),
         }
@@ -557,16 +651,53 @@ impl RtspSrc {
             let hostname_port =
                 format!("{}:{}", url.host_str().unwrap(), url.port().unwrap_or(554));
 
+            // Get retry configuration from settings
+            let settings = task_src.settings.lock().unwrap().clone();
+            let retry_config = super::retry::RetryConfig {
+                strategy: settings.retry_strategy,
+                max_attempts: settings.max_reconnection_attempts,
+                initial_delay: std::time::Duration::from_nanos(settings.initial_retry_delay.nseconds()),
+                max_delay: std::time::Duration::from_nanos(settings.reconnection_timeout.nseconds()),
+                linear_step: std::time::Duration::from_nanos(settings.linear_retry_step.nseconds()),
+            };
+
+            let mut retry_calc = super::retry::RetryCalculator::new(retry_config);
+
             // TODO: Add TLS support
-            let s = match TcpStream::connect(hostname_port).await {
-                Ok(s) => s,
-                Err(err) => {
-                    gst::element_imp_error!(
-                        task_src,
-                        gst::ResourceError::OpenRead,
-                        ["Failed to connect to RTSP server: {err:#?}"]
-                    );
-                    return;
+            let s = loop {
+                match TcpStream::connect(&hostname_port).await {
+                    Ok(s) => break s,
+                    Err(err) => {
+                        if let Some(delay) = retry_calc.next_delay() {
+                            let attempt = retry_calc.current_attempt();
+                            gst::warning!(
+                                CAT,
+                                "Connection failed (attempt {attempt}): {err:#?}. Retrying in {} ms...",
+                                delay.as_millis()
+                            );
+                            
+                            // Post a message about the retry attempt
+                            let msg = gst::message::Element::builder(
+                                gst::Structure::builder("rtsp-connection-retry")
+                                    .field("attempt", attempt)
+                                    .field("error", format!("{err:#?}"))
+                                    .field("next-delay-ms", delay.as_millis() as u64)
+                                    .build(),
+                            )
+                            .src(&*task_src.obj())
+                            .build();
+                            let _ = task_src.obj().post_message(msg);
+                            
+                            tokio::time::sleep(delay).await;
+                        } else {
+                            gst::element_imp_error!(
+                                task_src,
+                                gst::ResourceError::OpenRead,
+                                ["Failed to connect to RTSP server after {} attempts: {err:#?}", retry_calc.current_attempt()]
+                            );
+                            return;
+                        }
+                    }
                 }
             };
             let _ = s.set_nodelay(true);
@@ -1115,6 +1246,12 @@ impl RtspSrc {
                         // we support TCP ONVIF backchannels
                         state.sink.send(Message::Data(data)).await?;
                         gst::debug!(CAT, "Sent RTCP RR over TCP");
+                    }
+                    Commands::Reconnect => {
+                        gst::info!(CAT, "Received Reconnect command - not yet implemented");
+                        // TODO: Implement reconnection logic for lost connections
+                        // This would involve re-establishing the TCP connection and
+                        // re-sending DESCRIBE/SETUP/PLAY commands
                     }
                 },
                 else => {

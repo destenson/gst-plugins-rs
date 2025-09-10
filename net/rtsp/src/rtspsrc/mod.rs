@@ -37,6 +37,7 @@ use gst::prelude::*;
 
 mod body;
 mod imp;
+mod retry;
 mod sdp;
 mod tcp_message;
 mod transport;
