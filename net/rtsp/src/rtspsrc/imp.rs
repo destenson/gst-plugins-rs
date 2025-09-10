@@ -64,6 +64,11 @@ const DEFAULT_PROTOCOLS: &str = "udp-mcast,udp,tcp";
 // possibly overflown our receive buffer, and triggering a doubling of the buffer sizes.
 const DEFAULT_RECEIVE_MTU: u32 = 1500 + 8;
 
+// Jitterbuffer control defaults (matching original rtspsrc)
+const DEFAULT_LATENCY_MS: u32 = 2000;
+const DEFAULT_DROP_ON_LATENCY: bool = false;
+const DEFAULT_PROBATION: u32 = 2;
+
 const MAX_MESSAGE_SIZE: usize = 1024 * 1024;
 const MAX_BIND_PORT_RETRY: u16 = 100;
 const UDP_PACKET_MAX_SIZE: u32 = 65535 - 8;
@@ -127,6 +132,10 @@ struct Settings {
     racing_delay_ms: u32,
     racing_timeout: gst::ClockTime,
     seek_format: SeekFormat,
+    // Jitterbuffer control properties
+    latency_ms: u32,
+    drop_on_latency: bool,
+    probation: u32,
     #[cfg(feature = "adaptive")]
     adaptive_learning: bool,
     #[cfg(feature = "adaptive")]
@@ -169,6 +178,10 @@ impl Default for Settings {
             #[cfg(feature = "adaptive")]
             adaptive_discovery_time: gst::ClockTime::from_seconds(30),
             seek_format: SeekFormat::default(),
+            // Jitterbuffer control properties
+            latency_ms: DEFAULT_LATENCY_MS,
+            drop_on_latency: DEFAULT_DROP_ON_LATENCY,
+            probation: DEFAULT_PROBATION,
             #[cfg(feature = "adaptive")]
             adaptive_exploration_rate: 0.1,
             #[cfg(feature = "adaptive")]
@@ -524,6 +537,25 @@ impl ObjectImpl for RtspSrc {
                     .default_value(true)
                     .mutable_ready()
                     .build(),
+                // Jitterbuffer control properties (matching original rtspsrc)
+                glib::ParamSpecUInt::builder("latency")
+                    .nick("Buffer latency in ms")
+                    .blurb("Amount of ms to buffer")
+                    .default_value(DEFAULT_LATENCY_MS)
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecBoolean::builder("drop-on-latency")
+                    .nick("Drop buffers when maximum latency is reached")
+                    .blurb("Tells the jitterbuffer to never exceed the given latency in size")
+                    .default_value(DEFAULT_DROP_ON_LATENCY)
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecUInt::builder("probation")
+                    .nick("Number of probations")
+                    .blurb("Consecutive packet sequence numbers to accept the source")
+                    .default_value(DEFAULT_PROBATION)
+                    .mutable_ready()
+                    .build(),
             ]
         });
 
@@ -654,6 +686,22 @@ impl ObjectImpl for RtspSrc {
             "adaptive-change-detection" => {
                 let mut settings = self.settings.lock().unwrap();
                 settings.adaptive_change_detection = value.get().expect("type checked upstream");
+                Ok(())
+            }
+            // Jitterbuffer control properties
+            "latency" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.latency_ms = value.get::<u32>().expect("type checked upstream");
+                Ok(())
+            }
+            "drop-on-latency" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.drop_on_latency = value.get::<bool>().expect("type checked upstream");
+                Ok(())
+            }
+            "probation" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.probation = value.get::<u32>().expect("type checked upstream");
                 Ok(())
             }
             name => unimplemented!("Property '{name}'"),
@@ -811,6 +859,19 @@ impl ObjectImpl for RtspSrc {
             "adaptive-change-detection" => {
                 let settings = self.settings.lock().unwrap();
                 settings.adaptive_change_detection.to_value()
+            }
+            // Jitterbuffer control properties
+            "latency" => {
+                let settings = self.settings.lock().unwrap();
+                settings.latency_ms.to_value()
+            }
+            "drop-on-latency" => {
+                let settings = self.settings.lock().unwrap();
+                settings.drop_on_latency.to_value()
+            }
+            "probation" => {
+                let settings = self.settings.lock().unwrap();
+                settings.probation.to_value()
             }
             name => unimplemented!("Property '{name}'"),
         }
