@@ -31,6 +31,7 @@ pub struct AppState {
     pub disk_rotation_manager: Arc<DiskRotationManager>,
     pub backup_manager: Option<Arc<crate::backup::BackupManager>>,
     pub webrtc_server: Option<Arc<RwLock<crate::webrtc::WebRtcServer>>>,
+    pub whip_whep_handler: Option<Arc<crate::webrtc::WhipWhepHandler>>,
 }
 
 impl AppState {
@@ -59,6 +60,7 @@ impl AppState {
             disk_rotation_manager,
             backup_manager: None,
             webrtc_server: None,
+            whip_whep_handler: None,
         }
     }
     
@@ -83,6 +85,7 @@ impl AppState {
             disk_rotation_manager,
             backup_manager: None,
             webrtc_server: None,
+            whip_whep_handler: None,
         }
     }
     
@@ -106,16 +109,35 @@ pub async fn start_server(
     // Initialize WebRTC server if enabled in config
     // For now, always enable it
     let webrtc_server = Arc::new(RwLock::new(
-        crate::webrtc::WebRtcServer::new(stream_manager)
+        crate::webrtc::WebRtcServer::new(stream_manager.clone())
     ));
-    app_state.webrtc_server = Some(webrtc_server);
+    app_state.webrtc_server = Some(webrtc_server.clone());
     info!("WebRTC server initialized");
     
+    // Initialize WHIP/WHEP handler
+    let whip_whep_handler = Arc::new(
+        crate::webrtc::WhipWhepHandler::new(
+            Arc::new(webrtc_server.read().await.clone()),
+            stream_manager
+        )
+    );
+    app_state.whip_whep_handler = Some(whip_whep_handler.clone());
+    info!("WHIP/WHEP handler initialized");
+    
     HttpServer::new(move || {
-        App::new()
+        let whip_whep_data = app_state.whip_whep_handler.clone()
+            .map(|h| web::Data::new(h));
+        
+        let mut app = App::new()
             .app_data(web::Data::new(app_state.clone()))
             .app_data(web::Data::new(app_state.event_broadcaster.clone()))
-            .app_data(web::Data::new(app_state.disk_rotation_manager.clone()))
+            .app_data(web::Data::new(app_state.disk_rotation_manager.clone()));
+        
+        if let Some(handler_data) = whip_whep_data {
+            app = app.app_data(handler_data);
+        }
+        
+        app
             .wrap(Logger::default())
             .wrap(NormalizePath::trim())
             .wrap(middleware::error_handler())

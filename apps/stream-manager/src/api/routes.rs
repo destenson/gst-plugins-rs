@@ -22,6 +22,9 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     // Configure WebRTC endpoints from PRP-26
     crate::api::webrtc::configure(cfg);
     
+    // Configure WHIP/WHEP endpoints from PRP-27
+    crate::webrtc::whip_whep::configure(cfg);
+    
     cfg.service(
         web::scope("/api/v1")
             .route("/health", web::get().to(health_check))

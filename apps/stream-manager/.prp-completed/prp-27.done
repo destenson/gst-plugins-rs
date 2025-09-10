@@ -1,0 +1,53 @@
+PRP-27: WHIP/WHEP Protocol Support - COMPLETED
+
+Implementation Summary:
+- Implemented WHIP (WebRTC-HTTP Ingestion Protocol) for stream ingestion
+- Implemented WHEP (WebRTC-HTTP Egress Protocol) for stream playback
+- Added HTTP-based SDP negotiation
+- Integrated Bearer token authentication
+- Created session management for both protocols
+- Added ICE trickle support via PATCH endpoints
+- Implemented DELETE endpoints for session teardown
+
+Files Created/Modified:
+- src/webrtc/whip_whep.rs - Core WHIP/WHEP handler implementation
+- src/webrtc/mod.rs - Added exports for WHIP/WHEP components
+- src/api/routes.rs - Integrated WHIP/WHEP endpoints
+- src/api/mod.rs - Added WhipWhepHandler to AppState
+
+Features Implemented:
+✓ WHIP ingestion via POST /whip/{stream_id}
+✓ WHEP playback via POST /whep/{stream_id}
+✓ SDP offer/answer negotiation
+✓ Bearer token authentication
+✓ Session resource management
+✓ DELETE endpoints for teardown
+✓ PATCH endpoints for ICE trickle
+✓ 201 Created response with Location header
+✓ Session tracking and lifecycle management
+
+Protocol Compliance:
+- Follows WHIP draft specification (draft-ietf-wish-whip)
+- Follows WHEP draft specification (draft-murillo-whep)
+- Returns proper HTTP status codes
+- Implements required HTTP headers
+- Supports ICE trickle via application/trickle-ice-sdpfrag
+
+Tests Created:
+- Handler creation test
+- Authentication token validation test
+- ICE candidate parsing test
+- SDP answer generation test
+
+Current Limitations (for future PRPs):
+- Using test video source instead of actual stream integration
+- Basic SDP generation (production would use webrtcbin)
+- No TURN server configuration yet
+- No bandwidth adaptation
+
+Integration Points:
+- Ready to connect with stream manager for actual streams
+- Can be extended for recording branch integration
+- Prepared for inference pipeline connection
+
+The WHIP/WHEP implementation provides standards-compliant WebRTC streaming via HTTP.
