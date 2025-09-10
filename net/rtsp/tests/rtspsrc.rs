@@ -89,6 +89,36 @@ fn test_property_defaults() {
     // Note: is-live is a property of GstBin, not specific to rtspsrc2
 }
 
+#[test]  
+#[serial]
+fn test_jitterbuffer_properties() {
+    init();
+    
+    let element = gst::ElementFactory::make("rtspsrc2")
+        .build()
+        .unwrap();
+    
+    // Test that the properties exist and can be read/written
+    assert!(element.property_type("latency").is_some());
+    assert!(element.property_type("drop-on-latency").is_some());
+    assert!(element.property_type("probation").is_some());
+    
+    // Test default values
+    assert_eq!(element.property::<u32>("latency"), 2000);
+    assert_eq!(element.property::<bool>("drop-on-latency"), false);
+    assert_eq!(element.property::<u32>("probation"), 2);
+    
+    // Test setting values
+    element.set_property("latency", 5000u32);
+    assert_eq!(element.property::<u32>("latency"), 5000);
+    
+    element.set_property("drop-on-latency", true);
+    assert_eq!(element.property::<bool>("drop-on-latency"), true);
+    
+    element.set_property("probation", 10u32);
+    assert_eq!(element.property::<u32>("probation"), 10);
+}
+
 #[test]
 #[serial]
 fn test_property_setting() {
