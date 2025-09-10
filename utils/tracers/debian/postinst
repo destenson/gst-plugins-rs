@@ -1,0 +1,32 @@
+#!/bin/sh
+# postinst script for gst-plugin-tracers
+# Following PRP-006: Post-Installation Configuration
+
+set -e
+
+case "$1" in
+    configure)
+        # Update the GStreamer plugin registry cache
+        # This ensures the plugin is immediately available after installation
+        if [ -x /usr/bin/gst-inspect-1.0 ]; then
+            echo "Updating GStreamer plugin registry..."
+            # Run in background to avoid blocking, redirect output to avoid noise
+            # Note: Tracers are not visible through gst-inspect-1.0 as they're not elements
+            # We run gst-inspect to update the registry anyway
+            gst-inspect-1.0 --gst-disable-segtrap --gst-disable-registry-fork >/dev/null 2>&1 || true
+        fi
+        ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+# dh_makeshlibs will add ldconfig trigger automatically via cargo-deb
+# No need to manually call ldconfig
+
+exit 0
