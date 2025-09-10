@@ -17,6 +17,7 @@ use super::adaptive_retry::{AdaptiveRetryManager, AdaptiveRetryConfig};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RetryStrategy {
     Auto,
+    #[cfg(feature = "adaptive")]
     Adaptive,
     None,
     Immediate,
@@ -35,6 +36,7 @@ impl RetryStrategy {
     pub fn from_string(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             "auto" => RetryStrategy::Auto,
+            #[cfg(feature = "adaptive")]
             "adaptive" => RetryStrategy::Adaptive,
             "none" => RetryStrategy::None,
             "immediate" => RetryStrategy::Immediate,
@@ -48,6 +50,7 @@ impl RetryStrategy {
     pub fn as_str(&self) -> &'static str {
         match self {
             RetryStrategy::Auto => "auto",
+            #[cfg(feature = "adaptive")]
             RetryStrategy::Adaptive => "adaptive",
             RetryStrategy::None => "none",
             RetryStrategy::Immediate => "immediate",
@@ -82,6 +85,7 @@ impl Default for RetryConfig {
 pub struct RetryCalculator {
     config: RetryConfig,
     attempt: u32,
+    #[cfg(feature = "adaptive")]
     adaptive_manager: Option<AdaptiveRetryManager>,
     last_attempt_time: Option<Instant>,
     server_url: Option<String>,
@@ -92,6 +96,7 @@ impl RetryCalculator {
         Self { 
             config, 
             attempt: 0,
+            #[cfg(feature = "adaptive")]
             adaptive_manager: None,
             last_attempt_time: None,
             server_url: None,
@@ -100,6 +105,7 @@ impl RetryCalculator {
     
     pub fn with_server_url(mut self, url: &str) -> Self {
         self.server_url = Some(url.to_string());
+        #[cfg(feature = "adaptive")]
         if self.config.strategy == RetryStrategy::Adaptive {
             let adaptive_config = AdaptiveRetryConfig::default();
             self.adaptive_manager = Some(AdaptiveRetryManager::new(url, adaptive_config));
@@ -132,6 +138,7 @@ impl RetryCalculator {
             RetryStrategy::Exponential => self.calculate_exponential_delay(false),
             RetryStrategy::ExponentialJitter => self.calculate_exponential_delay(true),
             RetryStrategy::Auto => self.calculate_auto_delay(),
+            #[cfg(feature = "adaptive")]
             RetryStrategy::Adaptive => self.calculate_adaptive_delay(),
         };
 
@@ -174,23 +181,22 @@ impl RetryCalculator {
         self.calculate_exponential_delay(true)
     }
 
+    #[cfg(feature = "adaptive")]
     fn calculate_adaptive_delay(&mut self) -> Duration {
         if let Some(ref mut manager) = self.adaptive_manager {
             let strategy = manager.select_strategy();
             
             // Convert adaptive strategy to retry strategy and calculate delay
-            match strategy {
+            return match strategy {
                 super::adaptive_retry::Strategy::Immediate => Duration::ZERO,
                 super::adaptive_retry::Strategy::Linear => self.calculate_linear_delay(),
                 super::adaptive_retry::Strategy::Exponential => self.calculate_exponential_delay(false),
                 super::adaptive_retry::Strategy::ExponentialJitter => self.calculate_exponential_delay(true),
-            }
-        } else {
-            // Fallback to exponential with jitter if adaptive manager not initialized
-            self.calculate_exponential_delay(true)
+            };
         }
     }
     
+    #[cfg(feature = "adaptive")]
     pub fn record_attempt_result(&mut self, success: bool) {
         if let Some(ref manager) = self.adaptive_manager {
             if let Some(start_time) = self.last_attempt_time {
@@ -203,6 +209,7 @@ impl RetryCalculator {
         }
     }
     
+    #[cfg(feature = "adaptive")]
     pub fn get_adaptive_stats(&self) -> Option<String> {
         self.adaptive_manager.as_ref().map(|m| m.get_stats_summary())
     }
@@ -220,6 +227,7 @@ mod tests {
         assert_eq!(RetryStrategy::from_string("exponential"), RetryStrategy::Exponential);
         assert_eq!(RetryStrategy::from_string("exponential-jitter"), RetryStrategy::ExponentialJitter);
         assert_eq!(RetryStrategy::from_string("auto"), RetryStrategy::Auto);
+        #[cfg(feature = "adaptive")]
         assert_eq!(RetryStrategy::from_string("adaptive"), RetryStrategy::Adaptive);
         assert_eq!(RetryStrategy::from_string("invalid"), RetryStrategy::Auto);
     }

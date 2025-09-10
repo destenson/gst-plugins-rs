@@ -45,6 +45,7 @@ doc = ["gst/v1_18"]
 v1_18 = ["gst/v1_18", "gst-app/v1_18", "gst-net/v1_18", "gst-pbutils/v1_18", "gst-check/v1_18"]
 v1_20 = ["v1_18", "gst/v1_20", "gst-app/v1_20", "gst-net/v1_20", "gst-pbutils/v1_20", "gst-check/v1_20"]
 v1_24 = ["v1_20", "gst/v1_24", "gst-app/v1_24", "gst-net/v1_24", "gst-pbutils/v1_24", "gst-check/v1_24"]
+adaptive = []
 
 [package.metadata.capi]
 min_version = "0.9.21"
