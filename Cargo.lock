@@ -3830,6 +3830,7 @@ version = "0.14.0-alpha.1"
 dependencies = [
  "anyhow",
  "atomic_refcell",
+ "chrono",
  "console-subscriber",
  "data-encoding",
  "dirs",
@@ -3853,6 +3854,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tokio-test",
+ "toml 0.9.5",
  "tracing",
  "tracing-subscriber",
  "url",
