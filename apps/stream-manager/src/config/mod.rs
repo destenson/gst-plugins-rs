@@ -21,7 +21,7 @@ pub struct Config {
     pub monitoring: MonitoringConfig,
     pub stream_defaults: StreamDefaultConfig,
     pub streams: Vec<StreamConfig>,
-    pub backup: Option<crate::backup::BackupConfig>,
+    pub backup: Option<BackupConfig>,
     pub rtsp: Option<RtspConfig>,
 }
 
@@ -212,6 +212,15 @@ pub struct RtspSinkConfig {
     pub password: Option<String>,
 }
 
+/// Recovery configuration
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BackupConfig {
+    /// Enable automatic recovery checks
+    pub enabled: bool,
+    /// Check interval in seconds
+    pub check_interval_secs: u64,
+}
+
 impl Default for RtspSinkConfig {
     fn default() -> Self {
         Self {
@@ -391,6 +400,16 @@ impl Default for StreamConfig {
             reconnect_timeout_seconds: 5,
             max_reconnect_attempts: 10,
             buffer_size_mb: 50,
+            rtsp_outputs: None,
+        }
+    }
+}
+
+impl Default for BackupConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            check_interval_secs: 300, // 5 minutes
         }
     }
 }
@@ -420,8 +439,8 @@ impl Config {
         
         // Validate backup config if present
         if let Some(ref backup) = self.backup {
-            if backup.enabled && backup.interval_secs == 0 {
-                return Err("backup interval_secs must be greater than 0 when enabled".to_string());
+            if backup.enabled && backup.check_interval_secs == 0 {
+                return Err("backup check_interval_secs must be greater than 0 when enabled".to_string());
             }
         }
         

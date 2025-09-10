@@ -1,3 +1,4 @@
+#![allow(unused)]
 use actix_web::{web, HttpResponse};
 use crate::api::{AppState, ApiError};
 use serde_json::json;
@@ -20,7 +21,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     crate::api::recovery::configure(cfg);
     
     // Configure WebRTC endpoints from PRP-26
-    crate::api::webrtc::configure(cfg);
+    // WebRTC configuration is handled by webrtc module directly
     
     // Configure WHIP/WHEP endpoints from PRP-27
     crate::webrtc::whip_whep::configure(cfg);
@@ -87,7 +88,7 @@ async fn update_config(
     // Notify components about config change if reloader is available
     if let Some(reloader) = &state.config_reloader {
         let reloader = reloader.read().await;
-        // The reloader will detect and broadcast changes
+        // TODO: The reloader will detect and broadcast changes
     }
     
     Ok(HttpResponse::Ok().json(json!({

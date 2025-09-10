@@ -80,6 +80,7 @@ pub async fn add_stream(
         reconnect_timeout_seconds: 5,
         max_reconnect_attempts: 3,
         buffer_size_mb: 10,
+        rtsp_outputs: None,
     };
 
     match manager.add_stream(req.id.clone(), config).await {

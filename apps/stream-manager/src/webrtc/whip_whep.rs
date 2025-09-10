@@ -1,3 +1,4 @@
+#![allow(unused)]
 use actix_web::{http::StatusCode, web, HttpRequest, HttpResponse};
 use gst::prelude::*;
 use serde::{Deserialize, Serialize};

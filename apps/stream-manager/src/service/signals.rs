@@ -1,3 +1,4 @@
+#![allow(unused)]
 use tokio::signal;
 use tokio::sync::mpsc;
 use tracing::{info, error, debug};

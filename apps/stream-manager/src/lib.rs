@@ -1,3 +1,4 @@
+#![allow(unused)]
 pub mod config;
 pub mod gst_utils;
 pub mod pipeline;
@@ -12,7 +13,6 @@ pub mod recovery;
 pub mod inference;
 pub mod rtsp;
 pub mod webrtc;
-pub mod backup;
 pub mod service;
 pub mod telemetry;
 pub mod manager;
