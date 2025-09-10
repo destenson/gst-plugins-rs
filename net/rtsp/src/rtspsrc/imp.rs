@@ -1033,41 +1033,62 @@ impl RtspSrc {
             };
             let racer = super::connection_racer::ConnectionRacer::new(racing_config);
 
-            // TODO: Add TLS support
-            let s = loop {
-                match racer.connect(&hostname_port).await {
-                    Ok(s) => break s,
-                    Err(err) => {
-                        if let Some(delay) = retry_calc.next_delay() {
-                            let attempt = retry_calc.current_attempt();
-                            gst::warning!(
-                                CAT,
-                                "Connection to '{}' failed (attempt {attempt}): {err:#?}. Retrying in {} ms...",
-                                url, delay.as_millis()
-                            );
-                            
-                            // Post a message about the retry attempt
-                            let msg = gst::message::Element::builder(
-                                gst::Structure::builder("rtsp-connection-retry")
-                                    .field("attempt", attempt)
-                                    .field("error", format!("{err:#?}"))
-                                    .field("next-delay-ms", delay.as_millis() as u64)
-                                    .build(),
-                            )
-                            .src(&*task_src.obj())
-                            .build();
-                            let _ = task_src.obj().post_message(msg);
-                            
-                            tokio::time::sleep(delay).await;
-                        } else {
-                            gst::element_imp_error!(
-                                task_src,
-                                gst::ResourceError::OpenRead,
-                                ["Failed to connect to RTSP server '{}' after {} attempts: {err:#?}", url, retry_calc.current_attempt()]
-                            );
-                            return;
+            // Apply timeout to entire connection process
+            let connection_timeout = std::time::Duration::from_nanos(settings.timeout.nseconds());
+            let connection_result = time::timeout(connection_timeout, async {
+                // TODO: Add TLS support
+                loop {
+                    match racer.connect(&hostname_port).await {
+                        Ok(s) => return Ok(s),
+                        Err(err) => {
+                            if let Some(delay) = retry_calc.next_delay() {
+                                let attempt = retry_calc.current_attempt();
+                                gst::warning!(
+                                    CAT,
+                                    "Connection to '{}' failed (attempt {attempt}): {err:#?}. Retrying in {} ms...",
+                                    url, delay.as_millis()
+                                );
+                                
+                                // Post a message about the retry attempt
+                                let msg = gst::message::Element::builder(
+                                    gst::Structure::builder("rtsp-connection-retry")
+                                        .field("attempt", attempt)
+                                        .field("error", format!("{err:#?}"))
+                                        .field("next-delay-ms", delay.as_millis() as u64)
+                                        .build(),
+                                )
+                                .src(&*task_src.obj())
+                                .build();
+                                let _ = task_src.obj().post_message(msg);
+                                
+                                tokio::time::sleep(delay).await;
+                            } else {
+                                return Err(format!("Failed to connect to RTSP server '{}' after {} attempts: {err:#?}", url, retry_calc.current_attempt()));
+                            }
                         }
                     }
+                }
+            }).await;
+
+            let s = match connection_result {
+                Ok(Ok(stream)) => stream,
+                Ok(Err(err)) => {
+                    gst::element_imp_error!(
+                        task_src,
+                        gst::ResourceError::OpenRead,
+                        ["{}", err]
+                    );
+                    return;
+                }
+                Err(_elapsed) => {
+                    gst::element_imp_error!(
+                        task_src,
+                        gst::ResourceError::OpenRead,
+                        ["Connection timeout after {} seconds", connection_timeout.as_secs()]
+                    );
+                    #[cfg(feature = "telemetry")]
+                    task_src.metrics.record_timeout_error();
+                    return;
                 }
             };
             let _ = s.set_nodelay(true);
