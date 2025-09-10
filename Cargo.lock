@@ -3799,11 +3799,13 @@ dependencies = [
  "gst-plugin-version-helper",
  "gstreamer",
  "gstreamer-app",
+ "gstreamer-check",
  "gstreamer-net",
  "gstreamer-pbutils",
- "lru 0.16.1",
+ "lru 0.14.0",
  "rtsp-types",
  "sdp-types",
+ "serial_test",
  "socket2 0.6.0",
  "thiserror 2.0.17",
  "tokio",
@@ -6079,9 +6081,9 @@ dependencies = [
 
 [[package]]
 name = "lru"
-version = "0.16.1"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfe949189f46fabb938b3a9a0be30fdd93fd8a09260da863399a8cf3db756ec8"
+checksum = "9f8cc7106155f10bdf99a6f379688f543ad6596a415375b36a59a054ceda1198"
 dependencies = [
  "hashbrown 0.15.5",
 ]

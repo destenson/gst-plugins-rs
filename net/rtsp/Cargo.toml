@@ -13,11 +13,11 @@ anyhow = "1"
 atomic_refcell = "0.1"
 data-encoding = "2.4"
 futures = "0.3"
-gst = { workspace = true, features = ["v1_20"] }
-gst-app = { workspace = true, features = ["v1_20"] }
-gst-net = { workspace = true, features = ["v1_20"] }
-gst-pbutils = { workspace = true, features = ["v1_20"] }
-lru = "0.16"
+gst = { workspace = true, features = ["v1_16"] }
+gst-app = { workspace = true, features = ["v1_16"] }
+gst-net = { workspace = true, features = ["v1_16"] }
+gst-pbutils = { workspace = true, features = ["v1_16"] }
+lru = "0.14"
 rtsp-types = "0.1"
 sdp-types = "0.1"
 socket2 = { version = "0.6", features = ["all"] }
@@ -38,6 +38,8 @@ gst-plugin-version-helper.workspace = true
 static = []
 capi = []
 doc = ["gst/v1_18"]
+v1_18 = ["gst/v1_18", "gst-app/v1_18", "gst-net/v1_18", "gst-pbutils/v1_18", "gst-check/v1_18"]
+v1_20 = ["v1_18", "gst/v1_20", "gst-app/v1_20", "gst-net/v1_20", "gst-pbutils/v1_20", "gst-check/v1_20"]
 
 [package.metadata.capi]
 min_version = "0.9.21"
@@ -52,6 +54,10 @@ import_library = false
 
 [package.metadata.capi.pkg_config]
 requires_private = "gstreamer-1.0, gstreamer-net-1.0, gobject-2.0, glib-2.0, gmodule-2.0"
+
+[dev-dependencies]
+gst-check = { workspace = true, features = ["v1_16"] }
+serial_test = "3"
 
 [package.metadata.gstreamer]
 release_date = "2025-07-16"
