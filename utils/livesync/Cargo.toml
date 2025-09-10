@@ -94,11 +94,10 @@ default-features = true
 recommends = "gstreamer1.0-tools"
 suggests = "gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad"
 
-# [package.metadata.$().deb]
-# Asset installation for Debian package
+# Asset installation for Debian package - using multiarch paths
 assets = [
     ["target/release/libgstlivesync.so", "usr/lib/gstreamer-1.0/libgstlivesync.so", "644"],
     ["LICENSE-MPL-2.0", "usr/share/doc/gst-plugin-livesync/", "644"],
-    # ["README.md", "usr/share/doc/gst-plugin-livesync/", "644"],
+    ["README.md", "usr/share/doc/gst-plugin-livesync/", "644"],
     ["debian/changelog", "usr/share/doc/gst-plugin-livesync/changelog.Debian", "644"]
 ]
