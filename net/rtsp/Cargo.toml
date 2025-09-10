@@ -58,6 +58,8 @@ requires_private = "gstreamer-1.0, gstreamer-net-1.0, gobject-2.0, glib-2.0, gmo
 [dev-dependencies]
 gst-check = { workspace = true, features = ["v1_16"] }
 serial_test = "3"
+tokio = { version = "1.0", features = ["full", "test-util"] }
+tokio-test = "0.4"
 
 [package.metadata.gstreamer]
 release_date = "2025-07-16"
