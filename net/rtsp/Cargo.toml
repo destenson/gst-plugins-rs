@@ -83,3 +83,36 @@ tokio = { version = "1.47.1", features = ["full", "test-util"] }
 tokio-test = "0.4.4"
 chrono = "0.4"
 toml = "0.9.5"
+
+[package.metadata.deb]
+name = "gst-plugin-rtsp"
+maintainer = "GStreamer Rust Plugins Maintainers <gstreamer-rust@lists.freedesktop.org>"
+copyright = "2020-2024, Nirbheek Chauhan <nirbheek@centricular.com>"
+license-file = ["LICENSE-MPL-2.0", "4"]
+extended-description = """\
+GStreamer plugin providing RTSP client functionality.
+This plugin contains:
+  - rtspsrc: RTSP client source element
+  - rtspauth: RTSP authentication handling
+  - rtsptransport: RTSP transport layer management
+These elements are useful for receiving and processing RTSP streams."""
+depends = "$auto, gstreamer1.0-plugins-base (>= 1.16.0), libgstreamer1.0-0 (>= 1.16.0), libgstreamer-net-1.0-0 (>= 1.16.0)"
+section = "libs" 
+priority = "optional"
+revision = "1"
+conf-files = []
+changelog = "debian/changelog"
+separate-debug-symbols = true
+preserve-symlinks = false
+features = ["futures"]
+default-features = true
+recommends = "gstreamer1.0-tools"
+suggests = "gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad"
+
+# Asset installation for Debian package
+assets = [
+    ["target/release/libgstrsrtsp.so", "usr/lib/gstreamer-1.0/libgstrsrtsp.so", "644"],
+    ["LICENSE-MPL-2.0", "usr/share/doc/gst-plugin-rtsp/", "644"],
+    ["README.md", "usr/share/doc/gst-plugin-rtsp/", "644"],
+    ["debian/changelog", "usr/share/doc/gst-plugin-rtsp/changelog.Debian", "644"]
+]

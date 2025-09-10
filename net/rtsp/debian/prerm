@@ -1,0 +1,25 @@
+#!/bin/sh
+# prerm script for gst-plugin-rtsp
+# Following PRP-006: Pre-removal cleanup
+
+set -e
+
+case "$1" in
+    remove|upgrade|deconfigure)
+        # Clean up any temporary files if they exist
+        # Remove any cached registry entries
+        if [ -d /tmp ]; then
+            rm -f /tmp/gst-rtsp-* 2>/dev/null || true
+        fi
+        ;;
+
+    failed-upgrade)
+        ;;
+
+    *)
+        echo "prerm called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

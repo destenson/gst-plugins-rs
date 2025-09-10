@@ -1,0 +1,33 @@
+#!/bin/sh
+# postrm script for gst-plugin-rtsp
+# Following PRP-006: Post-removal cleanup
+
+set -e
+
+case "$1" in
+    purge)
+        # Remove any configuration files in /etc if they exist
+        # Remove any leftover temporary files
+        rm -rf /tmp/gst-rtsp-* 2>/dev/null || true
+        
+        # Force GStreamer registry update to remove plugin references
+        if [ -x /usr/bin/gst-inspect-1.0 ]; then
+            # Clear user registry caches
+            find /home -name ".cache" -type d 2>/dev/null | while read cache_dir; do
+                rm -f "$cache_dir/gstreamer-1.0/registry*.bin" 2>/dev/null || true
+            done
+            # Clear system-wide cache
+            rm -f /var/cache/gstreamer-1.0/registry*.bin 2>/dev/null || true
+        fi
+        ;;
+
+    remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+        ;;
+
+    *)
+        echo "postrm called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

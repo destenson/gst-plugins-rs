@@ -1,0 +1,8 @@
+gst-plugin-rtsp (0.14.0~git-1) unstable; urgency=medium
+
+  * Initial Debian package release
+  * Includes rtspsrc element for RTSP client functionality
+  * Built from gst-plugins-rs repository
+  * Support for RTSP authentication and transport management
+
+ -- GStreamer Rust Plugins Maintainers <gstreamer-rust@lists.freedesktop.org>  Tue, 10 Sep 2025 12:00:00 +0000
