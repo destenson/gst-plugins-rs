@@ -30,6 +30,7 @@ pub struct AppState {
     pub event_broadcaster: Arc<websocket::EventBroadcaster>,
     pub disk_rotation_manager: Arc<DiskRotationManager>,
     pub backup_manager: Option<Arc<crate::backup::BackupManager>>,
+    pub webrtc_server: Option<Arc<RwLock<crate::webrtc::WebRtcServer>>>,
 }
 
 impl AppState {
@@ -57,6 +58,7 @@ impl AppState {
             event_broadcaster,
             disk_rotation_manager,
             backup_manager: None,
+            webrtc_server: None,
         }
     }
     
@@ -80,6 +82,7 @@ impl AppState {
             event_broadcaster,
             disk_rotation_manager,
             backup_manager: None,
+            webrtc_server: None,
         }
     }
     
@@ -98,7 +101,15 @@ pub async fn start_server(
     let bind_address = format!("{}:{}", config.api.host, config.api.port);
     info!("Starting API server on {}", bind_address);
     
-    let app_state = AppState::new(stream_manager, config.clone());
+    let mut app_state = AppState::new(stream_manager.clone(), config.clone());
+    
+    // Initialize WebRTC server if enabled in config
+    // For now, always enable it
+    let webrtc_server = Arc::new(RwLock::new(
+        crate::webrtc::WebRtcServer::new(stream_manager)
+    ));
+    app_state.webrtc_server = Some(webrtc_server);
+    info!("WebRTC server initialized");
     
     HttpServer::new(move || {
         App::new()

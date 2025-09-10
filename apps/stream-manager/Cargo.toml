@@ -93,6 +93,8 @@ opentelemetry_sdk = { version = "0.30.0", features = ["rt-tokio", "trace", "metr
 opentelemetry-semantic-conventions = { version = "0.30.0", features = ["semconv_experimental"] }
 tracing-opentelemetry = "0.31.0"
 sha2 = "0.10.9"
+actix = "0.13.5"
+actix-web-actors = "4.3.1"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["fileapi", "winnt"] }

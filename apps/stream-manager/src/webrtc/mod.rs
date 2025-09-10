@@ -1,10 +1,4 @@
-// WebRTC server implementation
-// TODO: Implement in PRP-26
+pub mod server;
+pub mod signaling;
 
-pub struct WebRtcServer {}
-
-impl WebRtcServer {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
+pub use server::{WebRtcServer, SignalingMessage, IceConfig, TurnServer, PeerInfo};
