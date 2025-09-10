@@ -25,6 +25,13 @@ architecture of rtspsrc. There are some major problems with rtspsrc:
 * Connection retry logic with configurable backoff strategies (NEW!)
   - Multiple retry strategies: auto, adaptive, none, immediate, linear, exponential, exponential-jitter
   - Configurable retry parameters and limits
+* Session timeout handling with automatic keep-alive (NEW!)
+  - Parses session timeout from RTSP headers
+  - Sends keep-alive messages (GET_PARAMETER) before timeout
+  - Prevents session expiration during streaming
+* GET_PARAMETER and SET_PARAMETER support (NEW!)
+  - Used for keep-alive and camera control
+  - Essential for PTZ cameras and ONVIF devices
 
 ## Missing features
 
@@ -38,7 +45,6 @@ Roughly in order of priority:
 * SRTP support
 * HTTP tunnelling
 * Proxy support
-* `GET_PARAMETER` / `SET_PARAMETER`
 * Make TCP connection optional when using UDP transport
   - Or TCP reconnection if UDP has not timed out
 * Parse more SDP attributes

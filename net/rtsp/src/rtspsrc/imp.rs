@@ -1162,6 +1162,9 @@ impl RtspSrc {
         });
 
         let mut expected_response: Option<(Method, u32)> = None;
+        let mut keepalive_interval = tokio::time::interval(Duration::from_secs(30)); // Will be updated after session
+        keepalive_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        
         loop {
             tokio::select! {
                 msg = state.stream.next() => match msg {
@@ -1194,6 +1197,21 @@ impl RtspSrc {
                     }
                     Some(Ok(rtsp_types::Message::Response(rsp))) => {
                         gst::debug!(CAT, "<-- {rsp:#?}");
+                        
+                        // Reset session activity on any response
+                        state.session_manager.reset_activity();
+                        
+                        // Check if this is a keep-alive response (GET_PARAMETER or OPTIONS)
+                        if let Some((expected, cseq)) = &expected_response {
+                            if *expected == Method::GetParameter {
+                                // Keep-alive response received
+                                state.get_parameter_response(&rsp, *cseq, session.as_ref()).await?;
+                                expected_response = None;
+                                gst::debug!(CAT, "Keep-alive response received");
+                                continue;
+                            }
+                        }
+                        
                         let Some((expected, cseq)) = &expected_response else {
                             continue;
                         };
@@ -1206,6 +1224,10 @@ impl RtspSrc {
                                 self.post_complete("request", "PLAY response received");
                             }
                             Method::Teardown => state.teardown_response(&rsp, *cseq, s).await?,
+                            Method::GetParameter => {
+                                // Already handled above
+                                unreachable!("GET_PARAMETER should have been handled above");
+                            }
                             m => unreachable!("BUG: unexpected response method: {m:?}"),
                         };
                     }
@@ -1253,6 +1275,29 @@ impl RtspSrc {
                         // TODO: Implement reconnection logic for lost connections
                         // This would involve re-establishing the TCP connection and
                         // re-sending DESCRIBE/SETUP/PLAY commands
+                    }
+                },
+                _ = keepalive_interval.tick() => {
+                    // Check if we need to send keep-alive
+                    if let Some(s) = &session {
+                        if state.session_manager.needs_keepalive() {
+                            gst::debug!(CAT, "Sending keep-alive GET_PARAMETER");
+                            // Send empty GET_PARAMETER for keep-alive
+                            match state.get_parameter(Some(s), None).await {
+                                Ok(cseq) => {
+                                    expected_response = Some((Method::GetParameter, cseq));
+                                }
+                                Err(e) => {
+                                    gst::warning!(CAT, "Failed to send keep-alive: {e:?}");
+                                }
+                            }
+                        }
+                        
+                        // Check for session timeout
+                        if state.session_manager.is_timed_out() {
+                            gst::error!(CAT, "Session timed out, terminating");
+                            return Err(RtspError::Fatal("Session timeout".to_string()).into());
+                        }
                     }
                 },
                 else => {
@@ -1367,6 +1412,7 @@ struct RtspTaskState {
 
     setup_params: Vec<RtspSetupParams>,
     handles: Vec<JoinHandle<()>>,
+    session_manager: super::session_manager::SessionManager,
 }
 
 struct RtspSetupParams {
@@ -1389,6 +1435,7 @@ impl RtspTaskState {
             sink,
             setup_params: Vec::new(),
             handles: Vec::new(),
+            session_manager: super::session_manager::SessionManager::new(),
         }
     }
 
@@ -1771,7 +1818,17 @@ impl RtspTaskState {
                 .typed_header::<Session>()?
                 .ok_or(RtspError::InvalidMessage("No session in SETUP response"))?;
             // Manually strip timeout field: https://github.com/sdroege/rtsp-types/issues/24
-            session.replace(Session(new_session.0, None));
+            session.replace(Session(new_session.0.clone(), None));
+            
+            // Also parse the raw Session header to get timeout value
+            if let Some(session_header) = rsp.headers()
+                .find(|(name, _)| name == &rtsp_types::headers::SESSION)
+                .map(|(_, value)| value.as_str())
+            {
+                self.session_manager.parse_session_with_timeout(session_header);
+            } else {
+                self.session_manager.set_session(new_session);
+            }
             let mut parsed_transport = if let Some(transports) = rsp.typed_header::<Transports>()? {
                 Self::parse_setup_transports(&transports, &mut s, &protocols, &mode)
             } else {
@@ -1920,6 +1977,99 @@ impl RtspTaskState {
         session: &Session,
     ) -> Result<(), RtspError> {
         Self::check_response(rsp, cseq, Method::Teardown, Some(session))?;
+        Ok(())
+    }
+
+    async fn get_parameter(
+        &mut self,
+        session: Option<&Session>,
+        parameters: Option<Vec<String>>,
+    ) -> Result<u32, RtspError> {
+        self.cseq += 1;
+        let request_uri = self.aggregate_control.as_ref().unwrap_or(&self.url).clone();
+        let mut req = Request::builder(Method::GetParameter, self.version)
+            .typed_header::<CSeq>(&self.cseq.into())
+            .header(USER_AGENT, DEFAULT_USER_AGENT)
+            .request_uri(request_uri);
+
+        if let Some(s) = session {
+            req = req.typed_header::<Session>(s);
+        }
+
+        let body = if let Some(params) = parameters {
+            // Content-Type: text/parameters
+            req = req.header(rtsp_types::headers::CONTENT_TYPE, "text/parameters");
+            Body::from(params.join("\r\n").into_bytes())
+        } else {
+            // Empty GET_PARAMETER for keep-alive
+            Body::default()
+        };
+
+        let req = req.build(body);
+        gst::debug!(CAT, "-->> {req:#?}");
+        self.sink.send(req.into()).await?;
+        Ok(self.cseq)
+    }
+
+    async fn get_parameter_response(
+        &mut self,
+        rsp: &Response<Body>,
+        cseq: u32,
+        session: Option<&Session>,
+    ) -> Result<Vec<(String, String)>, RtspError> {
+        Self::check_response(rsp, cseq, Method::GetParameter, session)?;
+        
+        let mut parameters = Vec::new();
+        if !rsp.body().is_empty() {
+            let body_str = std::str::from_utf8(rsp.body())
+                .map_err(|e| RtspError::Fatal(format!("Invalid UTF-8 in response: {}", e)))?;
+            
+            for line in body_str.lines() {
+                if let Some((key, value)) = line.split_once(':') {
+                    parameters.push((key.trim().to_string(), value.trim().to_string()));
+                }
+            }
+        }
+        
+        Ok(parameters)
+    }
+
+    async fn set_parameter(
+        &mut self,
+        session: Option<&Session>,
+        parameters: Vec<(String, String)>,
+    ) -> Result<u32, RtspError> {
+        self.cseq += 1;
+        let request_uri = self.aggregate_control.as_ref().unwrap_or(&self.url).clone();
+        let mut req = Request::builder(Method::SetParameter, self.version)
+            .typed_header::<CSeq>(&self.cseq.into())
+            .header(USER_AGENT, DEFAULT_USER_AGENT)
+            .header(rtsp_types::headers::CONTENT_TYPE, "text/parameters")
+            .request_uri(request_uri);
+
+        if let Some(s) = session {
+            req = req.typed_header::<Session>(s);
+        }
+
+        let body_str = parameters
+            .iter()
+            .map(|(k, v)| format!("{}: {}", k, v))
+            .collect::<Vec<_>>()
+            .join("\r\n");
+
+        let req = req.build(Body::from(body_str.into_bytes()));
+        gst::debug!(CAT, "-->> {req:#?}");
+        self.sink.send(req.into()).await?;
+        Ok(self.cseq)
+    }
+
+    async fn set_parameter_response(
+        &mut self,
+        rsp: &Response<Body>,
+        cseq: u32,
+        session: Option<&Session>,
+    ) -> Result<(), RtspError> {
+        Self::check_response(rsp, cseq, Method::SetParameter, session)?;
         Ok(())
     }
 }
