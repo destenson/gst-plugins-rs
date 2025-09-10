@@ -6,11 +6,11 @@ This document tracks the implementation status of all feature parity PRPs for rt
 
 ### Overview
 - **rtspsrc (original)**: 51 properties, 10 signals, 7 actions, 9 URI protocols
-- **rtspsrc2 (current)**: 28 properties (7 matching + 21 unique), 0 signals, 0 actions, 3 URI protocols  
-- **Progress**: 14% properties (7/51 matching), 0% signals, 0% actions, 33% URI protocols
-- **Overall Feature Parity**: ~12% complete
+- **rtspsrc2 (current)**: 29 properties (8 matching + 21 unique), 0 signals, 0 actions, 3 URI protocols  
+- **Progress**: 16% properties (8/51 matching), 0% signals, 0% actions, 33% URI protocols
+- **Overall Feature Parity**: ~14% complete
 
-### Properties Status (7/51 matching implemented = 14%)
+### Properties Status (8/51 matching implemented = 16%)
 
 **Original rtspsrc properties (from actual source code):**
 - location, protocols, debug, retry, timeout, tcp-timeout, latency
@@ -24,7 +24,7 @@ This document tracks the implementation status of all feature parity PRPs for rt
 - teardown-timeout, onvif-mode, onvif-rate-control, is-live, ignore-x-server-reply
 - extra-http-request-headers, tcp-timestamp, force-non-compliant-url, client-managed-mikey
 
-#### ✅ IMPLEMENTED (7/51 properties = 14%)
+#### ✅ IMPLEMENTED (8/51 properties = 16%)
 **Properties that match original rtspsrc:**
 1. ✅ `location` - RTSP server URL and credentials
 2. ✅ `protocols` - Allowed transport protocols (udp-mcast,udp,tcp)
@@ -33,6 +33,7 @@ This document tracks the implementation status of all feature parity PRPs for rt
 5. ✅ `latency` - Amount of ms to buffer (PRP-33) ⭐ NEW
 6. ✅ `drop-on-latency` - Drop buffers when maximum latency is reached (PRP-33) ⭐ NEW
 7. ✅ `probation` - Consecutive packet sequence numbers to accept the source (PRP-33) ⭐ NEW
+8. ✅ `buffer-mode` - Control buffering algorithm (none, slave, buffer, auto, synced) (PRP-34) ⭐ NEW
 
 **rtspsrc2-specific properties (21 properties - not in original):**
 - `receive-mtu`, `port-start`, `retry-strategy`, `max-reconnection-attempts`
@@ -179,8 +180,8 @@ This document tracks the implementation status of all feature parity PRPs for rt
 | PRP-31 | 1-Auth | 📋 Planned | - | - | - | 3-4h |
 | PRP-32 | 1-Auth | 📋 Planned | - | - | - | 3-4h |
 | **PRP-33** | **1-Core** | **✅ COMPLETE** | **latency, drop-on-latency, probation** | - | - | **2-3h** |
-| **PRP-34** | **1-Core** | **⭐ NEXT** | **buffer-mode** | - | - | **2-3h** |
-| PRP-35 | 1-Core | 📋 Planned | do-rtcp, do-retransmission, max-rtcp-rtp-time-diff | - | - | 2-3h |
+| **PRP-34** | **1-Core** | **✅ COMPLETE** | **buffer-mode** | - | - | **2-3h** |
+| **PRP-35** | **1-Core** | **⭐ NEXT** | **do-rtcp, do-retransmission, max-rtcp-rtp-time-diff** | - | - | **2-3h** |
 | PRP-36 | 1-Core | 📋 Planned | do-rtsp-keep-alive, tcp-timeout, teardown-timeout, udp-reconnect | - | - | 2-3h |
 | PRP-37 | 1-Core | 📋 Planned | multicast-iface, port-range, udp-buffer-size | - | - | 2-3h |
 | PRP-38 | 1-Core | 📋 Planned | is-live, user-agent, connection-speed | - | - | 2-3h |
@@ -220,12 +221,12 @@ Each PRP must pass all quality gates before being marked complete:
 ---
 
 **Last Updated**: 2025-01-10  
-**Next Action**: Execute PRP-34 (Buffer Mode Property)  
-**Phase 1 Progress**: 1/9 PRPs complete (11%)  
-**Overall Progress**: 7/51 properties (14%), 0/10 signals (0%), 0/7 actions (0%)  
-**Recent Progress**: ✅ **PRP-33 COMPLETED** - Added 3 jitterbuffer control properties WITH ACTUAL FUNCTIONALITY  
+**Next Action**: Execute PRP-35 (RTCP Control Properties)  
+**Phase 1 Progress**: 2/9 PRPs complete (22%)  
+**Overall Progress**: 8/51 properties (16%), 0/10 signals (0%), 0/7 actions (0%)  
+**Recent Progress**: ✅ **PRP-34 COMPLETED** - Added buffer-mode property WITH ACTUAL FUNCTIONALITY  
 **Implementation Details**: 
-- `latency` and `drop-on-latency` applied to rtpbin manager (like original rtspsrc)
-- `probation` applied to individual RTP sessions via get-internal-session signal  
-- Full functional implementation, not just property stubs
-**Critical Finding**: rtspsrc2 now has 7 properties that match the original rtspsrc (14% coverage). Most current properties are still rtspsrc2-specific enhancements.
+- **PRP-33**: `latency` and `drop-on-latency` applied to rtpbin manager, `probation` applied to RTP sessions
+- **PRP-34**: `buffer-mode` enum (none, slave, buffer, auto, synced) applied to rtpbin with auto-selection logic
+- Full functional implementations, not just property stubs
+**Critical Finding**: rtspsrc2 now has 8 properties that match the original rtspsrc (16% coverage). Phase 1 is 22% complete.

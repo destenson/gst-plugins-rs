@@ -126,6 +126,72 @@ fn test_jitterbuffer_properties() {
     assert_eq!(element.property::<u32>("latency"), u32::MAX);
 }
 
+#[test]  
+#[serial]
+fn test_buffer_mode_property() {
+    init();
+    
+    let element = gst::ElementFactory::make("rtspsrc2")
+        .build()
+        .unwrap();
+    
+    // Test that buffer-mode property exists and has correct default
+    assert!(element.property_type("buffer-mode").is_some());
+    assert_eq!(element.property::<Option<String>>("buffer-mode"), Some("auto".to_string()));
+    
+    // Test setting all valid buffer modes
+    let valid_modes = ["none", "slave", "buffer", "auto", "synced"];
+    for mode in &valid_modes {
+        element.set_property("buffer-mode", mode);
+        assert_eq!(element.property::<Option<String>>("buffer-mode"), Some(mode.to_string()));
+    }
+    
+    // Test setting invalid mode should not crash (but may emit warnings)
+    element.set_property("buffer-mode", "invalid-mode");
+    // Element should keep previous valid value or reset to default
+    let current_value = element.property::<Option<String>>("buffer-mode");
+    assert!(current_value.is_some(), "Property should have some value even after invalid input");
+}
+
+#[test]  
+#[serial]
+fn test_rtcp_properties() {
+    init();
+    
+    let element = gst::ElementFactory::make("rtspsrc2")
+        .build()
+        .unwrap();
+    
+    // Test that RTCP properties exist and have correct defaults
+    assert!(element.property_type("do-rtcp").is_some());
+    assert!(element.property_type("do-retransmission").is_some());  
+    assert!(element.property_type("max-rtcp-rtp-time-diff").is_some());
+    
+    // Test default values (matching original rtspsrc)
+    assert_eq!(element.property::<bool>("do-rtcp"), true);
+    assert_eq!(element.property::<bool>("do-retransmission"), true);
+    assert_eq!(element.property::<i32>("max-rtcp-rtp-time-diff"), -1);
+    
+    // Test setting boolean RTCP properties
+    element.set_property("do-rtcp", false);
+    assert_eq!(element.property::<bool>("do-rtcp"), false);
+    
+    element.set_property("do-retransmission", false);
+    assert_eq!(element.property::<bool>("do-retransmission"), false);
+    
+    // Test setting max-rtcp-rtp-time-diff with different values
+    element.set_property("max-rtcp-rtp-time-diff", 1000i32);
+    assert_eq!(element.property::<i32>("max-rtcp-rtp-time-diff"), 1000);
+    
+    // Test disabled value (-1)
+    element.set_property("max-rtcp-rtp-time-diff", -1i32);
+    assert_eq!(element.property::<i32>("max-rtcp-rtp-time-diff"), -1);
+    
+    // Test maximum value
+    element.set_property("max-rtcp-rtp-time-diff", i32::MAX);
+    assert_eq!(element.property::<i32>("max-rtcp-rtp-time-diff"), i32::MAX);
+}
+
 #[test]
 #[serial]
 fn test_property_setting() {
