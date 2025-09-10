@@ -18,9 +18,9 @@ pub mod telemetry;
 pub mod manager;
 
 // Re-export commonly used types
-pub use config::{Config, ConfigManager};
+pub use config::{Config, ConfigManager, DatabaseConfig};
 pub use pipeline::{Pipeline, PipelineManager, PipelineState, PipelineError, PipelineMessage};
-pub use database::{Database, DatabaseConfig, DatabaseError as DbError};
+pub use database::{Database, DatabaseError as DbError};
 
 // Common error types
 use thiserror::Error;

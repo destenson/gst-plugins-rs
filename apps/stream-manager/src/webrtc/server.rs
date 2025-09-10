@@ -201,7 +201,7 @@ impl WebRtcServer {
         
         // Create webrtcbin element
         let webrtcbin = gst::ElementFactory::make("webrtcbin")
-            .property("bundle-policy", "max-bundle")
+            .property_from_str("bundle-policy", "max-bundle")
             .property("stun-server", &self.ice_config.stun_servers[0])
             .name(&format!("webrtcbin-{}", peer_id))
             .build()?;
@@ -246,7 +246,7 @@ impl WebRtcServer {
         // Create test source for now (will be replaced with actual stream)
         let videotestsrc = gst::ElementFactory::make("videotestsrc")
             .property("is-live", true)
-            .property("pattern", 0i32)
+            .property_from_str("pattern", "smpte")
             .build()?;
 
         let videoconvert = gst::ElementFactory::make("videoconvert").build()?;

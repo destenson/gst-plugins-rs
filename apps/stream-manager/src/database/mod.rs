@@ -7,6 +7,8 @@ use serde::{Serialize, Deserialize};
 use serde_json;
 use chrono::{DateTime, Utc, Local};
 
+use crate::config::DatabaseConfig;
+
 pub mod schema;
 pub mod queries;
 pub mod migrations;
@@ -38,33 +40,6 @@ pub enum DatabaseError {
 }
 
 pub type Result<T> = std::result::Result<T, DatabaseError>;
-
-#[derive(Debug, Clone)]
-pub struct DatabaseConfig {
-    pub url: String,
-    pub max_connections: u32,
-    pub min_connections: u32,
-    pub connect_timeout: Duration,
-    pub idle_timeout: Duration,
-    pub max_lifetime: Duration,
-    pub enable_wal: bool,
-    pub enable_foreign_keys: bool,
-}
-
-impl Default for DatabaseConfig {
-    fn default() -> Self {
-        Self {
-            url: "sqlite://stream_manager.db".to_string(),
-            max_connections: 10,
-            min_connections: 2,
-            connect_timeout: Duration::from_secs(10),
-            idle_timeout: Duration::from_secs(300),
-            max_lifetime: Duration::from_secs(3600),
-            enable_wal: true,
-            enable_foreign_keys: true,
-        }
-    }
-}
 
 pub struct Database {
     pool: SqlitePool,

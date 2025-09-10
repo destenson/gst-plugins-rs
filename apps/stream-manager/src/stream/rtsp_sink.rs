@@ -89,7 +89,7 @@ impl RtspSinkBuilder {
             .name("rtsp-sink")
             .property("location", &self.config.location)
             .property("latency", self.config.latency_ms)
-            .property("protocols", self.config.protocols.as_str())
+            .property_from_str("protocols", self.config.protocols.as_str())
             .build()
             .map_err(|_| RtspSinkError::ElementCreation("rtspclientsink".to_string()))?;
         
@@ -159,8 +159,8 @@ impl RtspSinkBuilder {
             "h264" => {
                 let enc = gst::ElementFactory::make("x264enc")
                     .name("rtsp-encoder")
-                    .property("tune", "zerolatency")
-                    .property("speed-preset", "ultrafast")
+                    .property_from_str("tune", "zerolatency")
+                    .property_from_str("speed-preset", "ultrafast")
                     .property("key-int-max", 30u32)
                     .build()
                     .map_err(|_| RtspSinkError::ElementCreation("x264enc".to_string()))?;
@@ -174,8 +174,8 @@ impl RtspSinkBuilder {
             "h265" => {
                 let enc = gst::ElementFactory::make("x265enc")
                     .name("rtsp-encoder")
-                    .property("tune", "zerolatency")
-                    .property("speed-preset", "ultrafast")
+                    .property_from_str("tune", "zerolatency")
+                    .property_from_str("speed-preset", "ultrafast")
                     .property("key-int-max", 30u32)
                     .build()
                     .map_err(|_| RtspSinkError::ElementCreation("x265enc".to_string()))?;

@@ -55,20 +55,29 @@ pub struct ServerConfig {
     pub websocket_port: u16,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatabaseConfig {
-    pub url: Option<String>,
-    pub max_connections: Option<u32>,
-    pub enable_wal: Option<bool>,
+    pub url: String,
+    pub max_connections: u32,
+    pub min_connections: u32,
+    pub connect_timeout: Duration,
+    pub idle_timeout: Duration,
+    pub max_lifetime: Duration,
+    pub enable_wal: bool,
+    pub enable_foreign_keys: bool,
 }
 
 impl Default for DatabaseConfig {
     fn default() -> Self {
         Self {
-            url: Some("sqlite://stream_manager.db".to_string()),
-            max_connections: Some(10),
-            enable_wal: Some(true),
+            url: "sqlite://stream_manager.db".to_string(),
+            max_connections: 10,
+            min_connections: 2,
+            connect_timeout: Duration::from_secs(10),
+            idle_timeout: Duration::from_secs(300),
+            max_lifetime: Duration::from_secs(3600),
+            enable_wal: true,
+            enable_foreign_keys: true,
         }
     }
 }
@@ -447,6 +456,14 @@ impl Config {
             }
         }
         
+        // Check for duplicate stream IDs
+        let mut seen_ids = std::collections::HashSet::new();
+        for stream in &self.streams {
+            if !seen_ids.insert(&stream.id) {
+                return Err(format!("Duplicate stream ID found: {}", stream.id));
+            }
+        }
+        
         Ok(())
     }
     
@@ -791,7 +808,7 @@ api_port = 9090
         
         // Test invalid disk usage
         if let Some(ref mut storage) = config.storage {
-            storage.max_disk_usage_percent = 99.0;
+            storage.max_disk_usage_percent = 101.0;  // Set to > 100 to trigger validation error
         }
         assert!(config.validate().is_err());
         
