@@ -1,3 +1,4 @@
+#![allow(unused)]
 // GStreamer RTSP plugin session timeout management
 //
 // Copyright (C) 2025 GStreamer developers
@@ -228,8 +229,8 @@ pub async fn session_monitor_task(
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_session_timeout_parsing() {
+    #[tokio::test]
+    async fn test_session_timeout_parsing() {
         let mut manager = SessionManager::new();
         
         // Test with timeout
@@ -247,8 +248,8 @@ mod tests {
         assert_eq!(manager.timeout, Duration::from_secs(30));
     }
 
-    #[test]
-    fn test_keepalive_timing() {
+    #[tokio::test]
+    async fn test_keepalive_timing() {
         let mut manager = SessionManager::new();
         manager.set_session(Session("test".to_string(), None));
         
@@ -267,8 +268,8 @@ mod tests {
         assert!(manager.is_timed_out());
     }
 
-    #[test]
-    fn test_activity_reset() {
+    #[tokio::test]
+    async fn test_activity_reset() {
         let mut manager = SessionManager::new();
         manager.set_session(Session("test".to_string(), None));
         

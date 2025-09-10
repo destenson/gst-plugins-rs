@@ -1,3 +1,4 @@
+#![allow(unused)]
 // GStreamer RTSP plugin retry logic implementation
 //
 // Copyright (C) 2025 GStreamer developers

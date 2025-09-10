@@ -1,6 +1,7 @@
+#![allow(unused)]
 // GStreamer RTSP plugin mock server for testing
 //
-// Copyright (C) 2024 GStreamer developers
+// Copyright (C) 2025 GStreamer developers
 //
 // This Source Code Form is subject to the terms of the Mozilla Public License, v2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at

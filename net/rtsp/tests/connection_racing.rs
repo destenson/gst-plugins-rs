@@ -1,3 +1,4 @@
+#![allow(unused)]
 // GStreamer RTSP plugin connection racing tests
 //
 // Copyright (C) 2025 GStreamer developers
@@ -214,7 +215,7 @@ async fn test_racing_with_all_failures() {
         .property("racing-delay-ms", 50u32)
         .property("racing-timeout", 200_000_000u64) // 200ms
         .property("timeout", 100_000_000u64) // 100ms per connection
-        .property("retry-strategy", "none") // No retry to test racing only
+        .property_from_str("retry-strategy", "none") // No retry to test racing only
         .build()
         .expect("Failed to create rtspsrc2 element");
 

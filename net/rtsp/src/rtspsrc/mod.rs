@@ -35,6 +35,7 @@
 use gst::glib;
 use gst::prelude::*;
 
+#[cfg(feature = "adaptive")]
 mod adaptive_retry;
 mod body;
 mod connection_racer;

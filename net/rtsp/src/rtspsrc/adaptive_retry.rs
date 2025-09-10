@@ -1,3 +1,5 @@
+#![allow(unused)]
+#![cfg(feature = "adaptive")]
 // GStreamer RTSP Adaptive Learning Retry System
 //
 // This module implements an advanced adaptive retry system that learns optimal
