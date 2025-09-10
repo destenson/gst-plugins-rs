@@ -6,8 +6,8 @@ use std::sync::Arc;
 use tracing::{info, error};
 use tracing_subscriber::EnvFilter;
 use stream_manager::{
-    config::ConfigManager,
-    database::{Database, DatabaseConfig, recovery::BackupManager},
+    config::{ConfigManager, DatabaseConfig},
+    database::{Database, recovery::BackupManager},
     gst_utils,
     manager::StreamManager,
     recovery::{RecoveryManager, RecoveryConfig},
@@ -98,7 +98,7 @@ async fn main() -> Result<()> {
     // Initialize database
     let db_config = DatabaseConfig {
         url: config.database.as_ref()
-            .and_then(|d| d.url.clone())
+            .map(|d| d.url.clone())
             .unwrap_or_else(|| "sqlite://stream_manager.db".to_string()),
         ..Default::default()
     };
