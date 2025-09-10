@@ -33,8 +33,8 @@ use tokio::time;
 
 use rtsp_types::headers::{
     CSeq, NptRange, NptTime, Public, Range, RtpInfos, RtpLowerTransport, RtpProfile, RtpTransport,
-    RtpTransportParameters, Session, Transport, TransportMode, Transports, ACCEPT, CONTENT_BASE,
-    CONTENT_LOCATION, USER_AGENT,
+    RtpTransportParameters, Session, SmpteRange, SmpteTime, SmpteType, Transport, TransportMode, 
+    Transports, UtcRange, UtcTime, ACCEPT, CONTENT_BASE, CONTENT_LOCATION, USER_AGENT,
 };
 use rtsp_types::{Message, Method, Request, Response, StatusCode, Version};
 
@@ -93,6 +93,19 @@ impl fmt::Display for RtspProtocol {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SeekFormat {
+    Npt,    // Normal Play Time (default)
+    Smpte,  // SMPTE time code
+    Clock,  // Absolute UTC time
+}
+
+impl Default for SeekFormat {
+    fn default() -> Self {
+        SeekFormat::Npt
+    }
+}
+
 #[derive(Debug, Clone)]
 struct Settings {
     location: Option<Url>,
@@ -109,12 +122,20 @@ struct Settings {
     max_parallel_connections: u32,
     racing_delay_ms: u32,
     racing_timeout: gst::ClockTime,
+    seek_format: SeekFormat,
+    #[cfg(feature = "adaptive")]
     adaptive_learning: bool,
+    #[cfg(feature = "adaptive")]
     adaptive_persistence: bool,
+    #[cfg(feature = "adaptive")]
     adaptive_cache_ttl: u64,
+    #[cfg(feature = "adaptive")]
     adaptive_discovery_time: gst::ClockTime,
+    #[cfg(feature = "adaptive")]
     adaptive_exploration_rate: f32,
+    #[cfg(feature = "adaptive")]
     adaptive_confidence_threshold: f32,
+    #[cfg(feature = "adaptive")]
     adaptive_change_detection: bool,
 }
 
@@ -135,12 +156,20 @@ impl Default for Settings {
             max_parallel_connections: 3,
             racing_delay_ms: 250,
             racing_timeout: gst::ClockTime::from_seconds(5),
+            #[cfg(feature = "adaptive")]
             adaptive_learning: true,
+            #[cfg(feature = "adaptive")]
             adaptive_persistence: true,
+            #[cfg(feature = "adaptive")]
             adaptive_cache_ttl: 7 * 24 * 3600, // 7 days in seconds
+            #[cfg(feature = "adaptive")]
             adaptive_discovery_time: gst::ClockTime::from_seconds(30),
+            seek_format: SeekFormat::default(),
+            #[cfg(feature = "adaptive")]
             adaptive_exploration_rate: 0.1,
+            #[cfg(feature = "adaptive")]
             adaptive_confidence_threshold: 0.8,
+            #[cfg(feature = "adaptive")]
             adaptive_change_detection: true,
         }
     }
@@ -150,6 +179,7 @@ impl Default for Settings {
 enum Commands {
     Play,
     //Pause,
+    Seek { position: gst::ClockTime, flags: gst::SeekFlags },
     Teardown(Option<oneshot::Sender<()>>),
     Data(rtsp_types::Data<Body>),
     Reconnect,
@@ -405,18 +435,21 @@ impl ObjectImpl for RtspSrc {
                     .default_value(5_000_000_000) // 5 seconds
                     .mutable_ready()
                     .build(),
+                #[cfg(feature = "adaptive")]
                 glib::ParamSpecBoolean::builder("adaptive-learning")
                     .nick("Adaptive Learning")
                     .blurb("Enable learning-based retry optimization")
                     .default_value(true)
                     .mutable_ready()
                     .build(),
+                #[cfg(feature = "adaptive")]
                 glib::ParamSpecBoolean::builder("adaptive-persistence")
                     .nick("Adaptive Persistence")
                     .blurb("Save learned retry patterns to disk")
                     .default_value(true)
                     .mutable_ready()
                     .build(),
+                #[cfg(feature = "adaptive")]
                 glib::ParamSpecUInt64::builder("adaptive-cache-ttl")
                     .nick("Adaptive Cache TTL")
                     .blurb("Cache lifetime for learned patterns in seconds")
@@ -424,6 +457,7 @@ impl ObjectImpl for RtspSrc {
                     .default_value(7 * 24 * 3600) // 7 days
                     .mutable_ready()
                     .build(),
+                #[cfg(feature = "adaptive")]
                 glib::ParamSpecUInt64::builder("adaptive-discovery-time")
                     .nick("Adaptive Discovery Time")
                     .blurb("Initial learning phase duration in nanoseconds")
@@ -431,6 +465,7 @@ impl ObjectImpl for RtspSrc {
                     .default_value(30_000_000_000) // 30 seconds
                     .mutable_ready()
                     .build(),
+                #[cfg(feature = "adaptive")]
                 glib::ParamSpecFloat::builder("adaptive-exploration-rate")
                     .nick("Adaptive Exploration Rate")
                     .blurb("Frequency of exploring alternative strategies (0.0-1.0)")
@@ -439,6 +474,7 @@ impl ObjectImpl for RtspSrc {
                     .default_value(0.1)
                     .mutable_ready()
                     .build(),
+                #[cfg(feature = "adaptive")]
                 glib::ParamSpecFloat::builder("adaptive-confidence-threshold")
                     .nick("Adaptive Confidence Threshold")
                     .blurb("Minimum confidence before using learned patterns (0.0-1.0)")
@@ -447,6 +483,7 @@ impl ObjectImpl for RtspSrc {
                     .default_value(0.8)
                     .mutable_ready()
                     .build(),
+                #[cfg(feature = "adaptive")]
                 glib::ParamSpecBoolean::builder("adaptive-change-detection")
                     .nick("Adaptive Change Detection")
                     .blurb("Detect and adapt to network changes")
@@ -543,36 +580,43 @@ impl ObjectImpl for RtspSrc {
                 settings.racing_timeout = value.get().expect("type checked upstream");
                 Ok(())
             }
+            #[cfg(feature = "adaptive")]
             "adaptive-learning" => {
                 let mut settings = self.settings.lock().unwrap();
                 settings.adaptive_learning = value.get().expect("type checked upstream");
                 Ok(())
             }
+            #[cfg(feature = "adaptive")]
             "adaptive-persistence" => {
                 let mut settings = self.settings.lock().unwrap();
                 settings.adaptive_persistence = value.get().expect("type checked upstream");
                 Ok(())
             }
+            #[cfg(feature = "adaptive")]
             "adaptive-cache-ttl" => {
                 let mut settings = self.settings.lock().unwrap();
                 settings.adaptive_cache_ttl = value.get().expect("type checked upstream");
                 Ok(())
             }
+            #[cfg(feature = "adaptive")]
             "adaptive-discovery-time" => {
                 let mut settings = self.settings.lock().unwrap();
                 settings.adaptive_discovery_time = value.get().expect("type checked upstream");
                 Ok(())
             }
+            #[cfg(feature = "adaptive")]
             "adaptive-exploration-rate" => {
                 let mut settings = self.settings.lock().unwrap();
                 settings.adaptive_exploration_rate = value.get().expect("type checked upstream");
                 Ok(())
             }
+            #[cfg(feature = "adaptive")]
             "adaptive-confidence-threshold" => {
                 let mut settings = self.settings.lock().unwrap();
                 settings.adaptive_confidence_threshold = value.get().expect("type checked upstream");
                 Ok(())
             }
+            #[cfg(feature = "adaptive")]
             "adaptive-change-detection" => {
                 let mut settings = self.settings.lock().unwrap();
                 settings.adaptive_change_detection = value.get().expect("type checked upstream");
@@ -658,30 +702,37 @@ impl ObjectImpl for RtspSrc {
                 let settings = self.settings.lock().unwrap();
                 settings.racing_timeout.to_value()
             }
+            #[cfg(feature = "adaptive")]
             "adaptive-learning" => {
                 let settings = self.settings.lock().unwrap();
                 settings.adaptive_learning.to_value()
             }
+            #[cfg(feature = "adaptive")]
             "adaptive-persistence" => {
                 let settings = self.settings.lock().unwrap();
                 settings.adaptive_persistence.to_value()
             }
+            #[cfg(feature = "adaptive")]
             "adaptive-cache-ttl" => {
                 let settings = self.settings.lock().unwrap();
                 settings.adaptive_cache_ttl.to_value()
             }
+            #[cfg(feature = "adaptive")]
             "adaptive-discovery-time" => {
                 let settings = self.settings.lock().unwrap();
                 settings.adaptive_discovery_time.to_value()
             }
+            #[cfg(feature = "adaptive")]
             "adaptive-exploration-rate" => {
                 let settings = self.settings.lock().unwrap();
                 settings.adaptive_exploration_rate.to_value()
             }
+            #[cfg(feature = "adaptive")]
             "adaptive-confidence-threshold" => {
                 let settings = self.settings.lock().unwrap();
                 settings.adaptive_confidence_threshold.to_value()
             }
+            #[cfg(feature = "adaptive")]
             "adaptive-change-detection" => {
                 let settings = self.settings.lock().unwrap();
                 settings.adaptive_change_detection.to_value()
@@ -729,6 +780,33 @@ impl ElementImpl for RtspSrc {
         });
 
         PAD_TEMPLATES.as_ref()
+    }
+
+    fn send_event(&self, event: gst::Event) -> bool {
+        match event.view() {
+            gst::EventView::Seek(seek) => {
+                let (_rate, flags, _start_type, start, _stop_type, _stop) = seek.get();
+                
+                gst::debug!(CAT, "Received seek event to position: {:?}", start);
+                
+                let cmd_queue = self.cmd_queue();
+                let position = if let gst::GenericFormattedValue::Time(Some(time)) = start {
+                    time
+                } else {
+                    gst::ClockTime::ZERO
+                };
+                
+                RUNTIME.spawn(async move {
+                    let _ = cmd_queue.send(Commands::Seek { 
+                        position,
+                        flags
+                    }).await;
+                });
+                
+                true
+            }
+            _ => self.parent_send_event(event),
+        }
     }
 
     fn change_state(
@@ -1462,6 +1540,44 @@ impl RtspSrc {
                         })?;
                         expected_response = Some((Method::Play, cseq));
                     },
+                    Commands::Seek { position, flags } => {
+                        let Some(s) = &session else {
+                            return Err(RtspError::InvalidMessage("Can't SEEK, no SETUP").into());
+                        };
+                        gst::info!(CAT, "Processing seek to position {:?} with flags {:?}", position, flags);
+                        
+                        // Get seek format from settings
+                        let seek_format = self.settings.lock().unwrap().seek_format;
+                        
+                        // Send PLAY request with Range header for seek
+                        let cseq = state.play_with_range(s, Some(position), seek_format).await.inspect_err(|_err| {
+                            self.post_cancelled("request", "SEEK request cancelled");
+                        })?;
+                        expected_response = Some((Method::Play, cseq));
+                        
+                        // Handle flush if needed
+                        if flags.contains(gst::SeekFlags::FLUSH) {
+                            // Flush all appsrcs
+                            for params in &state.setup_params {
+                                if let Some(ref appsrc) = params.rtp_appsrc {
+                                    let _ = appsrc.send_event(gst::event::FlushStart::new());
+                                    let _ = appsrc.send_event(gst::event::FlushStop::builder(true).build());
+                                }
+                            }
+                        }
+                        
+                        // Send new segment event
+                        let segment = gst::FormattedSegment::<gst::ClockTime>::new();
+                        let mut segment = segment.clone();
+                        segment.set_start(position);
+                        segment.set_position(position);
+                        
+                        for params in &state.setup_params {
+                            if let Some(ref appsrc) = params.rtp_appsrc {
+                                let _ = appsrc.send_event(gst::event::Segment::new(&segment));
+                            }
+                        }
+                    },
                     Commands::Teardown(tx) => {
                         gst::info!(CAT, "Received Teardown command");
                         let Some(s) = &session else {
@@ -2115,11 +2231,112 @@ impl RtspTaskState {
     }
 
     async fn play(&mut self, session: &Session) -> Result<u32, RtspError> {
+        self.play_with_range(session, None, SeekFormat::Npt).await
+    }
+
+    fn create_range_header(position: Option<gst::ClockTime>, format: SeekFormat) -> Range {
+        match format {
+            SeekFormat::Npt => {
+                if let Some(position) = position {
+                    // Convert GStreamer ClockTime to seconds for NPT
+                    let seconds = position.nseconds() / 1_000_000_000;
+                    let nanos = (position.nseconds() % 1_000_000_000) as u32;
+                    let fraction = if nanos > 0 { Some(nanos / 1_000_000) } else { None };
+                    Range::Npt(NptRange::From(NptTime::Seconds(seconds, fraction)))
+                } else {
+                    Range::Npt(NptRange::From(NptTime::Now))
+                }
+            }
+            SeekFormat::Smpte => {
+                if let Some(position) = position {
+                    // Convert to SMPTE time code (assuming 30fps drop frame)
+                    let total_frames = (position.nseconds() * 30 / 1_000_000_000) as u32;
+                    let seconds = total_frames / 30;
+                    let frames = total_frames % 30;
+                    let minutes = seconds / 60;
+                    let hours = minutes / 60;
+                    
+                    Range::Smpte(SmpteRange::From(SmpteType::Smpte30Drop, SmpteTime {
+                        hours: (hours % 24) as u8,
+                        minutes: (minutes % 60) as u8,
+                        seconds: (seconds % 60) as u8,
+                        frames: Some((frames as u8, None)),
+                    }))
+                } else {
+                    // Start from beginning for SMPTE
+                    Range::Smpte(SmpteRange::From(SmpteType::Smpte30Drop, SmpteTime {
+                        hours: 0,
+                        minutes: 0,
+                        seconds: 0,
+                        frames: Some((0, None)),
+                    }))
+                }
+            }
+            SeekFormat::Clock => {
+                if let Some(position) = position {
+                    // Convert to UTC time (offset from now)
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap();
+                    let target_time = now + std::time::Duration::from_nanos(position.nseconds());
+                    let total_secs = target_time.as_secs();
+                    let nanos = target_time.subsec_nanos();
+                    
+                    // Convert to date and time format
+                    let days = total_secs / 86400;
+                    let remaining_secs = total_secs % 86400;
+                    let hours = remaining_secs / 3600;
+                    let minutes = (remaining_secs % 3600) / 60;
+                    let seconds = remaining_secs % 60;
+                    
+                    // Convert days to YYYYMMDD (simplified - assumes starting from 1970-01-01)
+                    let date = 19700101 + (days as u32);
+                    let time = (hours as u32) * 10000 + (minutes as u32) * 100 + (seconds as u32);
+                    
+                    Range::Utc(UtcRange::From(UtcTime {
+                        date,
+                        time,
+                        nanoseconds: if nanos > 0 { Some(nanos) } else { None },
+                    }))
+                } else {
+                    // Use current time for Clock format
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap();
+                    let total_secs = now.as_secs();
+                    let nanos = now.subsec_nanos();
+                    
+                    // Convert to date and time format
+                    let days = total_secs / 86400;
+                    let remaining_secs = total_secs % 86400;
+                    let hours = remaining_secs / 3600;
+                    let minutes = (remaining_secs % 3600) / 60;
+                    let seconds = remaining_secs % 60;
+                    
+                    // Convert days to YYYYMMDD (simplified - assumes starting from 1970-01-01)
+                    let date = 19700101 + (days as u32);
+                    let time = (hours as u32) * 10000 + (minutes as u32) * 100 + (seconds as u32);
+                    
+                    Range::Utc(UtcRange::From(UtcTime {
+                        date,
+                        time,
+                        nanoseconds: Some(nanos),
+                    }))
+                }
+            }
+        }
+    }
+
+    async fn play_with_range(&mut self, session: &Session, seek_position: Option<gst::ClockTime>, seek_format: SeekFormat) -> Result<u32, RtspError> {
         self.cseq += 1;
         let request_uri = self.aggregate_control.as_ref().unwrap_or(&self.url).clone();
+        
+        // Create Range header based on seek position and format
+        let range_header = Self::create_range_header(seek_position, seek_format);
+        
         let req = Request::builder(Method::Play, self.version)
             .typed_header::<CSeq>(&self.cseq.into())
-            .typed_header::<Range>(&Range::Npt(NptRange::From(NptTime::Now)))
+            .typed_header::<Range>(&range_header)
             .header(USER_AGENT, DEFAULT_USER_AGENT)
             .request_uri(request_uri)
             .typed_header::<Session>(session);
@@ -2137,6 +2354,146 @@ impl RtspTaskState {
         session: &Session,
     ) -> Result<(), RtspError> {
         Self::check_response(rsp, cseq, Method::Play, Some(session))?;
+        
+        // Handle Range header in response for seek operations
+        if let Some(range) = rsp.typed_header::<Range>()? {
+            let (start_time, _end_time) = match range {
+                Range::Npt(npt_range) => {
+                    match npt_range {
+                        NptRange::From(start) => {
+                            let start_ns = match start {
+                                NptTime::Now => 0,
+                                NptTime::Seconds(s, frac) => {
+                                    s * 1_000_000_000 + frac.unwrap_or(0) as u64 * 1_000_000
+                                }
+                                NptTime::Hms(h, m, s, frac) => {
+                                    (h * 3600 + m as u64 * 60 + s as u64) * 1_000_000_000 
+                                        + frac.unwrap_or(0) as u64 * 1_000_000
+                                }
+                            };
+                            (Some(gst::ClockTime::from_nseconds(start_ns)), None)
+                        }
+                        NptRange::FromTo(start, end) => {
+                            let start_ns = match start {
+                                NptTime::Now => 0,
+                                NptTime::Seconds(s, frac) => {
+                                    s * 1_000_000_000 + frac.unwrap_or(0) as u64 * 1_000_000
+                                }
+                                NptTime::Hms(h, m, s, frac) => {
+                                    (h * 3600 + m as u64 * 60 + s as u64) * 1_000_000_000 
+                                        + frac.unwrap_or(0) as u64 * 1_000_000
+                                }
+                            };
+                            let end_ns = match end {
+                                NptTime::Now => u64::MAX,
+                                NptTime::Seconds(s, frac) => {
+                                    s * 1_000_000_000 + frac.unwrap_or(0) as u64 * 1_000_000
+                                }
+                                NptTime::Hms(h, m, s, frac) => {
+                                    (h * 3600 + m as u64 * 60 + s as u64) * 1_000_000_000 
+                                        + frac.unwrap_or(0) as u64 * 1_000_000
+                                }
+                            };
+                            (Some(gst::ClockTime::from_nseconds(start_ns)), 
+                             Some(gst::ClockTime::from_nseconds(end_ns)))
+                        }
+                        NptRange::Empty => (None, None),
+                        NptRange::To(_) => (None, None), // Not commonly used for seeking
+                    }
+                }
+                Range::Smpte(smpte_range) => {
+                    // Convert SMPTE to nanoseconds (assuming 30fps)
+                    match smpte_range {
+                        SmpteRange::From(_smpte_type, time) => {
+                            let frames_val = time.frames.map(|(f, _)| f as u32).unwrap_or(0);
+                            let total_frames = time.hours as u32 * 108000 
+                                + time.minutes as u32 * 1800 
+                                + time.seconds as u32 * 30 
+                                + frames_val;
+                            let ns = (total_frames as u64 * 1_000_000_000) / 30;
+                            (Some(gst::ClockTime::from_nseconds(ns)), None)
+                        }
+                        SmpteRange::FromTo(_smpte_type, start, end) => {
+                            let start_frames_val = start.frames.map(|(f, _)| f as u32).unwrap_or(0);
+                            let start_frames = start.hours as u32 * 108000 
+                                + start.minutes as u32 * 1800 
+                                + start.seconds as u32 * 30 
+                                + start_frames_val;
+                            let end_frames_val = end.frames.map(|(f, _)| f as u32).unwrap_or(0);
+                            let end_frames = end.hours as u32 * 108000 
+                                + end.minutes as u32 * 1800 
+                                + end.seconds as u32 * 30 
+                                + end_frames_val;
+                            let start_ns = (start_frames as u64 * 1_000_000_000) / 30;
+                            let end_ns = (end_frames as u64 * 1_000_000_000) / 30;
+                            (Some(gst::ClockTime::from_nseconds(start_ns)), 
+                             Some(gst::ClockTime::from_nseconds(end_ns)))
+                        }
+                        SmpteRange::Empty(_) => (None, None),
+                        SmpteRange::To(_, _) => (None, None), // Not commonly used for seeking
+                    }
+                }
+                Range::Utc(utc_range) => {
+                    // Convert UTC to relative time
+                    match utc_range {
+                        UtcRange::From(time) => {
+                            // Convert date/time format back to nanoseconds
+                            // Extract hours, minutes, seconds from time field (HHMMSS)
+                            let hours = (time.time / 10000) as u64;
+                            let minutes = ((time.time % 10000) / 100) as u64;
+                            let seconds = (time.time % 100) as u64;
+                            let total_seconds = hours * 3600 + minutes * 60 + seconds;
+                            let ns = total_seconds * 1_000_000_000 + time.nanoseconds.unwrap_or(0) as u64;
+                            (Some(gst::ClockTime::from_nseconds(ns)), None)
+                        }
+                        UtcRange::FromTo(start, end) => {
+                            // Convert start time
+                            let start_hours = (start.time / 10000) as u64;
+                            let start_minutes = ((start.time % 10000) / 100) as u64;
+                            let start_seconds = (start.time % 100) as u64;
+                            let start_total_seconds = start_hours * 3600 + start_minutes * 60 + start_seconds;
+                            let start_ns = start_total_seconds * 1_000_000_000 + start.nanoseconds.unwrap_or(0) as u64;
+                            
+                            // Convert end time
+                            let end_hours = (end.time / 10000) as u64;
+                            let end_minutes = ((end.time % 10000) / 100) as u64;
+                            let end_seconds = (end.time % 100) as u64;
+                            let end_total_seconds = end_hours * 3600 + end_minutes * 60 + end_seconds;
+                            let end_ns = end_total_seconds * 1_000_000_000 + end.nanoseconds.unwrap_or(0) as u64;
+                            
+                            (Some(gst::ClockTime::from_nseconds(start_ns)), 
+                             Some(gst::ClockTime::from_nseconds(end_ns)))
+                        }
+                        UtcRange::Empty => (None, None),
+                        UtcRange::To(_) => (None, None), // Not commonly used for seeking
+                    }
+                }
+                Range::Other(_) => {
+                    // Unsupported range format
+                    gst::warning!(CAT, "Unsupported Range format in response");
+                    (None, None)
+                }
+            };
+            
+            // Log the actual range from server
+            gst::info!(CAT, "Server responded with Range: start={:?}", start_time);
+            
+            // Update segment if we got a valid start time
+            if let Some(start) = start_time {
+                let segment = gst::FormattedSegment::<gst::ClockTime>::new();
+                let mut segment = segment.clone();
+                segment.set_start(start);
+                segment.set_position(start);
+                
+                // Send updated segment to all appsrcs
+                for params in &self.setup_params {
+                    if let Some(ref appsrc) = params.rtp_appsrc {
+                        let _ = appsrc.send_event(gst::event::Segment::new(&segment));
+                    }
+                }
+            }
+        }
+        
         if let Some(RtpInfos::V1(rtpinfos)) = rsp.typed_header::<RtpInfos>()? {
             for rtpinfo in rtpinfos {
                 for params in self.setup_params.iter_mut() {
