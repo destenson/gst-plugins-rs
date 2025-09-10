@@ -69,6 +69,72 @@ const DEFAULT_LATENCY_MS: u32 = 2000;
 const DEFAULT_DROP_ON_LATENCY: bool = false;
 const DEFAULT_PROBATION: u32 = 2;
 
+// RTCP control defaults (matching original rtspsrc)
+const DEFAULT_DO_RTCP: bool = true;
+const DEFAULT_DO_RETRANSMISSION: bool = true;
+const DEFAULT_MAX_RTCP_RTP_TIME_DIFF: i32 = -1;
+
+// Buffer mode enum (matching original rtspsrc)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BufferMode {
+    None,   // Only use RTP timestamps  
+    Slave,  // Slave receiver to sender clock
+    Buffer, // Do low/high watermark buffering
+    Auto,   // Choose mode depending on stream live
+    Synced, // Synchronized sender and receiver clocks
+}
+
+impl Default for BufferMode {
+    fn default() -> Self {
+        BufferMode::Auto // Matches DEFAULT_BUFFER_MODE (BUFFER_MODE_AUTO) from original
+    }
+}
+
+impl BufferMode {
+    fn as_str(&self) -> &'static str {
+        match self {
+            BufferMode::None => "none",
+            BufferMode::Slave => "slave", 
+            BufferMode::Buffer => "buffer",
+            BufferMode::Auto => "auto",
+            BufferMode::Synced => "synced",
+        }
+    }
+
+    fn from_str(s: &str) -> Result<Self, String> {
+        match s {
+            "none" => Ok(BufferMode::None),
+            "slave" => Ok(BufferMode::Slave),
+            "buffer" => Ok(BufferMode::Buffer),
+            "auto" => Ok(BufferMode::Auto),
+            "synced" => Ok(BufferMode::Synced),
+            _ => Err(format!("Invalid buffer mode: {}", s)),
+        }
+    }
+
+    fn as_int(&self) -> u32 {
+        match self {
+            BufferMode::None => 0,
+            BufferMode::Slave => 1,
+            BufferMode::Buffer => 2,
+            BufferMode::Auto => 3,
+            BufferMode::Synced => 4,
+        }
+    }
+
+    fn from_int(i: u32) -> Result<Self, String> {
+        match i {
+            0 => Ok(BufferMode::None),
+            1 => Ok(BufferMode::Slave),
+            2 => Ok(BufferMode::Buffer),
+            3 => Ok(BufferMode::Auto),
+            4 => Ok(BufferMode::Synced),
+            _ => Err(format!("Invalid buffer mode value: {}", i)),
+        }
+    }
+}
+
+
 const MAX_MESSAGE_SIZE: usize = 1024 * 1024;
 const MAX_BIND_PORT_RETRY: u16 = 100;
 const UDP_PACKET_MAX_SIZE: u32 = 65535 - 8;
@@ -136,6 +202,11 @@ struct Settings {
     latency_ms: u32,
     drop_on_latency: bool,
     probation: u32,
+    buffer_mode: BufferMode,
+    // RTCP control properties
+    do_rtcp: bool,
+    do_retransmission: bool,
+    max_rtcp_rtp_time_diff: i32,
     #[cfg(feature = "adaptive")]
     adaptive_learning: bool,
     #[cfg(feature = "adaptive")]
@@ -182,6 +253,11 @@ impl Default for Settings {
             latency_ms: DEFAULT_LATENCY_MS,
             drop_on_latency: DEFAULT_DROP_ON_LATENCY,
             probation: DEFAULT_PROBATION,
+            buffer_mode: BufferMode::default(),
+            // RTCP control properties
+            do_rtcp: DEFAULT_DO_RTCP,
+            do_retransmission: DEFAULT_DO_RETRANSMISSION,
+            max_rtcp_rtp_time_diff: DEFAULT_MAX_RTCP_RTP_TIME_DIFF,
             #[cfg(feature = "adaptive")]
             adaptive_exploration_rate: 0.1,
             #[cfg(feature = "adaptive")]
@@ -556,6 +632,33 @@ impl ObjectImpl for RtspSrc {
                     .default_value(DEFAULT_PROBATION)
                     .mutable_ready()
                     .build(),
+                glib::ParamSpecString::builder("buffer-mode")
+                    .nick("Buffer Mode")
+                    .blurb("Control the buffering algorithm in use (none, slave, buffer, auto, synced)")
+                    .default_value(Some(BufferMode::default().as_str()))
+                    .mutable_ready()
+                    .build(),
+                // RTCP control properties (matching original rtspsrc)
+                glib::ParamSpecBoolean::builder("do-rtcp")
+                    .nick("Do RTCP")
+                    .blurb("Send RTCP packets, disable for old incompatible server.")
+                    .default_value(DEFAULT_DO_RTCP)
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecBoolean::builder("do-retransmission")
+                    .nick("Retransmission")
+                    .blurb("Ask the server to retransmit lost packets")
+                    .default_value(DEFAULT_DO_RETRANSMISSION)
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecInt::builder("max-rtcp-rtp-time-diff")
+                    .nick("Max RTCP RTP Time Diff")
+                    .blurb("Maximum amount of time in ms that the RTP time in RTCP SRs is allowed to be ahead (-1 disabled)")
+                    .minimum(-1)
+                    .maximum(i32::MAX)
+                    .default_value(DEFAULT_MAX_RTCP_RTP_TIME_DIFF)
+                    .mutable_ready()
+                    .build(),
             ]
         });
 
@@ -702,6 +805,39 @@ impl ObjectImpl for RtspSrc {
             "probation" => {
                 let mut settings = self.settings.lock().unwrap();
                 settings.probation = value.get::<u32>().expect("type checked upstream");
+                Ok(())
+            }
+            "buffer-mode" => {
+                let mut settings = self.settings.lock().unwrap();
+                let mode_str: Option<String> = value.get().expect("type checked upstream");
+                if let Some(mode_str) = mode_str {
+                    match BufferMode::from_str(&mode_str) {
+                        Ok(mode) => {
+                            settings.buffer_mode = mode;
+                            Ok(())
+                        }
+                        Err(e) => Err(gst::glib::Error::new(gst::CoreError::Failed, &format!("Invalid buffer mode '{}': {}", mode_str, e))),
+                    }
+                } else {
+                    // Use default if None
+                    settings.buffer_mode = BufferMode::default();
+                    Ok(())
+                }
+            }
+            // RTCP control properties
+            "do-rtcp" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.do_rtcp = value.get::<bool>().expect("type checked upstream");
+                Ok(())
+            }
+            "do-retransmission" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.do_retransmission = value.get::<bool>().expect("type checked upstream");
+                Ok(())
+            }
+            "max-rtcp-rtp-time-diff" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.max_rtcp_rtp_time_diff = value.get::<i32>().expect("type checked upstream");
                 Ok(())
             }
             name => unimplemented!("Property '{name}'"),
@@ -872,6 +1008,23 @@ impl ObjectImpl for RtspSrc {
             "probation" => {
                 let settings = self.settings.lock().unwrap();
                 settings.probation.to_value()
+            }
+            "buffer-mode" => {
+                let settings = self.settings.lock().unwrap();
+                settings.buffer_mode.as_str().to_value()
+            }
+            // RTCP control properties
+            "do-rtcp" => {
+                let settings = self.settings.lock().unwrap();
+                settings.do_rtcp.to_value()
+            }
+            "do-retransmission" => {
+                let settings = self.settings.lock().unwrap();
+                settings.do_retransmission.to_value()
+            }
+            "max-rtcp-rtp-time-diff" => {
+                let settings = self.settings.lock().unwrap();
+                settings.max_rtcp_rtp_time_diff.to_value()
             }
             name => unimplemented!("Property '{name}'"),
         }
@@ -1846,6 +1999,12 @@ impl RtspManager {
             if let Some(settings) = jitter_settings {
                 e.set_property("latency", settings.latency_ms);
                 e.set_property("drop-on-latency", settings.drop_on_latency);
+                
+                // Apply buffer mode (similar to original rtspsrc set_manager_buffer_mode)
+                Self::apply_buffer_mode(&e, settings.buffer_mode);
+                
+                // Apply RTCP settings (similar to original rtspsrc rtpbin configuration)
+                Self::apply_rtcp_settings(&e, settings);
             }
             
             (e.clone(), e)
@@ -1928,6 +2087,50 @@ impl RtspManager {
             }
         }
         Ok(())
+    }
+
+    fn apply_buffer_mode(rtpbin: &gst::Element, buffer_mode: BufferMode) {
+        // Apply buffer mode to rtpbin (similar to original rtspsrc)
+        // Check if rtpbin supports buffer-mode property
+        if let Some(_property) = rtpbin.find_property("buffer-mode") {
+            let mode_int = buffer_mode.as_int();
+            gst::debug!(CAT, "Setting buffer-mode={} ({}) on rtpbin", mode_int, buffer_mode.as_str());
+            
+            if buffer_mode != BufferMode::Auto {
+                // Direct mode setting (non-auto modes)
+                rtpbin.set_property("buffer-mode", mode_int);
+            } else {
+                // Auto mode - let rtpbin decide based on conditions
+                // For now, default to Buffer mode for auto
+                gst::debug!(CAT, "Auto buffer mode - using buffer(2) as default");
+                rtpbin.set_property("buffer-mode", 2u32); // Buffer mode
+            }
+        } else {
+            gst::warning!(CAT, "rtpbin does not support buffer-mode property");
+        }
+    }
+
+    fn apply_rtcp_settings(rtpbin: &gst::Element, settings: &Settings) {
+        // Apply RTCP settings to rtpbin (similar to original rtspsrc)
+        
+        // Apply max-rtcp-rtp-time-diff (similar to original rtspsrc line 4623-4626)
+        if let Some(_property) = rtpbin.find_property("max-rtcp-rtp-time-diff") {
+            gst::debug!(CAT, "Setting max-rtcp-rtp-time-diff={} on rtpbin", settings.max_rtcp_rtp_time_diff);
+            rtpbin.set_property("max-rtcp-rtp-time-diff", settings.max_rtcp_rtp_time_diff);
+        } else {
+            gst::warning!(CAT, "rtpbin does not support max-rtcp-rtp-time-diff property");
+        }
+
+        // Apply do-retransmission (similar to original rtspsrc line 4531)
+        if let Some(_property) = rtpbin.find_property("do-retransmission") {
+            gst::debug!(CAT, "Setting do-retransmission={} on rtpbin", settings.do_retransmission);
+            rtpbin.set_property("do-retransmission", settings.do_retransmission);
+        } else {
+            gst::warning!(CAT, "rtpbin does not support do-retransmission property");
+        }
+
+        gst::debug!(CAT, "Applied RTCP settings: do-rtcp={}, do-retransmission={}, max-rtcp-rtp-time-diff={}", 
+                   settings.do_rtcp, settings.do_retransmission, settings.max_rtcp_rtp_time_diff);
     }
 }
 
