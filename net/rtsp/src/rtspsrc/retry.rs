@@ -8,8 +8,11 @@
 //
 // SPDX-License-Identifier: MPL-2.0
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use rand::Rng;
+
+#[cfg(feature = "adaptive")]
+use super::adaptive_retry::{AdaptiveRetryManager, AdaptiveRetryConfig};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RetryStrategy {
@@ -79,11 +82,29 @@ impl Default for RetryConfig {
 pub struct RetryCalculator {
     config: RetryConfig,
     attempt: u32,
+    adaptive_manager: Option<AdaptiveRetryManager>,
+    last_attempt_time: Option<Instant>,
+    server_url: Option<String>,
 }
 
 impl RetryCalculator {
     pub fn new(config: RetryConfig) -> Self {
-        Self { config, attempt: 0 }
+        Self { 
+            config, 
+            attempt: 0,
+            adaptive_manager: None,
+            last_attempt_time: None,
+            server_url: None,
+        }
+    }
+    
+    pub fn with_server_url(mut self, url: &str) -> Self {
+        self.server_url = Some(url.to_string());
+        if self.config.strategy == RetryStrategy::Adaptive {
+            let adaptive_config = AdaptiveRetryConfig::default();
+            self.adaptive_manager = Some(AdaptiveRetryManager::new(url, adaptive_config));
+        }
+        self
     }
 
     pub fn should_retry(&self) -> bool {
@@ -115,6 +136,7 @@ impl RetryCalculator {
         };
 
         self.attempt += 1;
+        self.last_attempt_time = Some(Instant::now());
         
         // Cap at max_delay
         Some(delay.min(self.config.max_delay))
@@ -122,6 +144,7 @@ impl RetryCalculator {
 
     pub fn reset(&mut self) {
         self.attempt = 0;
+        self.last_attempt_time = None;
     }
 
     pub fn current_attempt(&self) -> u32 {
@@ -151,10 +174,37 @@ impl RetryCalculator {
         self.calculate_exponential_delay(true)
     }
 
-    fn calculate_adaptive_delay(&self) -> Duration {
-        // For now, use exponential with jitter
-        // In PRP-28, this will be enhanced with learning-based optimization
-        self.calculate_exponential_delay(true)
+    fn calculate_adaptive_delay(&mut self) -> Duration {
+        if let Some(ref mut manager) = self.adaptive_manager {
+            let strategy = manager.select_strategy();
+            
+            // Convert adaptive strategy to retry strategy and calculate delay
+            match strategy {
+                super::adaptive_retry::Strategy::Immediate => Duration::ZERO,
+                super::adaptive_retry::Strategy::Linear => self.calculate_linear_delay(),
+                super::adaptive_retry::Strategy::Exponential => self.calculate_exponential_delay(false),
+                super::adaptive_retry::Strategy::ExponentialJitter => self.calculate_exponential_delay(true),
+            }
+        } else {
+            // Fallback to exponential with jitter if adaptive manager not initialized
+            self.calculate_exponential_delay(true)
+        }
+    }
+    
+    pub fn record_attempt_result(&mut self, success: bool) {
+        if let Some(ref manager) = self.adaptive_manager {
+            if let Some(start_time) = self.last_attempt_time {
+                let recovery_time = start_time.elapsed();
+                
+                // Get the last selected strategy from the manager
+                let strategy = manager.get_best_strategy();
+                manager.record_attempt(strategy, success, recovery_time);
+            }
+        }
+    }
+    
+    pub fn get_adaptive_stats(&self) -> Option<String> {
+        self.adaptive_manager.as_ref().map(|m| m.get_stats_summary())
     }
 }
 

@@ -109,6 +109,13 @@ struct Settings {
     max_parallel_connections: u32,
     racing_delay_ms: u32,
     racing_timeout: gst::ClockTime,
+    adaptive_learning: bool,
+    adaptive_persistence: bool,
+    adaptive_cache_ttl: u64,
+    adaptive_discovery_time: gst::ClockTime,
+    adaptive_exploration_rate: f32,
+    adaptive_confidence_threshold: f32,
+    adaptive_change_detection: bool,
 }
 
 impl Default for Settings {
@@ -128,6 +135,13 @@ impl Default for Settings {
             max_parallel_connections: 3,
             racing_delay_ms: 250,
             racing_timeout: gst::ClockTime::from_seconds(5),
+            adaptive_learning: true,
+            adaptive_persistence: true,
+            adaptive_cache_ttl: 7 * 24 * 3600, // 7 days in seconds
+            adaptive_discovery_time: gst::ClockTime::from_seconds(30),
+            adaptive_exploration_rate: 0.1,
+            adaptive_confidence_threshold: 0.8,
+            adaptive_change_detection: true,
         }
     }
 }
@@ -390,6 +404,54 @@ impl ObjectImpl for RtspSrc {
                     .default_value(5_000_000_000) // 5 seconds
                     .mutable_ready()
                     .build(),
+                glib::ParamSpecBoolean::builder("adaptive-learning")
+                    .nick("Adaptive Learning")
+                    .blurb("Enable learning-based retry optimization")
+                    .default_value(true)
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecBoolean::builder("adaptive-persistence")
+                    .nick("Adaptive Persistence")
+                    .blurb("Save learned retry patterns to disk")
+                    .default_value(true)
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecUInt64::builder("adaptive-cache-ttl")
+                    .nick("Adaptive Cache TTL")
+                    .blurb("Cache lifetime for learned patterns in seconds")
+                    .maximum(30 * 24 * 3600) // 30 days
+                    .default_value(7 * 24 * 3600) // 7 days
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecUInt64::builder("adaptive-discovery-time")
+                    .nick("Adaptive Discovery Time")
+                    .blurb("Initial learning phase duration in nanoseconds")
+                    .maximum(gst::ClockTime::MAX.into())
+                    .default_value(30_000_000_000) // 30 seconds
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecFloat::builder("adaptive-exploration-rate")
+                    .nick("Adaptive Exploration Rate")
+                    .blurb("Frequency of exploring alternative strategies (0.0-1.0)")
+                    .minimum(0.0)
+                    .maximum(1.0)
+                    .default_value(0.1)
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecFloat::builder("adaptive-confidence-threshold")
+                    .nick("Adaptive Confidence Threshold")
+                    .blurb("Minimum confidence before using learned patterns (0.0-1.0)")
+                    .minimum(0.0)
+                    .maximum(1.0)
+                    .default_value(0.8)
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecBoolean::builder("adaptive-change-detection")
+                    .nick("Adaptive Change Detection")
+                    .blurb("Detect and adapt to network changes")
+                    .default_value(true)
+                    .mutable_ready()
+                    .build(),
             ]
         });
 
@@ -480,6 +542,41 @@ impl ObjectImpl for RtspSrc {
                 settings.racing_timeout = value.get().expect("type checked upstream");
                 Ok(())
             }
+            "adaptive-learning" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.adaptive_learning = value.get().expect("type checked upstream");
+                Ok(())
+            }
+            "adaptive-persistence" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.adaptive_persistence = value.get().expect("type checked upstream");
+                Ok(())
+            }
+            "adaptive-cache-ttl" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.adaptive_cache_ttl = value.get().expect("type checked upstream");
+                Ok(())
+            }
+            "adaptive-discovery-time" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.adaptive_discovery_time = value.get().expect("type checked upstream");
+                Ok(())
+            }
+            "adaptive-exploration-rate" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.adaptive_exploration_rate = value.get().expect("type checked upstream");
+                Ok(())
+            }
+            "adaptive-confidence-threshold" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.adaptive_confidence_threshold = value.get().expect("type checked upstream");
+                Ok(())
+            }
+            "adaptive-change-detection" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.adaptive_change_detection = value.get().expect("type checked upstream");
+                Ok(())
+            }
             name => unimplemented!("Property '{name}'"),
         };
 
@@ -559,6 +656,34 @@ impl ObjectImpl for RtspSrc {
             "racing-timeout" => {
                 let settings = self.settings.lock().unwrap();
                 settings.racing_timeout.to_value()
+            }
+            "adaptive-learning" => {
+                let settings = self.settings.lock().unwrap();
+                settings.adaptive_learning.to_value()
+            }
+            "adaptive-persistence" => {
+                let settings = self.settings.lock().unwrap();
+                settings.adaptive_persistence.to_value()
+            }
+            "adaptive-cache-ttl" => {
+                let settings = self.settings.lock().unwrap();
+                settings.adaptive_cache_ttl.to_value()
+            }
+            "adaptive-discovery-time" => {
+                let settings = self.settings.lock().unwrap();
+                settings.adaptive_discovery_time.to_value()
+            }
+            "adaptive-exploration-rate" => {
+                let settings = self.settings.lock().unwrap();
+                settings.adaptive_exploration_rate.to_value()
+            }
+            "adaptive-confidence-threshold" => {
+                let settings = self.settings.lock().unwrap();
+                settings.adaptive_confidence_threshold.to_value()
+            }
+            "adaptive-change-detection" => {
+                let settings = self.settings.lock().unwrap();
+                settings.adaptive_change_detection.to_value()
             }
             name => unimplemented!("Property '{name}'"),
         }
@@ -735,7 +860,8 @@ impl RtspSrc {
                 linear_step: std::time::Duration::from_nanos(settings.linear_retry_step.nseconds()),
             };
 
-            let mut retry_calc = super::retry::RetryCalculator::new(retry_config);
+            let mut retry_calc = super::retry::RetryCalculator::new(retry_config)
+                .with_server_url(&url.to_string());
 
             // Create connection racer config
             let racing_config = super::connection_racer::ConnectionRacingConfig {
