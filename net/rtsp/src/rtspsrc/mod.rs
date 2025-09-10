@@ -39,6 +39,7 @@ mod body;
 mod imp;
 mod retry;
 mod sdp;
+mod session_manager;
 mod tcp_message;
 mod transport;
 
