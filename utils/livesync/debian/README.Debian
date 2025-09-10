@@ -1,0 +1,33 @@
+gst-plugin-livesync for Debian
+====================================
+
+This package provides GStreamer livesync element for high-availability
+streaming applications.
+
+## Quick Start
+
+After installation, the plugin provides one main element:
+
+1. **livesync** - Keeps live streams valid despite packet/frame loss
+
+Verify installation:
+```bash
+gst-inspect-1.0 livesync
+```
+
+## Support
+
+For issues specific to this Debian package:
+- Package Maintainer: gstreamer-rust@lists.freedesktop.org
+
+For upstream plugin issues:
+- Repository: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs
+- Issue Tracker: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs/-/issues
+
+## See Also
+
+- gst-inspect-1.0(1)
+- gst-launch-1.0(1)
+- GStreamer documentation: https://gstreamer.freedesktop.org/documentation/
+
+ -- GStreamer Rust Plugins Maintainers <gstreamer-rust@lists.freedesktop.org>

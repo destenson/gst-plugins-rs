@@ -1,0 +1,25 @@
+#!/bin/sh
+# prerm script for gst-plugin-livesync
+# Following PRP-006: Pre-removal cleanup
+
+set -e
+
+case "$1" in
+    remove|upgrade|deconfigure)
+        # Clean up any temporary files that might have been created
+        # by the plugin during runtime (if any exist)
+        
+        # Note: GStreamer plugin cache will be automatically updated
+        # when the plugin file is removed
+        ;;
+
+    failed-upgrade)
+        ;;
+
+    *)
+        echo "prerm called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

@@ -41,6 +41,9 @@ gst-plugin-version-helper.workspace = true
 static = []
 capi = []
 doc = ["gst/v1_18"]
+v1_16 = ["gst/v1_16"]
+v1_18 = ["gst/v1_18"]
+v1_20 = ["gst/v1_20"]
 
 [package.metadata.capi]
 min_version = "0.9.21"
@@ -55,3 +58,47 @@ import_library = false
 
 [package.metadata.capi.pkg_config]
 requires_private = "gstreamer-1.0, gstreamer-audio-1.0, gobject-2.0, glib-2.0, gmodule-2.0"
+
+[package.metadata.deb]
+name = "gst-plugin-livesync"
+maintainer = "GStreamer Rust Plugins Maintainers <gstreamer-rust@lists.freedesktop.org>"
+copyright = "2020-2024, Jan Alexander Steffens (heftig) <jan.steffens@ltnglobal.com>"
+license-file = ["LICENSE-MPL-2.0", "4"]
+extended-description = """\
+GStreamer plugin providing priority-based automatic input selector element.
+This plugin contains:
+  - livesync: Automatically keep live source valid
+This element is useful for live streaming applications requiring high availability."""
+depends = "$auto, gstreamer1.0-plugins-base (>= 1.16.0), libgstreamer1.0-0 (>= 1.16.0)"
+section = "libs"
+priority = "optional"
+# Additional cargo-deb configuration
+revision = "1"
+conf-files = []
+# Changelog for version tracking
+changelog = "debian/changelog"
+# Ensure proper stripping and compression
+separate-debug-symbols = true
+# compress = true
+# # Strip binaries for smaller package size
+# strip = true
+# Architecture will be auto-detected based on build target
+preserve-symlinks = false
+# Build flags - use release mode for optimized builds
+features = ["v1_16"]
+default-features = true
+# # System dependencies for building (build-depends)
+# # Note: Rust toolchain is handled separately and not listed here
+# build-depends = "libgstreamer1.0-dev (>= 1.16.0), libgstreamer-plugins-base1.0-dev (>= 1.16.0), pkg-config"
+# Suggests and recommends
+recommends = "gstreamer1.0-tools"
+suggests = "gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad"
+
+# [package.metadata.$().deb]
+# Asset installation for Debian package
+assets = [
+    ["target/release/libgstlivesync.so", "usr/lib/gstreamer-1.0/libgstlivesync.so", "644"],
+    ["LICENSE-MPL-2.0", "usr/share/doc/gst-plugin-livesync/", "644"],
+    # ["README.md", "usr/share/doc/gst-plugin-livesync/", "644"],
+    ["debian/changelog", "usr/share/doc/gst-plugin-livesync/changelog.Debian", "644"]
+]
