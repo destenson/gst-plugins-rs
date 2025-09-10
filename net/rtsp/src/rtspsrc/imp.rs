@@ -47,6 +47,9 @@ use gst::prelude::*;
 use gst::subclass::prelude::*;
 use gst_net::gio;
 
+#[cfg(feature = "tracing")]
+use tracing::{event, Level};
+
 use super::body::Body;
 use super::sdp;
 use super::transport::RtspTransportInfo;
@@ -190,6 +193,8 @@ pub struct RtspSrc {
     settings: Mutex<Settings>,
     task_handle: Mutex<Option<JoinHandle<()>>>,
     command_queue: Mutex<Option<mpsc::Sender<Commands>>>,
+    #[cfg(feature = "telemetry")]
+    metrics: super::telemetry::RtspMetrics,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -411,6 +416,31 @@ impl ObjectImpl for RtspSrc {
                     .blurb("Parallel connection racing strategy: none, first-wins, last-wins, hybrid")
                     .default_value("none")
                     .mutable_ready()
+                    .build(),
+                // Telemetry properties (read-only)
+                #[cfg(feature = "telemetry")]
+                glib::ParamSpecUInt64::builder("metrics-connection-attempts")
+                    .nick("Connection Attempts")
+                    .blurb("Total number of connection attempts")
+                    .read_only()
+                    .build(),
+                #[cfg(feature = "telemetry")]
+                glib::ParamSpecUInt64::builder("metrics-connection-successes")
+                    .nick("Connection Successes")
+                    .blurb("Total number of successful connections")
+                    .read_only()
+                    .build(),
+                #[cfg(feature = "telemetry")]
+                glib::ParamSpecUInt64::builder("metrics-packets-received")
+                    .nick("Packets Received")
+                    .blurb("Total number of packets received")
+                    .read_only()
+                    .build(),
+                #[cfg(feature = "telemetry")]
+                glib::ParamSpecUInt64::builder("metrics-bytes-received")
+                    .nick("Bytes Received")
+                    .blurb("Total number of bytes received")
+                    .read_only()
                     .build(),
                 glib::ParamSpecUInt::builder("max-parallel-connections")
                     .nick("Maximum Parallel Connections")
@@ -690,6 +720,47 @@ impl ObjectImpl for RtspSrc {
                 let settings = self.settings.lock().unwrap();
                 settings.connection_racing.as_str().to_value()
             }
+            // Telemetry metrics properties
+            #[cfg(feature = "telemetry")]
+            "metrics-connection-attempts" => {
+                #[cfg(feature = "telemetry")]
+                {
+                    let summary = self.metrics.get_metrics_summary();
+                    summary.connection_attempts.to_value()
+                }
+                #[cfg(not(feature = "telemetry"))]
+                0u64.to_value()
+            }
+            #[cfg(feature = "telemetry")]
+            "metrics-connection-successes" => {
+                #[cfg(feature = "telemetry")]
+                {
+                    let summary = self.metrics.get_metrics_summary();
+                    summary.connection_successes.to_value()
+                }
+                #[cfg(not(feature = "telemetry"))]
+                0u64.to_value()
+            }
+            #[cfg(feature = "telemetry")]
+            "metrics-packets-received" => {
+                #[cfg(feature = "telemetry")]
+                {
+                    let summary = self.metrics.get_metrics_summary();
+                    summary.total_packets_received.to_value()
+                }
+                #[cfg(not(feature = "telemetry"))]
+                0u64.to_value()
+            }
+            #[cfg(feature = "telemetry")]
+            "metrics-bytes-received" => {
+                #[cfg(feature = "telemetry")]
+                {
+                    let summary = self.metrics.get_metrics_summary();
+                    summary.total_bytes_received.to_value()
+                }
+                #[cfg(not(feature = "telemetry"))]
+                0u64.to_value()
+            }
             "max-parallel-connections" => {
                 let settings = self.settings.lock().unwrap();
                 settings.max_parallel_connections.to_value()
@@ -926,6 +997,13 @@ impl RtspSrc {
 
         let join_handle = RUNTIME.spawn(async move {
             gst::info!(CAT, "Connecting to {url} ..");
+            
+            #[cfg(feature = "telemetry")]
+            let _connection_span = super::telemetry::SpanHelper::connection_span(url.as_str());
+            
+            #[cfg(feature = "telemetry")]
+            task_src.metrics.record_connection_attempt();
+            
             let hostname_port =
                 format!("{}:{}", url.host_str().unwrap(), url.port().unwrap_or(554));
 
@@ -991,6 +1069,13 @@ impl RtspSrc {
             let _ = s.set_nodelay(true);
 
             gst::info!(CAT, "Connected!");
+            
+            #[cfg(feature = "telemetry")]
+            {
+                let connection_time = std::time::Instant::now().duration_since(std::time::Instant::now()).as_millis() as u64;
+                task_src.metrics.record_connection_success(connection_time);
+                event!(Level::INFO, "RTSP connection established");
+            }
 
             let (read, write) = s.into_split();
 

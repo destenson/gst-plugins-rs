@@ -43,6 +43,8 @@ mod retry;
 mod sdp;
 mod session_manager;
 mod tcp_message;
+#[cfg(feature = "telemetry")]
+mod telemetry;
 mod transport;
 
 glib::wrapper! {
