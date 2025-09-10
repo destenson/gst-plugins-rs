@@ -65,10 +65,12 @@ yet:
 
 ## Testing
 
+### Unit Tests
+
 Unit tests have been added for the RTSP plugin. Run them with:
 
 ```bash
-cargo test -p gst-plugin-rtsp
+cargo test -p gst-plugin-rtsp rtspsrc
 ```
 
 The test suite includes:
@@ -76,7 +78,23 @@ The test suite includes:
 * Property getter/setter validation  
 * State transition testing
 * Protocol parsing tests
-* Basic harness preparation for future mock server tests
+* Signal connection tests
+
+### Mock RTSP Server
+
+A mock RTSP server has been implemented for testing RTSP protocol interactions:
+
+```bash
+cargo test -p gst-plugin-rtsp mock_server
+```
+
+The mock server provides:
+* Basic RTSP command support (OPTIONS, DESCRIBE, SETUP, PLAY, TEARDOWN)
+* Configurable SDP responses
+* Session management
+* TCP listener on configurable port
+
+Note: Integration tests with the actual rtspsrc2 element are still in development
 
 ## Maintenance and future cleanup
 
