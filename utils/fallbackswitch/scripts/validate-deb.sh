@@ -28,7 +28,7 @@ echo -e "${YELLOW}Validating for architecture: ${DEB_HOST_MULTIARCH}${NC}"
 
 # 1. Build the plugin library with cargo-c
 echo -e "${YELLOW}Step 1: Building the plugin library with cargo-c...${NC}"
-cargo cbuild -p gst-plugin-fallbackswitch --release
+cargo build -p gst-plugin-fallbackswitch --release
 check_result "Plugin library built successfully with cargo-c"
 
 # 2. Check the built library

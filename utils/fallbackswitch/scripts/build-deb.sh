@@ -151,7 +151,7 @@ strip --strip-unneeded target/release/libgstfallbackswitch.so
 
 # Generate the debian package
 echo "Generating Debian package..."
-cargo deb --no-build --no-strip
+cargo deb --no-build --no-strip --multiarch=same #--output "usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0"
 
 # Display package info
 DEB_FILE=$(ls -1 target/debian/*.deb 2>/dev/null | head -n1)
@@ -166,10 +166,10 @@ if [ -n "$DEB_FILE" ]; then
     dpkg-deb --contents "$DEB_FILE" | grep -E "(gstreamer|\.so)"
     echo ""
     # Verify the library is in the correct multiarch path
-    if dpkg-deb --contents "$DEB_FILE" | grep -q "/usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0/"; then
+    if dpkg-deb --contents "$DEB_FILE" | grep -q "usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0"; then
         echo -e "${GREEN}✓ Library will be installed to correct GStreamer plugin path${NC}"
     else
-        echo -e "${YELLOW}⚠ Warning: Library path may not be correct for GStreamer discovery${NC}"
+        echo -e "${YELLOW}⚠ Warning: Library path may not be correct for GStreamer discovery${NC}: usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0"
     fi
 else
     echo -e "${RED}Failed to create debian package${NC}"
