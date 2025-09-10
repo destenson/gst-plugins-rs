@@ -15,7 +15,6 @@ pub mod streams;
 pub mod websocket;
 pub mod event_integration;
 pub mod rotation;
-pub mod backup;
 pub mod recovery;
 
 pub use error::ApiError;

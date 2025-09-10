@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::RwLock;
 use notify::{Watcher, RecursiveMode, Event};
 use tracing::{info, warn, error};
@@ -113,13 +114,14 @@ impl StreamConfig {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct RecordingConfig {
-    pub segment_duration_seconds: u64,
     pub format: String,
-    pub video_codec: String,
-    pub audio_codec: String,
-    pub video_bitrate_kbps: u32,
-    pub audio_bitrate_kbps: u32,
-    pub keyframe_interval: u32,
+    pub video_codec: Option<String>,
+    pub audio_codec: Option<String>,
+    pub video_bitrate_kbps: Option<u32>,
+    pub audio_bitrate_kbps: Option<u32>,
+    pub keyframe_interval: Option<u32>,
+    pub max_segments: Option<u32>,
+    pub segment_duration: Duration,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -320,13 +322,14 @@ impl Default for StorageConfig {
 impl Default for RecordingConfig {
     fn default() -> Self {
         Self {
-            segment_duration_seconds: 300, // 5 minutes
+            segment_duration: Duration::from_secs(300), // 5 minutes
             format: "mp4".to_string(),
-            video_codec: "h264".to_string(),
-            audio_codec: "aac".to_string(),
-            video_bitrate_kbps: 2000,
-            audio_bitrate_kbps: 128,
-            keyframe_interval: 30,
+            video_codec: Some("h264".to_string()),
+            audio_codec: Some("aac".to_string()),
+            video_bitrate_kbps: Some(2000),
+            audio_bitrate_kbps: Some(128),
+            keyframe_interval: Some(30),
+            max_segments: Some(100),
         }
     }
 }
@@ -477,7 +480,7 @@ impl Config {
     pub fn validate_storage(&self) -> crate::Result<()> {
         // Validate storage if configured
         if let Some(ref storage) = self.storage {
-            // Validate storage path (just warn if it doesn't exist - we'll create it later)
+            // TODO: Validate storage path (just warn if it doesn't exist - we'll create it later)
             if !storage.base_path.exists() {
                 warn!("Storage path does not exist: {:?} - will be created when needed", storage.base_path);
             }

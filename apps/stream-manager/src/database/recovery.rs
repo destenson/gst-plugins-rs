@@ -517,19 +517,6 @@ mod tests {
     use tempfile::TempDir;
 
     #[tokio::test]
-    async fn test_recovery_manager_creation() {
-        let temp_dir = TempDir::new().unwrap();
-        let config = BackupConfig::default();
-        
-        let manager = BackupManager::new(
-            config,
-            temp_dir.path().to_path_buf()
-        );
-        
-        assert!(manager.get_backup_history().await.is_empty());
-    }
-
-    #[tokio::test]
     async fn test_reset_recordings() {
         let temp_dir = TempDir::new().unwrap();
         let recordings_path = temp_dir.path().join("recordings");

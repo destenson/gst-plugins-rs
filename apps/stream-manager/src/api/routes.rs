@@ -14,10 +14,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     // Configure disk rotation endpoints from PRP-17
     crate::api::rotation::configure_routes(cfg);
     
-    // Configure backup endpoints from PRP-24 (legacy compatibility)
-    crate::api::backup::configure(cfg);
-    
-    // Configure recovery endpoints (new simplified approach)
+    // Configure recovery endpoints
     crate::api::recovery::configure(cfg);
     
     // Configure WebRTC endpoints from PRP-26

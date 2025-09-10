@@ -192,8 +192,15 @@ mod tests {
         
         let config: crate::config::StreamConfig = request.into();
         assert_eq!(config.id, "test-stream");
+        assert_eq!(config.name, "test-stream");
         assert_eq!(config.source_uri, "rtsp://example.com/stream");
-        assert!(config.recording_enabled);
-        assert!(!config.inference_enabled);
+        assert_eq!(config.enabled, true);
+        assert_eq!(config.recording_enabled, true);
+        assert_eq!(config.inference_enabled, false);
+        assert_eq!(config.reconnect_timeout_seconds, 5);
+        assert_eq!(config.max_reconnect_attempts, 10);
+        assert_eq!(config.buffer_size_mb, 100);
+        assert_eq!(config.rtsp_outputs, None);
+
     }
 }

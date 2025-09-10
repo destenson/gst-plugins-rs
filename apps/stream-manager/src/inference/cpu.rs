@@ -330,7 +330,7 @@ impl CpuInference {
         session: &Session,
         config: &CpuInferenceConfig,
     ) -> Result<Vec<Vec<DetectedObject>>, Box<dyn std::error::Error + Send + Sync>> {
-        // Preprocess frames sequentially for now (can be parallelized later)
+        // Preprocess frames sequentially for now (TODO: can be parallelized later)
         let mut preprocessed = Vec::new();
         for frame in frames {
             preprocessed.push(Self::preprocess_frame(&frame.data, frame.width, frame.height, config)?);

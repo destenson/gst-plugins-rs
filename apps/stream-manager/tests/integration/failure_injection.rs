@@ -141,7 +141,7 @@ async fn test_pipeline_errors() {
             tokio::time::sleep(Duration::from_secs(2)).await;
             
             let info = fixture.stream_manager.get_stream_info(stream_id).await;
-            if let Some(info) = info {
+            if let Ok(info) = info {
                 info!("Stream state: {:?}", info.state);
             }
             
@@ -189,7 +189,7 @@ async fn test_resource_limits() {
             rtsp_outputs: vec![],
         };
         
-        match fixture.stream_manager.add_stream(stream_config).await {
+        match fixture.stream_manager.add_stream_from_config(stream_config).await {
             Ok(_) => {
                 created.push(format!("resource-limit-{}", i));
                 info!("Created stream {}", i);
@@ -235,8 +235,8 @@ async fn test_failure_recovery_sequence() {
         inference: None,
         rtsp_outputs: vec![],
     };
-    
-    fixture.stream_manager.add_stream(config.clone()).await.unwrap();
+
+    fixture.stream_manager.add_stream_from_config(config.clone()).await.unwrap();
     info!("Added stream with fallback source");
     
     // Wait for fallback to activate
@@ -247,8 +247,8 @@ async fn test_failure_recovery_sequence() {
     info!("Removed stream");
     
     tokio::time::sleep(Duration::from_millis(500)).await;
-    
-    fixture.stream_manager.add_stream(config.clone()).await.unwrap();
+
+    fixture.stream_manager.add_stream_from_config(config.clone()).await.unwrap();
     info!("Re-added stream");
     
     // Scenario 3: Concurrent operations
@@ -271,7 +271,7 @@ async fn test_failure_recovery_sequence() {
     let info = handle1.await.unwrap();
     let streams = handle2.await.unwrap();
     
-    if info.is_some() {
+    if info.is_ok() {
         info!("Stream info retrieved during concurrent access");
     }
     info!("Total streams during concurrent access: {}", streams.len());

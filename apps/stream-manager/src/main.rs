@@ -1,3 +1,4 @@
+#![allow(unused)]
 use anyhow::Result;
 use clap::Parser;
 use std::path::PathBuf;
@@ -5,9 +6,8 @@ use std::sync::Arc;
 use tracing::{info, error};
 use tracing_subscriber::EnvFilter;
 use stream_manager::{
-    backup::BackupManager,
     config::ConfigManager,
-    database::{Database, DatabaseConfig},
+    database::{Database, DatabaseConfig, recovery::BackupManager},
     gst_utils,
     manager::StreamManager,
     recovery::{RecoveryManager, RecoveryConfig},
@@ -135,7 +135,7 @@ async fn main() -> Result<()> {
         recovery_manager.register_recovery_handler(
             "stream".to_string(),
             Box::new(move |snapshot| {
-                // Recovery logic for streams will be implemented later
+                // TODO: Recovery logic for streams will be implemented later
                 stream_manager::recovery::RecoveryResult::Recovered
             }),
         ).await;

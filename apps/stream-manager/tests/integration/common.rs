@@ -6,7 +6,7 @@ use tracing::info;
 
 use stream_manager::{
     api::AppState,
-    manager::{StreamManager, StreamConfig},
+    manager::{StreamManager, stream_manager::config::StreamConfig},
     Config,
 };
 

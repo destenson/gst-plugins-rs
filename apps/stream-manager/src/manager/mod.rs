@@ -164,10 +164,10 @@ impl StreamManager {
         // Create recording branch if configured
         let recording_branch = if config.recording_enabled {
             // Convert config format to recording format
-            let recording_config = crate::recording::RecordingConfig {
+            let recording_config = crate::recording::branch::RecordingConfig {
                 base_path: std::path::PathBuf::from("recordings"),
                 file_pattern: format!("stream-{}-{{}}.mp4", id),
-                segment_duration: gst::ClockTime::from_seconds(self.config.recording.segment_duration_seconds),
+                segment_duration: gst::ClockTime::from_seconds(self.config.recording.segment_duration.as_secs()),
                 muxer: crate::recording::MuxerType::Mp4,
                 is_live: true,
                 send_keyframe_requests: true,
@@ -588,6 +588,7 @@ mod tests {
             reconnect_timeout_seconds: 5,
             max_reconnect_attempts: 3,
             buffer_size_mb: 10,
+            rtsp_outputs: None,
         };
         
         // Add stream
@@ -636,6 +637,7 @@ mod tests {
                 reconnect_timeout_seconds: 5,
                 max_reconnect_attempts: 3,
                 buffer_size_mb: 10,
+                rtsp_outputs: None,
             };
             manager1.add_stream("stream1".to_string(), stream_config).await
         });
@@ -651,6 +653,7 @@ mod tests {
                 reconnect_timeout_seconds: 5,
                 max_reconnect_attempts: 3,
                 buffer_size_mb: 10,
+                rtsp_outputs: None,
             };
             manager2.add_stream("stream2".to_string(), stream_config).await
         });
