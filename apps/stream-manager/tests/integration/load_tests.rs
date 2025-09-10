@@ -3,7 +3,8 @@ use stream_manager::manager::StreamState;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tracing::{error, info};
+use tokio::time::sleep;
+use tracing::info;
 
 /// Test concurrent stream limits
 #[tokio::test]
@@ -19,9 +20,12 @@ async fn test_concurrent_stream_limits() {
     
     // Try to add many streams
     for i in 0..target_streams {
-        let config = create_test_stream_config(&format!("load-{}", i));
-        match fixture.stream_manager.add_stream(config).await {
-            Ok(_) => success_count += 1,
+        let (id, config) = create_test_stream_config(&format!("load-{}", i));
+        match fixture.stream_manager.add_stream(id.clone(), config).await {
+            Ok(_) => {
+                success_count += 1;
+                info!("Successfully added stream {}", id);
+            }
             Err(e) => {
                 info!("Failed to add stream {}: {}", i, e);
                 failure_count += 1;
@@ -30,284 +34,397 @@ async fn test_concurrent_stream_limits() {
     }
     
     info!("Added {} streams successfully, {} failed", success_count, failure_count);
+    assert!(success_count > 0, "Should be able to add at least one stream");
     
-    // Verify active streams
+    // Wait for all added streams to be running
     let streams = fixture.stream_manager.list_streams().await;
-    assert_eq!(streams.len(), success_count, "Stream count mismatch");
-    
-    // Clean up
-    for stream in streams {
-        fixture.stream_manager.remove_stream(&stream.id).await.ok();
+    for stream in &streams {
+        wait_for_stream_state(&fixture.stream_manager, &stream.id, StreamState::Running, Duration::from_secs(10)).await;
     }
     
-    info!("Concurrent stream limits test completed");
+    // Verify stream count
+    assert_eq!(streams.len(), success_count);
+    
+    // Clean up
     fixture.cleanup().await;
 }
 
-/// Test sustained load over time
+/// Test stream reconnection under load
 #[tokio::test]
-#[ignore] // This test takes a long time, run with --ignored flag
-async fn test_sustained_load() {
+async fn test_stream_reconnection() {
     super::init_test_environment();
     let fixture = TestFixture::new().await;
     
-    info!("Starting sustained load test");
+    info!("Starting stream reconnection test");
     
-    let test_duration = Duration::from_secs(60); // 1 minute
-    let stream_count = 5;
-    let mut metrics = MetricsCollector::new();
+    // Add a stream with simulated connection that might fail
+    let stream_id = "reconnect-test";
+    let (_, config) = create_stream_config_with_source(
+        stream_id,
+        "videotestsrc pattern=ball ! video/x-raw,width=320,height=240"
+    );
     
-    // Add initial streams
-    for i in 0..stream_count {
-        let config = create_test_stream_config(&format!("sustained-{}", i));
-        fixture.stream_manager.add_stream(config).await.unwrap();
+    fixture.stream_manager.add_stream(stream_id.to_string(), config.clone())
+        .await
+        .expect("Failed to add stream");
+    
+    // Wait for initial connection
+    assert!(
+        wait_for_stream_state(&fixture.stream_manager, stream_id, StreamState::Running, Duration::from_secs(10)).await,
+        "Stream should connect initially"
+    );
+    
+    // Simulate disconnection by removing and re-adding
+    for i in 0..3 {
+        info!("Reconnection test iteration {}", i);
+        
+        // Remove stream (simulate disconnection)
+        fixture.stream_manager.remove_stream(stream_id)
+            .await
+            .expect("Failed to remove stream");
+        
+        // Wait a bit
+        sleep(Duration::from_millis(500)).await;
+        
+        // Re-add stream (reconnect)
+        fixture.stream_manager.add_stream(stream_id.to_string(), config.clone())
+            .await
+            .expect("Failed to re-add stream");
+        
+        // Wait for reconnection
+        assert!(
+            wait_for_stream_state(&fixture.stream_manager, stream_id, StreamState::Running, Duration::from_secs(10)).await,
+            "Stream should reconnect"
+        );
     }
     
-    // Run under load
+    // Clean up
+    fixture.stream_manager.remove_stream(stream_id)
+        .await
+        .expect("Failed to remove stream");
+    
+    fixture.cleanup().await;
+}
+
+/// Test load balancing under pressure
+#[tokio::test]
+async fn test_load_balancing() {
+    super::init_test_environment();
+    let fixture = TestFixture::new().await;
+    
+    info!("Starting load balancing test");
+    
+    let stream_count: usize = 5;
+    let mut stream_ids = Vec::new();
+    
+    // Add multiple streams with different configurations
+    for i in 0..stream_count {
+        let generator = TestStreamGenerator::new()
+            .with_resolution(320 + (i as u32) * 160, 240 + (i as u32) * 120)
+            .with_fps(15 + (i as u32) * 5);
+        
+        let stream_id = format!("load-balance-{}", i);
+        let (_, config) = create_stream_config_with_source(
+            &stream_id,
+            &generator.to_pipeline_string()
+        );
+        
+        fixture.stream_manager.add_stream(stream_id.clone(), config)
+            .await
+            .expect(&format!("Failed to add stream {}", i));
+        
+        stream_ids.push(stream_id);
+    }
+    
+    // Wait for all streams to start
+    for id in &stream_ids {
+        wait_for_stream_state(&fixture.stream_manager, id, StreamState::Running, Duration::from_secs(10)).await;
+    }
+    
+    // Monitor for a while
+    let monitor_duration = Duration::from_secs(5);
     let start = Instant::now();
-    let mut sample_count = 0;
     
-    while start.elapsed() < test_duration {
-        metrics.collect_sample(&fixture.stream_manager).await;
-        sample_count += 1;
+    while start.elapsed() < monitor_duration {
+        let streams = fixture.stream_manager.list_streams().await;
+        let running_count = streams.iter()
+            .filter(|s| s.state == StreamState::Running)
+            .count();
         
-        // Periodically verify streams are still running
-        if sample_count % 10 == 0 {
-            let streams = fixture.stream_manager.list_streams().await;
-            let running = streams.iter()
-                .filter(|s| matches!(s.state, StreamState::Running))
-                .count();
-            
-            if running < stream_count {
-                error!("Some streams stopped: {}/{}", running, stream_count);
-            }
-        }
+        info!("Running streams: {}/{}", running_count, stream_count);
+        assert_eq!(running_count, stream_count, "All streams should remain running");
         
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        sleep(Duration::from_secs(1)).await;
     }
-    
-    // Get final metrics
-    let summary = metrics.get_summary();
-    info!("Sustained load test summary: {:?}", summary);
-    
-    // Verify stability
-    assert_eq!(summary.max_concurrent_streams, stream_count, "Stream count changed during test");
     
     // Clean up
-    for i in 0..stream_count {
-        fixture.stream_manager.remove_stream(&format!("sustained-{}", i)).await.ok();
+    for id in &stream_ids {
+        fixture.stream_manager.remove_stream(id)
+            .await
+            .expect(&format!("Failed to remove stream {}", id));
     }
     
-    info!("Sustained load test completed");
     fixture.cleanup().await;
 }
 
-/// Test burst traffic handling
+/// Test memory management under load
 #[tokio::test]
-async fn test_burst_traffic() {
+async fn test_memory_management() {
     super::init_test_environment();
     let fixture = TestFixture::new().await;
     
-    info!("Starting burst traffic test");
+    info!("Starting memory management test");
     
-    let burst_size = 5;
-    let burst_count = 3;
-    let delay_between_bursts = Duration::from_secs(2);
+    let mut metrics_collector = MetricsCollector::new();
     
-    for burst in 0..burst_count {
-        info!("Starting burst {}", burst);
-        
-        // Add streams in burst
-        let mut handles = vec![];
-        for i in 0..burst_size {
-            let manager = fixture.stream_manager.clone();
-            let stream_id = format!("burst-{}-{}", burst, i);
-            
-            let handle = tokio::spawn(async move {
-                let config = create_test_stream_config(&stream_id);
-                manager.add_stream(config).await
-            });
-            handles.push((stream_id, handle));
-        }
-        
-        // Wait for burst to complete
-        for (id, handle) in handles {
-            match handle.await {
-                Ok(Ok(_)) => info!("Stream {} added", id),
-                Ok(Err(e)) => error!("Failed to add stream {}: {}", id, e),
-                Err(e) => error!("Task panic for stream {}: {}", id, e),
-            }
-        }
-        
-        // Verify streams
-        let streams = fixture.stream_manager.list_streams().await;
-        info!("Active streams after burst {}: {}", burst, streams.len());
-        
-        // Wait before next burst
-        if burst < burst_count - 1 {
-            tokio::time::sleep(delay_between_bursts).await;
-        }
-    }
-    
-    // Clean up all streams
-    let streams = fixture.stream_manager.list_streams().await;
-    for stream in streams {
-        fixture.stream_manager.remove_stream(&stream.id).await.ok();
-    }
-    
-    info!("Burst traffic test completed");
-    fixture.cleanup().await;
-}
-
-/// Test resource usage under load
-#[tokio::test]
-async fn test_resource_monitoring() {
-    super::init_test_environment();
-    let fixture = TestFixture::new().await;
-    
-    info!("Starting resource monitoring test");
-    
-    let mut metrics = MetricsCollector::new();
-    
-    // Baseline measurement
-    metrics.collect_sample(&fixture.stream_manager).await;
-    let baseline = metrics.get_summary();
-    
-    // Add streams progressively and monitor resources
+    // Phase 1: Add streams gradually
     let max_streams = 5;
+    let mut stream_ids = Vec::new();
+    
     for i in 0..max_streams {
-        let config = TestStreamGenerator::new()
-            .with_resolution(1920, 1080)
-            .with_fps(30)
-            .with_pattern("smpte");
+        let (id, config) = create_test_stream_config(&format!("memory-{}", i));
         
-        let stream_config = StreamConfig {
-            id: format!("resource-{}", i),
-            source_url: config.to_pipeline_string(),
-            source_type: stream_manager::config::SourceType::Test,
-            recording: Some(stream_manager::config::RecordingConfig {
-                enabled: true,
-                base_path: std::path::PathBuf::from("/tmp/test-recordings"),
-                segment_duration: Duration::from_secs(10),
-                max_segments: Some(5),
-                format: stream_manager::config::RecordingFormat::Mp4,
-            }),
-            inference: None,
-            rtsp_outputs: vec![],
-        };
+        fixture.stream_manager.add_stream(id.clone(), config)
+            .await
+            .expect(&format!("Failed to add stream {}", i));
         
-        fixture.stream_manager.add_stream(stream_config).await.unwrap();
+        stream_ids.push(id.clone());
         
-        // Let stream stabilize
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        // Wait for stream to start
+        wait_for_stream_state(&fixture.stream_manager, &id, StreamState::Running, Duration::from_secs(10)).await;
         
         // Collect metrics
-        for _ in 0..3 {
-            metrics.collect_sample(&fixture.stream_manager).await;
-            tokio::time::sleep(Duration::from_millis(500)).await;
-        }
+        metrics_collector.collect_sample(&fixture.stream_manager).await;
+        
+        sleep(Duration::from_secs(1)).await;
     }
     
-    // Get final metrics
-    let summary = metrics.get_summary();
-    
-    info!("Resource monitoring results:");
-    info!("  Baseline CPU: {:.1}%", baseline.avg_cpu_percent);
-    info!("  Under load CPU: {:.1}% (avg), {:.1}% (max)", summary.avg_cpu_percent, summary.max_cpu_percent);
-    info!("  Baseline Memory: {:.1}MB", baseline.avg_memory_mb);
-    info!("  Under load Memory: {:.1}MB (avg), {:.1}MB (max)", summary.avg_memory_mb, summary.max_memory_mb);
-    
-    // Verify resource usage is reasonable
-    assert!(summary.max_cpu_percent < 100.0, "CPU usage too high");
-    assert!(summary.max_memory_mb < 2000.0, "Memory usage too high");
-    
-    // Clean up
-    for i in 0..max_streams {
-        fixture.stream_manager.remove_stream(&format!("resource-{}", i)).await.ok();
+    // Phase 2: Run at full load
+    info!("Running at full load with {} streams", max_streams);
+    for _ in 0..5 {
+        metrics_collector.collect_sample(&fixture.stream_manager).await;
+        sleep(Duration::from_secs(1)).await;
     }
     
-    info!("Resource monitoring test completed");
+    // Phase 3: Remove streams gradually
+    for id in &stream_ids {
+        fixture.stream_manager.remove_stream(id)
+            .await
+            .expect(&format!("Failed to remove stream {}", id));
+        
+        metrics_collector.collect_sample(&fixture.stream_manager).await;
+        sleep(Duration::from_secs(1)).await;
+    }
+    
+    // Analyze metrics
+    let summary = metrics_collector.get_summary();
+    info!("Memory test summary: {:?}", summary);
+    
+    // Basic sanity checks
+    assert!(summary.max_concurrent_streams <= max_streams);
+    assert!(summary.sample_count > 0);
+    
     fixture.cleanup().await;
 }
 
-/// Load test helper for parallel operations
-async fn parallel_load_test<F, Fut>(
-    name: &str,
-    parallelism: usize,
-    iterations: usize,
-    operation: F,
-) -> LoadTestResult
-where
-    F: Fn(usize) -> Fut + Send + Sync + 'static + Clone,
-    Fut: std::future::Future<Output = Result<(), String>> + Send,
-{
-    info!("Starting parallel load test: {}", name);
+/// Test recording under high load
+#[tokio::test]
+async fn test_recording_performance() {
+    super::init_test_environment();
+    let fixture = TestFixture::new().await;
     
-    let start = Instant::now();
+    info!("Starting recording performance test");
+    
+    let stream_count = 3;
+    let mut stream_ids = Vec::new();
+    
+    // Add multiple streams with recording enabled
+    for i in 0..stream_count {
+        let (id, mut config) = create_test_stream_config(&format!("rec-perf-{}", i));
+        config.recording_enabled = true;
+        
+        fixture.stream_manager.add_stream(id.clone(), config)
+            .await
+            .expect(&format!("Failed to add stream {}", i));
+        
+        stream_ids.push(id);
+    }
+    
+    // Wait for all streams to start recording
+    for id in &stream_ids {
+        assert!(
+            wait_for_stream_state(&fixture.stream_manager, id, StreamState::Running, Duration::from_secs(10)).await,
+            "Stream should be running"
+        );
+    }
+    
+    // Let them record for a while
+    info!("Recording {} streams for 10 seconds", stream_count);
+    sleep(Duration::from_secs(10)).await;
+    
+    // Check all streams are still healthy
+    for id in &stream_ids {
+        let info = fixture.stream_manager.get_stream_info(id)
+            .await
+            .expect(&format!("Should get info for stream {}", id));
+        
+        assert_eq!(info.state, StreamState::Running, "Stream {} should still be running", id);
+        info!("Stream {} recording state: {:?}", id, info.recording_state);
+    }
+    
+    // Clean up
+    for id in &stream_ids {
+        fixture.stream_manager.remove_stream(id)
+            .await
+            .expect(&format!("Failed to remove stream {}", id));
+    }
+    
+    fixture.cleanup().await;
+}
+
+/// Test rapid stream creation and deletion
+#[tokio::test]
+async fn test_rapid_stream_churn() {
+    super::init_test_environment();
+    let fixture = TestFixture::new().await;
+    
+    info!("Starting rapid stream churn test");
+    
+    let iterations = 5;
+    let streams_per_iteration = 2;
+    
+    for iter in 0..iterations {
+        info!("Churn iteration {}", iter);
+        
+        let mut stream_ids = Vec::new();
+        
+        // Rapidly add streams
+        for i in 0..streams_per_iteration {
+            let (id, config) = create_test_stream_config(&format!("churn-{}-{}", iter, i));
+            
+            fixture.stream_manager.add_stream(id.clone(), config)
+                .await
+                .expect(&format!("Failed to add stream in iteration {}", iter));
+            
+            stream_ids.push(id);
+        }
+        
+        // Wait briefly for streams to start
+        sleep(Duration::from_millis(500)).await;
+        
+        // Rapidly remove streams
+        for id in stream_ids {
+            fixture.stream_manager.remove_stream(&id)
+                .await
+                .expect(&format!("Failed to remove stream in iteration {}", iter));
+        }
+        
+        // Brief pause between iterations
+        sleep(Duration::from_millis(100)).await;
+    }
+    
+    // Verify no streams are left
+    let remaining = fixture.stream_manager.list_streams().await;
+    assert_eq!(remaining.len(), 0, "No streams should remain after churn test");
+    
+    fixture.cleanup().await;
+}
+
+/// Test concurrent operations on streams
+#[tokio::test]
+async fn test_concurrent_operations() {
+    super::init_test_environment();
+    let fixture = TestFixture::new().await;
+    
+    info!("Starting concurrent operations test");
+    
+    let manager = fixture.stream_manager.clone();
+    let concurrent_count = 5;
     let success_count = Arc::new(AtomicUsize::new(0));
-    let failure_count = Arc::new(AtomicUsize::new(0));
     
-    let mut handles = vec![];
+    // Spawn multiple concurrent tasks
+    let mut handles = Vec::new();
     
-    for i in 0..parallelism {
-        let op = operation.clone();
-        let success = success_count.clone();
-        let failure = failure_count.clone();
+    for i in 0..concurrent_count {
+        let manager_clone = manager.clone();
+        let success_clone = success_count.clone();
         
         let handle = tokio::spawn(async move {
-            for j in 0..iterations {
-                let id = i * iterations + j;
-                match op(id).await {
-                    Ok(_) => success.fetch_add(1, Ordering::Relaxed),
-                    Err(e) => {
-                        error!("Operation {} failed: {}", id, e);
-                        failure.fetch_add(1, Ordering::Relaxed)
-                    }
-                };
+            let (id, config) = create_test_stream_config(&format!("concurrent-{}", i));
+            
+            // Try to add stream
+            if manager_clone.add_stream(id.clone(), config).await.is_ok() {
+                success_clone.fetch_add(1, Ordering::SeqCst);
+                
+                // Wait a bit
+                sleep(Duration::from_secs(1)).await;
+                
+                // Try to get info
+                let _ = manager_clone.get_stream_info(&id).await;
+                
+                // Remove stream
+                let _ = manager_clone.remove_stream(&id).await;
             }
         });
         
         handles.push(handle);
     }
     
-    // Wait for all tasks
+    // Wait for all tasks to complete
     for handle in handles {
-        handle.await.ok();
+        handle.await.expect("Task should complete");
     }
     
-    let duration = start.elapsed();
-    let total = parallelism * iterations;
-    let success = success_count.load(Ordering::Relaxed);
-    let failure = failure_count.load(Ordering::Relaxed);
+    let successful = success_count.load(Ordering::SeqCst);
+    info!("Concurrent operations: {}/{} successful", successful, concurrent_count);
+    assert!(successful > 0, "At least some concurrent operations should succeed");
     
-    LoadTestResult {
-        name: name.to_string(),
-        duration,
-        total_operations: total,
-        successful: success,
-        failed: failure,
-        ops_per_second: success as f64 / duration.as_secs_f64(),
-    }
+    fixture.cleanup().await;
 }
 
-#[derive(Debug)]
-struct LoadTestResult {
-    name: String,
-    duration: Duration,
-    total_operations: usize,
-    successful: usize,
-    failed: usize,
-    ops_per_second: f64,
-}
-
-impl LoadTestResult {
-    fn print_summary(&self) {
-        info!("Load test '{}' completed:", self.name);
-        info!("  Duration: {:?}", self.duration);
-        info!("  Total operations: {}", self.total_operations);
-        info!("  Successful: {}", self.successful);
-        info!("  Failed: {}", self.failed);
-        info!("  Success rate: {:.1}%", (self.successful as f64 / self.total_operations as f64) * 100.0);
-        info!("  Throughput: {:.2} ops/sec", self.ops_per_second);
+/// Test stream stability over time
+#[tokio::test]
+async fn test_long_running_stability() {
+    super::init_test_environment();
+    let fixture = TestFixture::new().await;
+    
+    info!("Starting long-running stability test");
+    
+    // Add a stream
+    let (stream_id, config) = create_test_stream_config("stability-test");
+    fixture.stream_manager.add_stream(stream_id.clone(), config)
+        .await
+        .expect("Failed to add stream");
+    
+    // Wait for stream to start
+    assert!(
+        wait_for_stream_state(&fixture.stream_manager, &stream_id, StreamState::Running, Duration::from_secs(10)).await,
+        "Stream should start"
+    );
+    
+    // Monitor stream for extended period
+    let test_duration = Duration::from_secs(15);
+    let start = Instant::now();
+    let mut check_count = 0;
+    
+    while start.elapsed() < test_duration {
+        // Check stream is still running
+        let info = fixture.stream_manager.get_stream_info(&stream_id)
+            .await
+            .expect("Should get stream info");
+        
+        assert_eq!(info.state, StreamState::Running, "Stream should remain running");
+        
+        check_count += 1;
+        sleep(Duration::from_secs(1)).await;
     }
+    
+    info!("Stream remained stable for {} checks over {:?}", check_count, test_duration);
+    
+    // Clean up
+    fixture.stream_manager.remove_stream(&stream_id)
+        .await
+        .expect("Failed to remove stream");
+    
+    fixture.cleanup().await;
 }

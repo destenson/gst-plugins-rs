@@ -14,7 +14,7 @@ pub struct StreamInfo {
     pub recording_state: RecordingState,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum StreamState {
     Idle,
     Starting,
