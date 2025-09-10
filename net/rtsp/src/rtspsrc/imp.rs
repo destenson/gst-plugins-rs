@@ -1,3 +1,4 @@
+#![allow(unused)]
 // GStreamer RTSP Source 2
 //
 // Copyright (C) 2023 Tim-Philipp Müller <tim centricular com>
@@ -378,7 +379,11 @@ impl ObjectImpl for RtspSrc {
                     .build(),
                 glib::ParamSpecString::builder("retry-strategy")
                     .nick("Retry Strategy")
-                    .blurb("Connection retry strategy: auto, adaptive, none, immediate, linear, exponential, exponential-jitter")
+                    .blurb(if cfg!(feature = "adaptive") {
+                        "Connection retry strategy: auto, adaptive, none, immediate, linear, exponential, exponential-jitter"
+                    } else {
+                        "Connection retry strategy: auto, none, immediate, linear, exponential, exponential-jitter"
+                    })
                     .default_value("auto")
                     .mutable_ready()
                     .build(),

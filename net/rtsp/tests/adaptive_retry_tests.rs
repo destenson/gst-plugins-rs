@@ -1,3 +1,4 @@
+#![cfg(feature = "adaptive")]
 // Integration tests for adaptive learning retry system
 
 use gst::prelude::*;
@@ -21,7 +22,7 @@ fn test_adaptive_convergence() {
     // Create an RTSP source with adaptive retry
     let rtspsrc = gst::ElementFactory::make("rtspsrc2")
         .property("location", "rtsp://test.adaptive.local:554/stream")
-        .property("retry-strategy", "adaptive")
+        .property_from_str("retry-strategy", "adaptive")
         .property("adaptive-learning", true)
         .property("adaptive-discovery-time", 5_000_000_000u64) // 5 seconds for faster testing
         .build()
@@ -43,7 +44,7 @@ fn test_adaptive_balance() {
     // Test exploration vs exploitation balance
     let rtspsrc = gst::ElementFactory::make("rtspsrc2")
         .property("location", "rtsp://test.balance.local:554/stream")
-        .property("retry-strategy", "adaptive")
+        .property_from_str("retry-strategy", "adaptive")
         .property("adaptive-exploration-rate", 0.2f32)
         .build()
         .unwrap();
@@ -60,7 +61,7 @@ fn test_adaptive_change_detection() {
     // Test network change detection
     let rtspsrc = gst::ElementFactory::make("rtspsrc2")
         .property("location", "rtsp://test.change.local:554/stream")
-        .property("retry-strategy", "adaptive")
+        .property_from_str("retry-strategy", "adaptive")
         .property("adaptive-change-detection", true)
         .build()
         .unwrap();
@@ -77,7 +78,7 @@ fn test_adaptive_persistence() {
     // Test persistence of learned patterns
     let rtspsrc = gst::ElementFactory::make("rtspsrc2")
         .property("location", "rtsp://test.persistence.local:554/stream")
-        .property("retry-strategy", "adaptive")
+        .property_from_str("retry-strategy", "adaptive")
         .property("adaptive-persistence", true)
         .property("adaptive-cache-ttl", 3600u64) // 1 hour
         .build()
@@ -98,7 +99,7 @@ fn test_adaptive_confidence_threshold() {
     // Test confidence threshold settings
     let rtspsrc = gst::ElementFactory::make("rtspsrc2")
         .property("location", "rtsp://test.confidence.local:554/stream")
-        .property("retry-strategy", "adaptive")
+        .property_from_str("retry-strategy", "adaptive")
         .property("adaptive-confidence-threshold", 0.75f32)
         .build()
         .unwrap();
@@ -115,7 +116,7 @@ fn test_adaptive_properties_integration() {
     // Test all adaptive properties together
     let rtspsrc = gst::ElementFactory::make("rtspsrc2")
         .property("location", "rtsp://test.integration.local:554/stream")
-        .property("retry-strategy", "adaptive")
+        .property_from_str("retry-strategy", "adaptive")
         .property("adaptive-learning", true)
         .property("adaptive-persistence", true)
         .property("adaptive-cache-ttl", 86400u64) // 1 day
@@ -150,7 +151,7 @@ fn test_fallback_to_auto_mode() {
     // Test fallback behavior when adaptive mode fails
     let rtspsrc = gst::ElementFactory::make("rtspsrc2")
         .property("location", "rtsp://test.fallback.local:554/stream")
-        .property("retry-strategy", "adaptive")
+        .property_from_str("retry-strategy", "adaptive")
         .property("adaptive-learning", false) // Disable learning to test fallback
         .build()
         .unwrap();
@@ -179,7 +180,7 @@ fn test_different_retry_strategies() {
     for strategy in strategies {
         let rtspsrc = gst::ElementFactory::make("rtspsrc2")
             .property("location", "rtsp://test.strategy.local:554/stream")
-            .property("retry-strategy", strategy)
+            .property_from_str("retry-strategy", strategy)
             .build()
             .unwrap();
 
@@ -195,15 +196,16 @@ fn bench_adaptive_vs_auto(b: &mut test::Bencher) {
     init();
     
     b.iter(|| {
+        #[cfg(feature = "adaptive")]
         let adaptive_src = gst::ElementFactory::make("rtspsrc2")
             .property("location", "rtsp://bench.test.local:554/stream")
-            .property("retry-strategy", "adaptive")
+            .property_from_str("retry-strategy", "adaptive")
             .build()
             .unwrap();
             
         let auto_src = gst::ElementFactory::make("rtspsrc2")
             .property("location", "rtsp://bench.test.local:554/stream")
-            .property("retry-strategy", "auto")
+            .property_from_str("retry-strategy", "auto")
             .build()
             .unwrap();
             

@@ -59,6 +59,7 @@ futures = ["dep:futures"]
 prometheus = ["dep:prometheus"]
 telemetry = ["tracing", "tracing-subscriber", "prometheus"]
 default = ["futures", "adaptive", "telemetry"]
+bench = []
 # default = ["futures"]
 
 [package.metadata.capi]

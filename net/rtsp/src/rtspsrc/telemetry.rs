@@ -1,3 +1,4 @@
+#![allow(unused)]
 // Telemetry module for RTSP source element
 // Provides structured logging, metrics collection, and performance tracking
 

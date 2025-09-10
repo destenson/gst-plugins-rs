@@ -1,3 +1,4 @@
+#![allow(unused)]
 // Tests for RTSP telemetry and observability
 
 #[cfg(feature = "telemetry")]
