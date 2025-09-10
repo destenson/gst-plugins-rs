@@ -14,8 +14,9 @@ async fn run_full_integration_suite() {
     let suite_start = Instant::now();
     
     let mut test_results = Vec::new();
-    let mut metrics_samples = Vec::new();
-    let mut resource_samples = Vec::new();
+    // TODO: Collect metrics and resource usage samples
+    // let mut metrics_samples = Vec::new();
+    // let mut resource_samples = Vec::new();
     
     // Run scenario tests
     info!("Running scenario tests...");

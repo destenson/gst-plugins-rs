@@ -5,18 +5,39 @@
 use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tracing::{info, error};
+use tracing::{info, error, debug};
 use crate::api::{AppState, ApiError};
 
 /// Configure recovery API routes
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api/v1/recovery")
+            .route("/status", web::get().to(get_recovery_status))
             .route("/check-integrity", web::post().to(check_integrity))
             .route("/sync-recordings", web::post().to(sync_recordings))
             .route("/reset-recordings", web::post().to(reset_recordings))
             .route("/rebuild-database", web::post().to(rebuild_database))
     );
+}
+
+/// Get recovery status
+async fn get_recovery_status(state: web::Data<AppState>) -> Result<HttpResponse, ApiError> {
+    debug!("Getting recovery status");
+    
+    let backup_manager = state.backup_manager.as_ref()
+        .ok_or_else(|| ApiError::NotFound("Backup manager not configured".to_string()))?;
+    
+    let status = backup_manager.get_recovery_status().await;
+    
+    Ok(HttpResponse::Ok().json(json!({
+        "in_progress": status.in_progress,
+        "backup_id": status.backup_id,
+        "items_total": status.items_total,
+        "items_restored": status.items_restored,
+        "errors": status.errors,
+        "started_at": status.started_at.map(|t| chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339()),
+        "completed_at": status.completed_at.map(|t| chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339())
+    })))
 }
 
 /// Check database integrity
