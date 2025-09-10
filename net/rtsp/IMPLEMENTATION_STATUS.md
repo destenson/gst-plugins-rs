@@ -223,5 +223,9 @@ Each PRP must pass all quality gates before being marked complete:
 **Next Action**: Execute PRP-34 (Buffer Mode Property)  
 **Phase 1 Progress**: 1/9 PRPs complete (11%)  
 **Overall Progress**: 7/51 properties (14%), 0/10 signals (0%), 0/7 actions (0%)  
-**Recent Progress**: ✅ **PRP-33 COMPLETED** - Added 3 jitterbuffer control properties  
+**Recent Progress**: ✅ **PRP-33 COMPLETED** - Added 3 jitterbuffer control properties WITH ACTUAL FUNCTIONALITY  
+**Implementation Details**: 
+- `latency` and `drop-on-latency` applied to rtpbin manager (like original rtspsrc)
+- `probation` applied to individual RTP sessions via get-internal-session signal  
+- Full functional implementation, not just property stubs
 **Critical Finding**: rtspsrc2 now has 7 properties that match the original rtspsrc (14% coverage). Most current properties are still rtspsrc2-specific enhancements.
