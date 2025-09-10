@@ -1042,8 +1042,8 @@ impl RtspSrc {
                             let attempt = retry_calc.current_attempt();
                             gst::warning!(
                                 CAT,
-                                "Connection failed (attempt {attempt}): {err:#?}. Retrying in {} ms...",
-                                delay.as_millis()
+                                "Connection to '{}' failed (attempt {attempt}): {err:#?}. Retrying in {} ms...",
+                                url, delay.as_millis()
                             );
                             
                             // Post a message about the retry attempt
@@ -1063,7 +1063,7 @@ impl RtspSrc {
                             gst::element_imp_error!(
                                 task_src,
                                 gst::ResourceError::OpenRead,
-                                ["Failed to connect to RTSP server after {} attempts: {err:#?}", retry_calc.current_attempt()]
+                                ["Failed to connect to RTSP server '{}' after {} attempts: {err:#?}", url, retry_calc.current_attempt()]
                             );
                             return;
                         }

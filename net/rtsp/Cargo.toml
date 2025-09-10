@@ -58,9 +58,9 @@ tracing-subscriber = ["dep:tracing-subscriber"]
 futures = ["dep:futures"]
 prometheus = ["dep:prometheus"]
 telemetry = ["tracing", "tracing-subscriber", "prometheus"]
-default = ["futures", "adaptive", "telemetry"]
 bench = []
-# default = ["futures"]
+# default = ["futures", "adaptive", "telemetry"]
+default = ["futures"]
 
 [package.metadata.capi]
 min_version = "0.9.21"
