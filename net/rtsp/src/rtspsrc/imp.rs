@@ -25,7 +25,7 @@ use std::sync::LazyLock;
 
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use socket2::Socket;
-use tokio::net::{TcpStream, UdpSocket};
+use tokio::net::UdpSocket;
 use tokio::runtime;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
@@ -105,6 +105,10 @@ struct Settings {
     reconnection_timeout: gst::ClockTime,
     initial_retry_delay: gst::ClockTime,
     linear_retry_step: gst::ClockTime,
+    connection_racing: super::connection_racer::ConnectionRacingStrategy,
+    max_parallel_connections: u32,
+    racing_delay_ms: u32,
+    racing_timeout: gst::ClockTime,
 }
 
 impl Default for Settings {
@@ -120,6 +124,10 @@ impl Default for Settings {
             reconnection_timeout: gst::ClockTime::from_seconds(30),
             initial_retry_delay: gst::ClockTime::from_seconds(1),
             linear_retry_step: gst::ClockTime::from_seconds(2),
+            connection_racing: super::connection_racer::ConnectionRacingStrategy::default(),
+            max_parallel_connections: 3,
+            racing_delay_ms: 250,
+            racing_timeout: gst::ClockTime::from_seconds(5),
         }
     }
 }
@@ -353,6 +361,35 @@ impl ObjectImpl for RtspSrc {
                     .default_value(2_000_000_000) // 2 seconds
                     .mutable_ready()
                     .build(),
+                glib::ParamSpecString::builder("connection-racing")
+                    .nick("Connection Racing Strategy")
+                    .blurb("Parallel connection racing strategy: none, first-wins, last-wins, hybrid")
+                    .default_value("none")
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecUInt::builder("max-parallel-connections")
+                    .nick("Maximum Parallel Connections")
+                    .blurb("Maximum number of parallel connections for racing")
+                    .minimum(1)
+                    .maximum(10)
+                    .default_value(3)
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecUInt::builder("racing-delay-ms")
+                    .nick("Racing Delay (ms)")
+                    .blurb("Delay between parallel connection attempts in milliseconds")
+                    .minimum(0)
+                    .maximum(5000)
+                    .default_value(250)
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecUInt64::builder("racing-timeout")
+                    .nick("Racing Timeout")
+                    .blurb("Timeout for whole connection race in nanoseconds")
+                    .maximum(gst::ClockTime::MAX.into())
+                    .default_value(5_000_000_000) // 5 seconds
+                    .mutable_ready()
+                    .build(),
             ]
         });
 
@@ -422,6 +459,27 @@ impl ObjectImpl for RtspSrc {
                 settings.linear_retry_step = step;
                 Ok(())
             }
+            "connection-racing" => {
+                let mut settings = self.settings.lock().unwrap();
+                let strategy = value.get::<Option<&str>>().expect("type checked upstream");
+                settings.connection_racing = super::connection_racer::ConnectionRacingStrategy::from_string(strategy.unwrap_or("none"));
+                Ok(())
+            }
+            "max-parallel-connections" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.max_parallel_connections = value.get::<u32>().expect("type checked upstream");
+                Ok(())
+            }
+            "racing-delay-ms" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.racing_delay_ms = value.get::<u32>().expect("type checked upstream");
+                Ok(())
+            }
+            "racing-timeout" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.racing_timeout = value.get().expect("type checked upstream");
+                Ok(())
+            }
             name => unimplemented!("Property '{name}'"),
         };
 
@@ -485,6 +543,22 @@ impl ObjectImpl for RtspSrc {
             "linear-retry-step" => {
                 let settings = self.settings.lock().unwrap();
                 settings.linear_retry_step.to_value()
+            }
+            "connection-racing" => {
+                let settings = self.settings.lock().unwrap();
+                settings.connection_racing.as_str().to_value()
+            }
+            "max-parallel-connections" => {
+                let settings = self.settings.lock().unwrap();
+                settings.max_parallel_connections.to_value()
+            }
+            "racing-delay-ms" => {
+                let settings = self.settings.lock().unwrap();
+                settings.racing_delay_ms.to_value()
+            }
+            "racing-timeout" => {
+                let settings = self.settings.lock().unwrap();
+                settings.racing_timeout.to_value()
             }
             name => unimplemented!("Property '{name}'"),
         }
@@ -663,9 +737,18 @@ impl RtspSrc {
 
             let mut retry_calc = super::retry::RetryCalculator::new(retry_config);
 
+            // Create connection racer config
+            let racing_config = super::connection_racer::ConnectionRacingConfig {
+                strategy: settings.connection_racing,
+                max_parallel_connections: settings.max_parallel_connections,
+                racing_delay_ms: settings.racing_delay_ms,
+                racing_timeout: std::time::Duration::from_nanos(settings.racing_timeout.nseconds()),
+            };
+            let racer = super::connection_racer::ConnectionRacer::new(racing_config);
+
             // TODO: Add TLS support
             let s = loop {
-                match TcpStream::connect(&hostname_port).await {
+                match racer.connect(&hostname_port).await {
                     Ok(s) => break s,
                     Err(err) => {
                         if let Some(delay) = retry_calc.next_delay() {
