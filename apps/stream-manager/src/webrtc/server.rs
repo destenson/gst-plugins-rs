@@ -1,3 +1,4 @@
+#![allow(unused)]
 use actix_web::web;
 use gst::prelude::*;
 use serde::{Deserialize, Serialize};

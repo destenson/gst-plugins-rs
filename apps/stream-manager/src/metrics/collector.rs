@@ -1,3 +1,4 @@
+#![allow(unused)]
 use super::MetricsRegistry;
 use crate::manager::{StreamManager, StreamEvent, StreamStatistics};
 use std::sync::Arc;

@@ -10,9 +10,11 @@ use chrono::{DateTime, Utc, Local};
 pub mod schema;
 pub mod queries;
 pub mod migrations;
+pub mod recovery;
 
 pub use schema::*;
 pub use queries::*;
+pub use recovery::*;
 
 #[derive(Debug, Error)]
 pub enum DatabaseError {

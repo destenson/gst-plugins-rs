@@ -29,7 +29,7 @@ pub struct AppState {
     pub metrics_collector: Arc<crate::metrics::MetricsCollector>,
     pub event_broadcaster: Arc<websocket::EventBroadcaster>,
     pub disk_rotation_manager: Arc<DiskRotationManager>,
-    pub backup_manager: Option<Arc<crate::backup::BackupManager>>,
+    pub backup_manager: Option<Arc<crate::database::recovery::BackupManager>>,
     pub webrtc_server: Option<Arc<RwLock<crate::webrtc::WebRtcServer>>>,
     pub whip_whep_handler: Option<Arc<crate::webrtc::WhipWhepHandler>>,
 }
@@ -115,9 +115,11 @@ pub async fn start_server(
     info!("WebRTC server initialized");
     
     // Initialize WHIP/WHEP handler
+    // Note: WhipWhepHandler needs the actual WebRtcServer, not wrapped in RwLock
+    // For now, create a new instance
     let whip_whep_handler = Arc::new(
         crate::webrtc::WhipWhepHandler::new(
-            Arc::new(webrtc_server.read().await.clone()),
+            Arc::new(crate::webrtc::WebRtcServer::new(stream_manager.clone())),
             stream_manager
         )
     );

@@ -1,3 +1,4 @@
+#![allow(unused)]
 //! Recovery and maintenance module
 //!
 //! This module provides recovery mechanisms for:
@@ -8,28 +9,11 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use sqlx::Row;
 use tracing::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use crate::database::Database;
-
-/// Recovery configuration
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct BackupConfig {
-    /// Enable automatic recovery checks
-    pub enabled: bool,
-    /// Check interval in seconds
-    pub check_interval_secs: u64,
-}
-
-impl Default for BackupConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            check_interval_secs: 300, // 5 minutes
-        }
-    }
-}
+use crate::{config::BackupConfig, database::Database};
 
 /// Recovery manager for database and file system
 pub struct BackupManager {
@@ -102,7 +86,7 @@ impl BackupManager {
                 info!("Database recovery attempted");
                 
                 // Re-run migrations to ensure schema is correct
-                if let Err(e) = database.run_migrations().await {
+                if let Err(e) = crate::database::migrations::run_migrations(database.pool()).await {
                     error!("Failed to re-run migrations: {}", e);
                     // If migrations fail, recreate the database
                     self.recreate_database().await?;
@@ -149,7 +133,7 @@ impl BackupManager {
         warn!("Rebuilding database from filesystem");
 
         // First, clear the recordings table
-        sqlx::query!("DELETE FROM recordings")
+        sqlx::query("DELETE FROM recordings")
             .execute(database.pool())
             .await
             .map_err(|e| RecoveryError::DatabaseError(e.to_string()))?;
@@ -195,13 +179,13 @@ impl BackupManager {
                     .map(|t| chrono::DateTime::<chrono::Utc>::from(t))
                     .unwrap_or_else(|_| chrono::Utc::now());
                 
-                sqlx::query!(
-                    "INSERT INTO recordings (stream_id, file_path, size_bytes, created_at) VALUES (?, ?, ?, ?)",
-                    file_info.stream_id,
-                    file_path,
-                    metadata.len() as i64,
-                    created_at
+                sqlx::query(
+                    "INSERT INTO recordings (stream_id, file_path, size_bytes, created_at) VALUES (?, ?, ?, ?)"
                 )
+                .bind(&file_info.stream_id)
+                .bind(&file_path)
+                .bind(metadata.len() as i64)
+                .bind(created_at)
                 .execute(database.pool())
                 .await
                 .map_err(|e| RecoveryError::DatabaseError(e.to_string()))?;
@@ -223,18 +207,22 @@ impl BackupManager {
         let mut db_entries_removed = 0;
 
         // Get all recording entries from database
-        let db_recordings = sqlx::query!("SELECT id, file_path FROM recordings")
+        let db_recordings = sqlx::query("SELECT id, file_path FROM recordings")
             .fetch_all(database.pool())
             .await
             .map_err(|e| RecoveryError::DatabaseError(e.to_string()))?;
 
         // Check each database entry against filesystem
         for record in db_recordings {
-            if let Some(file_path) = record.file_path {
+            let id: i64 = record.get("id");
+            let file_path: Option<String> = record.get("file_path");
+            
+            if let Some(file_path) = file_path {
                 let path = PathBuf::from(&file_path);
                 if !path.exists() {
                     // File doesn't exist, remove from database
-                    sqlx::query!("DELETE FROM recordings WHERE id = ?", record.id)
+                    sqlx::query("DELETE FROM recordings WHERE id = ?")
+                        .bind(id)
                         .execute(database.pool())
                         .await
                         .map_err(|e| RecoveryError::DatabaseError(e.to_string()))?;
@@ -257,24 +245,26 @@ impl BackupManager {
                     let file_path = path.to_string_lossy().to_string();
                     
                     // Check if file is in database
-                    let exists = sqlx::query!("SELECT COUNT(*) as count FROM recordings WHERE file_path = ?", file_path)
+                    let row = sqlx::query("SELECT COUNT(*) as count FROM recordings WHERE file_path = ?")
+                        .bind(&file_path)
                         .fetch_one(database.pool())
                         .await
-                        .map_err(|e| RecoveryError::DatabaseError(e.to_string()))?
-                        .count > 0;
+                        .map_err(|e| RecoveryError::DatabaseError(e.to_string()))?;
+                    let count: i64 = row.get("count");
+                    let exists = count > 0;
                     
                     if !exists {
                         // Add to database
                         let metadata = fs::metadata(&path)
                             .map_err(|e| RecoveryError::IoError(e.to_string()))?;
                         
-                        sqlx::query!(
-                            "INSERT INTO recordings (stream_id, file_path, size_bytes, created_at) VALUES (?, ?, ?, ?)",
-                            "unknown",
-                            file_path,
-                            metadata.len() as i64,
-                            chrono::Utc::now()
+                        sqlx::query(
+                            "INSERT INTO recordings (stream_id, file_path, size_bytes, created_at) VALUES (?, ?, ?, ?)"
                         )
+                        .bind("unknown")
+                        .bind(&file_path)
+                        .bind(metadata.len() as i64)
+                        .bind(chrono::Utc::now())
                         .execute(database.pool())
                         .await
                         .map_err(|e| RecoveryError::DatabaseError(e.to_string()))?;
@@ -323,7 +313,7 @@ impl BackupManager {
         }
 
         // Clear database recordings table
-        let result = sqlx::query!("DELETE FROM recordings")
+        let result = sqlx::query("DELETE FROM recordings")
             .execute(database.pool())
             .await
             .map_err(|e| RecoveryError::DatabaseError(e.to_string()))?;
@@ -382,11 +372,6 @@ impl BackupManager {
         Ok(())
     }
 
-    /// Get backup history (stub for compatibility)
-    pub async fn get_backup_history(&self) -> Vec<BackupMetadata> {
-        Vec::new()
-    }
-
     /// Get recovery status (stub for compatibility)
     pub async fn get_recovery_status(&self) -> RecoveryStatus {
         RecoveryStatus {
@@ -398,21 +383,6 @@ impl BackupManager {
             started_at: None,
             completed_at: None,
         }
-    }
-
-    /// Trigger backup (stub for compatibility)
-    pub async fn trigger_backup(&self, _backup_type: BackupType) -> Result<String, BackupError> {
-        Err(BackupError::NotImplemented("Backup functionality has been replaced with recovery mechanisms".to_string()))
-    }
-
-    /// Verify backup (stub for compatibility)
-    pub async fn verify_backup(&self, _backup_id: &str) -> Result<bool, BackupError> {
-        Err(BackupError::NotImplemented("Backup functionality has been replaced with recovery mechanisms".to_string()))
-    }
-
-    /// Restore from backup (stub for compatibility)
-    pub async fn restore_from_backup(&self, _backup_id: &str) -> Result<(), BackupError> {
-        Err(BackupError::NotImplemented("Backup functionality has been replaced with recovery mechanisms".to_string()))
     }
 
     /// Stop the recovery manager
@@ -527,24 +497,6 @@ pub enum RecoveryError {
 pub enum BackupError {
     #[error("Not implemented: {0}")]
     NotImplemented(String),
-}
-
-/// Backup types (for compatibility)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum BackupType {
-    Full,
-    Incremental,
-    Configuration,
-    Database,
-    Recovery,
-}
-
-/// Backup metadata (for compatibility)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BackupMetadata {
-    pub id: String,
-    pub timestamp: std::time::SystemTime,
-    pub backup_type: BackupType,
 }
 
 /// Recovery status (for compatibility)

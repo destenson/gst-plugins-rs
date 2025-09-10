@@ -468,6 +468,7 @@ impl StreamManager {
             reconnect_timeout_seconds: 5,
             max_reconnect_attempts: 3,
             buffer_size_mb: 10,
+            rtsp_outputs: None,
         };
         
         Ok(StreamInfo {

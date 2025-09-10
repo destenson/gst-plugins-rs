@@ -33,6 +33,7 @@ impl From<AddStreamRequest> for crate::config::StreamConfig {
             reconnect_timeout_seconds: 5,
             max_reconnect_attempts: 10,
             buffer_size_mb: 100,
+            rtsp_outputs: None,
         }
     }
 }
