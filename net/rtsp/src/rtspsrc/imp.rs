@@ -58,8 +58,8 @@ use super::transport::RtspTransportInfo;
 const DEFAULT_LOCATION: Option<Url> = None;
 const DEFAULT_TIMEOUT: gst::ClockTime = gst::ClockTime::from_seconds(5);
 const DEFAULT_PORT_START: u16 = 0;
-// Priority list has multicast first, because we want to prefer multicast if it's available
-const DEFAULT_PROTOCOLS: &str = "udp-mcast,udp,tcp";
+// Priority list has TCP first as it's most reliable, then UDP, then multicast
+const DEFAULT_PROTOCOLS: &str = "tcp,udp,udp-mcast";
 // Equal to MTU + 8 by default to avoid incorrectly detecting an MTU sized buffer as having
 // possibly overflown our receive buffer, and triggering a doubling of the buffer sizes.
 const DEFAULT_RECEIVE_MTU: u32 = 1500 + 8;
