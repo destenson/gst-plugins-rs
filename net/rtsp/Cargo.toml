@@ -13,7 +13,7 @@ anyhow = "1.0.99"
 atomic_refcell = "0.1.13"
 data-encoding = "2.9.0"
 dirs = "6.0.0"
-futures = "0.3.31"
+futures = { version = "0.3.31", optional = true }
 gst = { workspace = true, features = ["v1_16"] }
 gst-app = { workspace = true, features = ["v1_16"] }
 gst-net = { workspace = true, features = ["v1_16"] }
@@ -28,7 +28,13 @@ socket2 = "0.6.0"
 thiserror = "2.0.16"
 tokio = { version = "1.47.1", default-features = false, features = ["io-util", "macros", "net", "time", "rt-multi-thread", "sync"] }
 tokio-stream = { version = "0.1.17" }
+tracing = { version = "0.1.41", optional = true }
+tracing-subscriber = { version = "0.3.20", features = ["env-filter", "fmt"], optional = true }
 url = "2.5.7"
+
+# Optional telemetry dependencies
+console-subscriber = { version = "0.4.1", optional = true }
+prometheus = { version = "0.14.0", optional = true }
 
 [lib]
 name = "gstrsrtsp"
@@ -46,6 +52,14 @@ v1_18 = ["gst/v1_18", "gst-app/v1_18", "gst-net/v1_18", "gst-pbutils/v1_18", "gs
 v1_20 = ["v1_18", "gst/v1_20", "gst-app/v1_20", "gst-net/v1_20", "gst-pbutils/v1_20", "gst-check/v1_20"]
 v1_24 = ["v1_20", "gst/v1_24", "gst-app/v1_24", "gst-net/v1_24", "gst-pbutils/v1_24", "gst-check/v1_24"]
 adaptive = []
+tokio-console = ["dep:console-subscriber", "tokio/tracing"]
+tracing = ["dep:tracing"]
+tracing-subscriber = ["dep:tracing-subscriber"]
+futures = ["dep:futures"]
+prometheus = ["dep:prometheus"]
+telemetry = ["tracing", "tracing-subscriber", "prometheus"]
+default = ["futures", "adaptive", "telemetry"]
+# default = ["futures"]
 
 [package.metadata.capi]
 min_version = "0.9.21"

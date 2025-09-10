@@ -187,12 +187,15 @@ impl RetryCalculator {
             let strategy = manager.select_strategy();
             
             // Convert adaptive strategy to retry strategy and calculate delay
-            return match strategy {
+            match strategy {
                 super::adaptive_retry::Strategy::Immediate => Duration::ZERO,
                 super::adaptive_retry::Strategy::Linear => self.calculate_linear_delay(),
                 super::adaptive_retry::Strategy::Exponential => self.calculate_exponential_delay(false),
                 super::adaptive_retry::Strategy::ExponentialJitter => self.calculate_exponential_delay(true),
-            };
+            }
+        } else {
+            // Fall back to exponential with jitter if adaptive manager not initialized
+            self.calculate_exponential_delay(true)
         }
     }
     
