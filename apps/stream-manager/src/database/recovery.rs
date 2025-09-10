@@ -527,7 +527,18 @@ mod tests {
         fs::write(recordings_path.join("test2.mkv"), "video data").unwrap();
         
         let config = BackupConfig::default();
-        let manager = BackupManager::new(config, recordings_path);
+        let mut manager = BackupManager::new(config, recordings_path.clone());
+        
+        // Create a test database
+        let db_path = temp_dir.path().join("test.db");
+        let mut db_config = crate::database::DatabaseConfig::default();
+        db_config.url = format!("sqlite://{}", db_path.display());
+        let database = Arc::new(
+            Database::new(db_config)
+                .await
+                .unwrap()
+        );
+        manager.set_database(database);
         
         // Reset without confirmation should fail
         assert!(manager.reset_recordings(false).await.is_err());

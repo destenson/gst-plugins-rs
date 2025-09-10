@@ -158,6 +158,7 @@ mod tests {
     
     #[actix_web::test]
     async fn test_app_state_creation() {
+        gst::init().ok();
         let config = Arc::new(Config::default());
         let stream_manager = Arc::new(StreamManager::new(config.clone()).unwrap());
         let app_state = AppState::new(stream_manager, config);
@@ -168,6 +169,7 @@ mod tests {
     
     #[actix_web::test]
     async fn test_server_configuration() {
+        gst::init().ok();
         let config = Arc::new(Config::default());
         let stream_manager = Arc::new(StreamManager::new(config.clone()).unwrap());
         let app_state = AppState::new(stream_manager, config);

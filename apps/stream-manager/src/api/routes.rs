@@ -164,6 +164,8 @@ mod tests {
     
     #[actix_web::test]
     async fn test_route_registration() {
+        // Initialize GStreamer for tests
+        gst::init().ok();
         let config = std::sync::Arc::new(crate::Config::default());
         let stream_manager = std::sync::Arc::new(
             crate::manager::StreamManager::new(config.clone()).unwrap()
