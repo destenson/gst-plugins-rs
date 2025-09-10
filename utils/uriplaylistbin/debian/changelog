@@ -1,0 +1,7 @@
+gst-plugin-uriplaylistbin (0.14.0-1) unstable; urgency=medium
+
+  * Initial release of Debian package for gst-plugin-uriplaylistbin
+  * Provides uriplaylistbin element for playlist playback
+  * Built against GStreamer 1.24
+
+ -- GStreamer Rust Plugins Maintainers <gstreamer-rust@lists.freedesktop.org>  Wed, 09 Jan 2025 12:00:00 +0000

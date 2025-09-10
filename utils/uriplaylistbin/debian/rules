@@ -1,0 +1,42 @@
+#!/usr/bin/make -f
+# See debhelper(7) (uncomment to enable)
+# output every command that modifies files on the build system.
+export DH_VERBOSE = 1
+
+# Set Rust build flags for optimization
+export CARGO_HOME = $(CURDIR)/debian/cargo_home
+export RUSTFLAGS = -C opt-level=3
+
+# Multiarch support
+DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	# No configure step needed for Rust projects
+
+override_dh_auto_build:
+	cargo build --release --package gst-plugin-uriplaylistbin
+
+override_dh_auto_test:
+	# Tests require GStreamer runtime which may not be available in build environment
+	# cargo test --release --package gst-plugin-uriplaylistbin || true
+
+override_dh_auto_install:
+	# Install the plugin to the correct GStreamer plugin directory
+	install -d debian/gst-plugin-uriplaylistbin/usr/lib/$(DEB_HOST_MULTIARCH)/gstreamer-1.0
+	install -m 644 target/release/libgsturiplaylistbin.so \
+		debian/gst-plugin-uriplaylistbin/usr/lib/$(DEB_HOST_MULTIARCH)/gstreamer-1.0/
+	
+	# Install documentation
+	install -d debian/gst-plugin-uriplaylistbin/usr/share/doc/gst-plugin-uriplaylistbin
+	install -m 644 README.md debian/gst-plugin-uriplaylistbin/usr/share/doc/gst-plugin-uriplaylistbin/
+	install -m 644 LICENSE-MPL-2.0 debian/gst-plugin-uriplaylistbin/usr/share/doc/gst-plugin-uriplaylistbin/
+
+override_dh_auto_clean:
+	cargo clean
+	rm -rf $(CARGO_HOME)
+
+override_dh_shlibdeps:
+	dh_shlibdeps -- --ignore-missing-info

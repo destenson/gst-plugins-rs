@@ -79,17 +79,11 @@ conf-files = []
 changelog = "debian/changelog"
 # Ensure proper stripping and compression
 separate-debug-symbols = true
-# compress = true
-# # Strip binaries for smaller package size
-# strip = true
 # Architecture will be auto-detected based on build target
 preserve-symlinks = false
 # Build flags - use release mode for optimized builds
 features = ["v1_16"]
 default-features = true
-# # System dependencies for building (build-depends)
-# # Note: Rust toolchain is handled separately and not listed here
-# build-depends = "libgstreamer1.0-dev (>= 1.16.0), libgstreamer-plugins-base1.0-dev (>= 1.16.0), pkg-config"
 # Suggests and recommends
 recommends = "gstreamer1.0-tools"
 suggests = "gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad"

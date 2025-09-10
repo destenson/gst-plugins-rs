@@ -1,0 +1,22 @@
+#!/bin/sh
+set -e
+
+# Clean up after removal
+if [ "$1" = "purge" ] || [ "$1" = "remove" ]; then
+    # Force GStreamer to rescan plugins on next use
+    # This ensures the plugin is properly removed from the registry
+    if [ -d /var/cache/gstreamer-1.0 ]; then
+        echo "Cleaning GStreamer plugin cache..."
+        rm -f /var/cache/gstreamer-1.0/registry.*.bin 2>/dev/null || true
+    fi
+    
+    # Also clean user caches if running as root during system package removal
+    if [ "$1" = "purge" ]; then
+        # Clean system-wide cache
+        rm -f /root/.cache/gstreamer-1.0/registry.*.bin 2>/dev/null || true
+    fi
+fi
+
+#DEBHELPER#
+
+exit 0

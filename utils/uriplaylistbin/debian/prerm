@@ -1,0 +1,13 @@
+#!/bin/sh
+set -e
+
+# Clean up before removal
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    # The GStreamer registry will be automatically updated
+    # when the plugin file is removed
+    echo "Preparing to remove gst-plugin-uriplaylistbin..."
+fi
+
+#DEBHELPER#
+
+exit 0
