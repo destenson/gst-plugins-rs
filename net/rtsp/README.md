@@ -141,8 +141,64 @@ gst-launch-1.0 rtspsrc2 location=rtsp://camera.local/stream \
   fakesink
 ```
 
+## Camera Compatibility Testing
+
+The plugin includes a comprehensive camera compatibility testing framework to validate rtspsrc2 against real IP cameras and RTSP servers. See [Camera Quirks Documentation](docs/CAMERA_QUIRKS.md) for known issues and workarounds.
+
+### Running Compatibility Tests
+
+```bash
+# Run basic compatibility tests
+cargo test -p gst-plugin-rtsp compat -- --nocapture
+
+# Test with specific camera configuration
+GST_DEBUG=rtspsrc2:5 cargo test -p gst-plugin-rtsp camera_hikvision
+
+# Generate compatibility report
+cargo test -p gst-plugin-rtsp --test camera_compatibility_tests
+```
+
+### Supported Camera Brands
+
+The framework includes test configurations for:
+* Axis Communications (M3045-V, P-Series)
+* Hikvision (DS-2CD2132F, DS-2CD2385G1)
+* Dahua Technology (IPC-HFW4431E, IPC-HDW4631C)
+* ONVIF Profile S/T compatible devices
+
+### Test Categories
+
+1. **Basic Connectivity**: Authentication, transport negotiation
+2. **Stream Formats**: H.264, H.265, MJPEG, audio codecs
+3. **Features**: PTZ, ONVIF, events, backchannel
+4. **Reliability**: Reconnection, timeout, error handling
+5. **Performance**: Latency, throughput, stability
+
+### Test Configuration
+
+Camera configurations can be loaded from TOML or JSON files:
+
+```toml
+[[cameras]]
+name = "Axis M3045-V"
+vendor = "Axis"
+model = "M3045-V"
+url = "rtsp://192.168.1.100/axis-media/media.amp"
+username = "root"
+password = "password"
+transport = "auto"
+auth_type = "digest"
+
+[cameras.features]
+h264 = true
+h265 = true
+audio = true
+onvif = true
+```
+
 ## Maintenance and future cleanup
 
 * Test with market RTSP cameras
-  - Currently, only live555 and gst-rtsp-server have been tested
+  - Camera compatibility testing framework has been implemented
+  - Includes support for Axis, Hikvision, Dahua, and ONVIF devices
 * Add tokio-console and tokio tracing support

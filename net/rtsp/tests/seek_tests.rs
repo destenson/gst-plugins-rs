@@ -4,6 +4,9 @@
 use gst::prelude::*;
 use gst_check::harness::Harness;
 
+mod rtsp_test_server;
+use rtsp_test_server::{GstRtspTestServer, ServerType, helpers};
+
 fn init() {
     use std::sync::Once;
     static INIT: Once = Once::new();
@@ -12,6 +15,21 @@ fn init() {
         gst::init().unwrap();
         gstrsrtsp::plugin_register_static().expect("Failed to register rtsp plugin");
     });
+}
+
+/// Get test server URL - uses real server if available, falls back to mock
+fn get_test_url() -> (Option<GstRtspTestServer>, String) {
+    // Try to use real server for more accurate testing
+    match GstRtspTestServer::new_live() {
+        Ok(server) => {
+            let url = server.url();
+            (Some(server), url)
+        }
+        Err(_) => {
+            // Fall back to mock server URL
+            (None, "rtsp://localhost:8554/test".to_string())
+        }
+    }
 }
 
 #[test]
