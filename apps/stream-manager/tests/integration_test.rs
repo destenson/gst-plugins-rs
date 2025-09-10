@@ -1,7 +1,7 @@
 mod integration;
 
 use integration::validation::*;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use tracing::info;
 
 /// Main integration test suite runner

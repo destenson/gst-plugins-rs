@@ -199,7 +199,7 @@ impl Default for RtspConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(default)]
 pub struct RtspSinkConfig {
     pub enabled: bool,
