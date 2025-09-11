@@ -73,8 +73,8 @@ install_subdir = "gstreamer-1.0"
 versioning = false
 import_library = false
 
-[package.metadata.capi.pkg_config]
-requires_private = "gstreamer-1.0, gstreamer-net-1.0, gobject-2.0, glib-2.0, gmodule-2.0"
+# [package.metadata.capi.pkg_config]
+# requires_private = "gstreamer-1.0, gstreamer-net-1.0, gobject-2.0, glib-2.0, gmodule-2.0"
 
 [dev-dependencies]
 gst-check = { workspace = true, features = ["v1_16"] }
@@ -96,7 +96,7 @@ This plugin contains:
   - rtspauth: RTSP authentication handling
   - rtsptransport: RTSP transport layer management
 These elements are useful for receiving and processing RTSP streams."""
-depends = "$auto, gstreamer1.0-plugins-base (>= 1.16.0), libgstreamer1.0-0 (>= 1.16.0), libgstreamer-net-1.0-0 (>= 1.16.0)"
+depends = "$auto, gstreamer1.0-plugins-base (>= 1.16.0), libgstreamer1.0-0 (>= 1.16.0)"
 section = "libs" 
 priority = "optional"
 revision = "1"
