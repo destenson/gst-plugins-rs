@@ -73,8 +73,8 @@ install_subdir = "gstreamer-1.0"
 versioning = false
 import_library = false
 
-# [package.metadata.capi.pkg_config]
-# requires_private = "gstreamer-1.0, gstreamer-net-1.0, gobject-2.0, glib-2.0, gmodule-2.0"
+[package.metadata.capi.pkg_config]
+requires_private = "gstreamer-1.0, gstreamer-net-1.0, gobject-2.0, glib-2.0, gmodule-2.0"
 
 [dev-dependencies]
 gst-check = { workspace = true, features = ["v1_16"] }
@@ -97,15 +97,21 @@ This plugin contains:
   - rtsptransport: RTSP transport layer management
 These elements are useful for receiving and processing RTSP streams."""
 depends = "$auto, gstreamer1.0-plugins-base (>= 1.16.0), libgstreamer1.0-0 (>= 1.16.0)"
-section = "libs" 
+section = "libs"
 priority = "optional"
+# Additional cargo-deb configuration
 revision = "1"
 conf-files = []
+# Changelog for version tracking
 changelog = "debian/changelog"
+# Ensure proper stripping and compression
 separate-debug-symbols = true
+# Architecture will be auto-detected based on build target
 preserve-symlinks = false
+# Build flags - use release mode for optimized builds
 features = ["futures"]
 default-features = true
+# Suggests and recommends
 recommends = "gstreamer1.0-tools"
 suggests = "gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad"
 

@@ -1,0 +1,37 @@
+Source: gst-plugin-rtp
+Section: libs
+Priority: optional
+Maintainer: GStreamer Rust Plugins Maintainers <gstreamer-rust@lists.freedesktop.org>
+Build-Depends: debhelper-compat (= 13),
+               cargo,
+               rustc (>= 1.83),
+               libgstreamer1.0-dev (>= 1.20.0),
+               libgstreamer-plugins-base1.0-dev (>= 1.20.0),
+               libgstreamer-rtp1.0-dev (>= 1.20.0),
+               libgstreamer-net1.0-dev (>= 1.20.0),
+               libgstreamer-video1.0-dev (>= 1.20.0),
+               pkg-config
+Standards-Version: 4.6.2
+Homepage: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs
+Vcs-Browser: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs
+Vcs-Git: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs.git
+Rules-Requires-Root: no
+
+Package: gst-plugin-rtp
+Architecture: any
+Multi-Arch: same
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         gstreamer1.0-plugins-base (>= 1.20.0),
+         gstreamer1.0-plugins-rtp (>= 1.20.0),
+         gstreamer1.0-plugins-net (>= 1.20.0)
+Description: GStreamer advanced RTP handling plugin
+ GStreamer plugin providing advanced RTP handling capabilities.
+ This plugin contains:
+  - rtpsend: Advanced RTP sender element with custom payload handling
+  - rtprecv: Advanced RTP receiver element with custom payload handling
+  - rtpgccbwe: Google Congestion Control Bandwidth Estimation
+ .
+ These elements are useful for advanced RTP streaming applications requiring
+ fine-grained control over RTP streams, congestion control, and bandwidth
+ adaptation.

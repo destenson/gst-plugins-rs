@@ -1,0 +1,33 @@
+Source: gst-plugin-rtsp
+Section: libs
+Priority: optional
+Maintainer: GStreamer Rust Plugins Maintainers <gstreamer-rust@lists.freedesktop.org>
+Build-Depends: debhelper-compat (= 13),
+               cargo,
+               rustc (>= 1.83),
+               libgstreamer1.0-dev (>= 1.16.0),
+               libgstreamer-plugins-base1.0-dev (>= 1.16.0),
+               libgstreamer-plugins-net1.0-dev (>= 1.16.0),
+               pkg-config
+Standards-Version: 4.6.2
+Homepage: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs
+Vcs-Browser: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs
+Vcs-Git: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs.git
+Rules-Requires-Root: no
+
+Package: gst-plugin-rtsp
+Architecture: any
+Multi-Arch: same
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         gstreamer1.0-plugins-base (>= 1.16.0),
+         gstreamer1.0-plugins-net (>= 1.16.0)
+Description: GStreamer RTSP client plugin
+ GStreamer plugin providing RTSP client functionality.
+ This plugin contains:
+  - rtspsrc: RTSP client source element
+  - rtspauth: RTSP authentication handling
+  - rtsptransport: RTSP transport layer management
+ .
+ These elements are useful for receiving and processing RTSP streams from
+ IP cameras, media servers, and other RTSP-enabled devices.
