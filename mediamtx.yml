@@ -1,0 +1,51 @@
+# MediaMTX configuration for RTSP testing
+# Simple configuration to accept RTSP streams and serve them
+
+# Log level: debug, info, warn, error
+logLevel: info
+
+# Listen on all interfaces
+rtspAddress: :8554
+
+# Global path defaults
+pathDefaults:
+  record: false
+
+# Allow publishing streams
+paths:
+  # # Test stream from UDP
+  # test:
+  #   source: udp://127.0.0.1:5000
+  
+  # On-demand video test source using GStreamer
+  videotestsrc:
+    runOnDemand: gst-launch-1.0 videotestsrc pattern=smpte is-live=true ! video/x-raw,width=1280,height=720,framerate=30/1 ! x264enc tune=zerolatency bitrate=2000 ! mpegtsmux ! rtspclientsink location=rtsp://localhost:$RTSP_PORT/$MTX_PATH
+    runOnDemandStartTimeout: 10s
+    runOnDemandCloseAfter: 10s
+  # 
+  # # UDP source for GStreamer test stream
+  # videotestsrc-udp:
+  #   source: udp://127.0.0.1:8888
+  # 
+  # # On-demand video test source using FFmpeg  
+  # ffmpeg-test:
+  #   source: publisher
+  #   runOnDemand: ffmpeg -f lavfi -i testsrc2=size=1280x720:rate=30 -c:v libx264 -preset ultrafast -tune zerolatency -b:v 2000k -f mpegts udp://127.0.0.1:8889
+  #   runOnDemandStartTimeout: 10s
+  #   runOnDemandCloseAfter: 10s
+  
+  test-rod:
+    runOnDemand: ffmpeg -re -f lavfi -i testsrc=size=1280x720:rate=30 -vcodec libx264 -preset ultrafast -tune zerolatency -b:v 1000k -f rtsp rtsp://localhost:$RTSP_PORT/$MTX_PATH
+    runOnDemandRestart: yes
+
+  # # UDP source for FFmpeg test stream
+  # ffmpeg-test-udp:
+  #   source: udp://127.0.0.1:8889
+  
+  # Allow any path for testing (no authentication)
+  ~^.*:
+    # No authentication required
+    
+# Disable HLS and other protocols for simplicity
+hlsAddress: ""
+webrtcAddress: ""
