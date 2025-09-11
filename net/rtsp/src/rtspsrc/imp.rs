@@ -12,13 +12,13 @@
 //
 // https://www.rfc-editor.org/rfc/rfc2326.html
 
-use std::collections::{btree_set::BTreeSet, HashMap};
+use std::collections::{btree_set::BTreeSet, HashMap, VecDeque};
 use std::convert::TryFrom;
 use std::fmt;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::num::NonZeroUsize;
 use std::pin::Pin;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Result;
@@ -73,6 +73,11 @@ const DEFAULT_PROBATION: u32 = 2;
 const DEFAULT_DO_RTCP: bool = true;
 const DEFAULT_DO_RETRANSMISSION: bool = true;
 const DEFAULT_MAX_RTCP_RTP_TIME_DIFF: i32 = -1;
+
+// Buffer queue management constants
+const DEFAULT_MAX_BUFFERED_BUFFERS: usize = 100;
+const DEFAULT_MAX_BUFFERED_BYTES: usize = 10 * 1024 * 1024; // 10 MB
+const BUFFER_QUEUE_CLEANUP_THRESHOLD: f32 = 0.8; // Start cleanup at 80% capacity
 
 // Buffer mode enum (matching original rtspsrc)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -181,6 +186,166 @@ impl Default for SeekFormat {
     }
 }
 
+/// Buffer queue entry for handling unlinked pads
+#[derive(Debug, Clone)]
+struct QueuedBuffer {
+    buffer: gst::Buffer,
+    appsrc: gst_app::AppSrc,
+    timestamp: gst::ClockTime,
+}
+
+/// Buffer queue manager for handling data when pads are unlinked
+#[derive(Debug)]
+struct BufferQueue {
+    buffers: VecDeque<QueuedBuffer>,
+    total_bytes: usize,
+    max_buffers: usize,
+    max_bytes: usize,
+}
+
+impl BufferQueue {
+    fn new(max_buffers: usize, max_bytes: usize) -> Self {
+        Self {
+            buffers: VecDeque::new(),
+            total_bytes: 0,
+            max_buffers,
+            max_bytes,
+        }
+    }
+
+    fn push(&mut self, buffer: gst::Buffer, appsrc: gst_app::AppSrc, timestamp: gst::ClockTime) -> bool {
+        let buffer_size = buffer.size();
+        
+        // Check if we're over capacity and need to drop buffers
+        while (self.buffers.len() >= self.max_buffers || 
+               self.total_bytes + buffer_size > self.max_bytes) &&
+              !self.buffers.is_empty() {
+            if let Some(dropped_buffer) = self.buffers.pop_front() {
+                self.total_bytes = self.total_bytes.saturating_sub(dropped_buffer.buffer.size());
+                gst::warning!(CAT, "Dropping buffer due to queue overflow - current: {} buffers, {} bytes", 
+                            self.buffers.len(), self.total_bytes);
+            }
+        }
+
+        // If we still can't fit the new buffer, reject it
+        if buffer_size > self.max_bytes {
+            gst::error!(CAT, "Buffer size {} exceeds max queue capacity {}", buffer_size, self.max_bytes);
+            return false;
+        }
+
+        self.buffers.push_back(QueuedBuffer {
+            buffer: buffer.clone(),
+            appsrc: appsrc.clone(),
+            timestamp,
+        });
+        self.total_bytes += buffer_size;
+        
+        gst::debug!(CAT, "Queued buffer - queue size: {} buffers, {} bytes", 
+                  self.buffers.len(), self.total_bytes);
+        
+        true
+    }
+
+    fn flush_to_appsrc(&mut self, target_appsrc: &gst_app::AppSrc) -> usize {
+        let mut flushed_count = 0;
+        let mut remaining_buffers = VecDeque::new();
+        
+        while let Some(queued) = self.buffers.pop_front() {
+            self.total_bytes = self.total_bytes.saturating_sub(queued.buffer.size());
+            
+            if queued.appsrc.name() == target_appsrc.name() {
+                // Try to push the buffer
+                let buffer_size = queued.buffer.size();
+                match target_appsrc.push_buffer(queued.buffer.clone()) {
+                    Ok(_) => {
+                        gst::debug!(CAT, "Successfully flushed queued buffer to {}", target_appsrc.name());
+                        flushed_count += 1;
+                    }
+                    Err(err) => {
+                        gst::warning!(CAT, "Failed to flush queued buffer to {}: {}", target_appsrc.name(), err);
+                        // Put it back if it failed
+                        self.total_bytes += buffer_size;
+                        remaining_buffers.push_back(queued);
+                    }
+                }
+            } else {
+                // Keep buffers for other appsrcs
+                let buffer_size = queued.buffer.size();
+                self.total_bytes += buffer_size;
+                remaining_buffers.push_back(queued);
+            }
+        }
+        
+        self.buffers = remaining_buffers;
+        
+        if flushed_count > 0 {
+            gst::info!(CAT, "Flushed {} queued buffers to {} - remaining: {} buffers, {} bytes", 
+                     flushed_count, target_appsrc.name(), self.buffers.len(), self.total_bytes);
+        }
+        
+        flushed_count
+    }
+
+    fn clear(&mut self) {
+        let cleared_count = self.buffers.len();
+        let cleared_bytes = self.total_bytes;
+        
+        self.buffers.clear();
+        self.total_bytes = 0;
+        
+        if cleared_count > 0 {
+            gst::info!(CAT, "Cleared {} queued buffers ({} bytes) from buffer queue", 
+                     cleared_count, cleared_bytes);
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.buffers.len()
+    }
+
+    fn total_bytes(&self) -> usize {
+        self.total_bytes
+    }
+
+    fn is_over_threshold(&self) -> bool {
+        let buffer_threshold = (self.max_buffers as f32 * BUFFER_QUEUE_CLEANUP_THRESHOLD) as usize;
+        let bytes_threshold = (self.max_bytes as f32 * BUFFER_QUEUE_CLEANUP_THRESHOLD) as usize;
+        
+        self.buffers.len() >= buffer_threshold || self.total_bytes >= bytes_threshold
+    }
+}
+
+impl Default for BufferQueue {
+    fn default() -> Self {
+        Self::new(DEFAULT_MAX_BUFFERED_BUFFERS, DEFAULT_MAX_BUFFERED_BYTES)
+    }
+}
+
+/// Wrapper around AppSrc that integrates with RtspSrc buffer queue management
+#[derive(Debug, Clone)]
+struct BufferingAppSrc {
+    appsrc: gst_app::AppSrc,
+    rtsp_src: super::RtspSrc,
+}
+
+impl BufferingAppSrc {
+    /// Push buffer using the RtspSrc buffer queue system
+    fn push_buffer(&self, buffer: gst::Buffer) -> Result<gst::FlowSuccess, gst::FlowError> {
+        let rtsp_src_imp = self.rtsp_src.imp();
+        rtsp_src_imp.push_buffer_with_queue(&self.appsrc, buffer)
+    }
+
+    /// Get the underlying AppSrc name for logging
+    fn name(&self) -> glib::GString {
+        self.appsrc.name()
+    }
+
+    /// Get current running time from the underlying AppSrc
+    fn current_running_time(&self) -> Option<gst::ClockTime> {
+        self.appsrc.current_running_time()
+    }
+}
+
 #[derive(Debug, Clone)]
 struct Settings {
     location: Option<Url>,
@@ -278,13 +443,27 @@ enum Commands {
     Reconnect,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct RtspSrc {
     settings: Mutex<Settings>,
     task_handle: Mutex<Option<JoinHandle<()>>>,
     command_queue: Mutex<Option<mpsc::Sender<Commands>>>,
+    buffer_queue: Arc<Mutex<BufferQueue>>,
     #[cfg(feature = "telemetry")]
     metrics: super::telemetry::RtspMetrics,
+}
+
+impl Default for RtspSrc {
+    fn default() -> Self {
+        Self {
+            settings: Mutex::new(Settings::default()),
+            task_handle: Mutex::new(None),
+            command_queue: Mutex::new(None),
+            buffer_queue: Arc::new(Mutex::new(BufferQueue::default())),
+            #[cfg(feature = "telemetry")]
+            metrics: super::telemetry::RtspMetrics::default(),
+        }
+    }
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -423,6 +602,75 @@ impl RtspSrc {
         };
 
         Ok(())
+    }
+
+    /// Try to push buffer to AppSrc, queuing it if the pad is not linked
+    fn push_buffer_with_queue(&self, appsrc: &gst_app::AppSrc, buffer: gst::Buffer) -> Result<gst::FlowSuccess, gst::FlowError> {
+        let timestamp = appsrc.current_running_time().unwrap_or(gst::ClockTime::ZERO);
+        
+        match appsrc.push_buffer(buffer.clone()) {
+            Ok(success) => {
+                gst::trace!(CAT, "Successfully pushed buffer to {}", appsrc.name());
+                Ok(success)
+            }
+            Err(gst::FlowError::NotLinked) => {
+                // Queue the buffer for later flushing when pad gets linked
+                let mut buffer_queue = self.buffer_queue.lock().unwrap();
+                if buffer_queue.push(buffer, appsrc.clone(), timestamp) {
+                    gst::debug!(CAT, "Queued buffer for {} (pad not linked yet)", appsrc.name());
+                    
+                    // Warn if queue is getting full
+                    if buffer_queue.is_over_threshold() {
+                        gst::warning!(CAT, "Buffer queue is {}% full - {} buffers, {} bytes", 
+                                    (buffer_queue.len() as f32 / buffer_queue.max_buffers as f32 * 100.0) as u32,
+                                    buffer_queue.len(), buffer_queue.total_bytes());
+                    }
+                    
+                    Ok(gst::FlowSuccess::Ok)
+                } else {
+                    gst::error!(CAT, "Failed to queue buffer for {} - queue full or buffer too large", appsrc.name());
+                    Err(gst::FlowError::Error)
+                }
+            }
+            Err(gst::FlowError::Flushing) => {
+                gst::debug!(CAT, "AppSrc {} is flushing - dropping buffer", appsrc.name());
+                Ok(gst::FlowSuccess::Ok)
+            }
+            Err(err) => {
+                gst::error!(CAT, "Failed to push buffer to {}: {}", appsrc.name(), err);
+                Err(err)
+            }
+        }
+    }
+
+    /// Flush queued buffers for a specific AppSrc when its pad gets linked
+    fn flush_queued_buffers(&self, appsrc: &gst_app::AppSrc) {
+        let mut buffer_queue = self.buffer_queue.lock().unwrap();
+        let flushed_count = buffer_queue.flush_to_appsrc(appsrc);
+        
+        if flushed_count > 0 {
+            gst::info!(CAT, "Flushed {} queued buffers to {} after pad link", flushed_count, appsrc.name());
+        }
+    }
+
+    /// Clear all queued buffers (called on state changes or errors)
+    fn clear_buffer_queue(&self) {
+        let mut buffer_queue = self.buffer_queue.lock().unwrap();
+        buffer_queue.clear();
+    }
+
+    /// Get buffer queue statistics for debugging/telemetry
+    fn buffer_queue_stats(&self) -> (usize, usize) {
+        let buffer_queue = self.buffer_queue.lock().unwrap();
+        (buffer_queue.len(), buffer_queue.total_bytes())
+    }
+
+    /// Create an AppSrc wrapper that handles buffering
+    fn create_buffering_appsrc(&self, appsrc: gst_app::AppSrc) -> BufferingAppSrc {
+        BufferingAppSrc {
+            appsrc,
+            rtsp_src: self.obj().clone(),
+        }
     }
 }
 
@@ -1124,6 +1372,8 @@ impl ElementImpl for RtspSrc {
                 ret = gst::StateChangeSuccess::NoPreroll;
             }
             gst::StateChange::PausedToReady => {
+                // Clear buffer queue when going to READY state
+                self.clear_buffer_queue();
                 match tokio::runtime::Handle::try_current() {
                     Ok(_) => {
                         // If the app does set_state(NULL) from a block_on() inside its own tokio
@@ -1637,6 +1887,7 @@ impl RtspSrc {
                     // Configure probation on the RTP session
                     manager.configure_session(rtpsession_n as u32, settings.probation)?;
                     // Spawn RTP udp receive task
+                    let buffer_queue = self.buffer_queue.clone();
                     state.handles.push(RUNTIME.spawn(async move {
                         udp_rtp_task(
                             &rtp_socket,
@@ -1644,6 +1895,7 @@ impl RtspSrc {
                             settings.timeout,
                             settings.receive_mtu,
                             None,
+                            Some(buffer_queue),
                         )
                         .await
                     }));
@@ -1653,8 +1905,9 @@ impl RtspSrc {
                         let rtcp_dest = rtcp_port.and_then(|p| Some(SocketAddr::new(*dest, p)));
                         let rtcp_appsrc = self.make_rtcp_appsrc(rtpsession_n, &manager)?;
                         self.make_rtcp_appsink(rtpsession_n, &manager, on_rtcp)?;
+                        let buffer_queue = self.buffer_queue.clone();
                         state.handles.push(RUNTIME.spawn(async move {
-                            udp_rtcp_task(&rtcp_socket, rtcp_appsrc, rtcp_dest, true, rx).await
+                            udp_rtcp_task(&rtcp_socket, rtcp_appsrc, rtcp_dest, true, rx, Some(buffer_queue)).await
                         }));
                     }
                 }
@@ -1692,6 +1945,7 @@ impl RtspSrc {
                     
                     // Configure probation on the RTP session
                     manager.configure_session(rtpsession_n as u32, settings.probation)?;
+                    let buffer_queue = self.buffer_queue.clone();
                     state.handles.push(RUNTIME.spawn(async move {
                         udp_rtp_task(
                             &rtp_socket,
@@ -1699,6 +1953,7 @@ impl RtspSrc {
                             settings.timeout,
                             settings.receive_mtu,
                             rtp_sender_addr,
+                            Some(buffer_queue),
                         )
                         .await
                     }));
@@ -1707,8 +1962,9 @@ impl RtspSrc {
                     if let Some(rtcp_socket) = rtcp_socket {
                         let rtcp_appsrc = self.make_rtcp_appsrc(rtpsession_n, &manager)?;
                         self.make_rtcp_appsink(rtpsession_n, &manager, on_rtcp)?;
+                        let buffer_queue = self.buffer_queue.clone();
                         state.handles.push(RUNTIME.spawn(async move {
-                            udp_rtcp_task(&rtcp_socket, rtcp_appsrc, rtcp_sender_addr, false, rx)
+                            udp_rtcp_task(&rtcp_socket, rtcp_appsrc, rtcp_sender_addr, false, rx, Some(buffer_queue))
                                 .await
                         }));
                     }
@@ -1779,6 +2035,24 @@ impl RtspSrc {
                         );
                     } else {
                         gst::info!(CAT, "Successfully set ghostpad {} target - signaling no_more_pads", ghostpad.name());
+                        
+                        // Flush any queued buffers for this stream now that the pad is linked
+                        if let Ok(rtsp_src) = obj.clone().downcast::<super::RtspSrc>() {
+                            // Try to find the corresponding AppSrc for this stream
+                            // AppSrcs are named like "rtp_appsrc_{stream_id}" 
+                            if let Ok(stream_id_num) = stream_id.parse::<u32>() {
+                                let appsrc_name = format!("rtp_appsrc_{}", stream_id_num);
+                                if let Ok(bin) = obj.clone().downcast::<gst::Bin>() {
+                                    if let Some(appsrc_elem) = bin.by_name(&appsrc_name) {
+                                        if let Ok(appsrc) = appsrc_elem.downcast::<gst_app::AppSrc>() {
+                                            gst::debug!(CAT, "Flushing queued buffers for {} after pad link", appsrc_name);
+                                            rtsp_src.imp().flush_queued_buffers(&appsrc);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
                         // Signal that pads are ready now that ghost pad has a target
                         obj.no_more_pads();
                     }
@@ -1814,18 +2088,12 @@ impl RtspSrc {
                         let bufref = buffer.make_mut();
                         bufref.set_dts(t);
                         // Handle flow errors gracefully - unlinked pads are expected during setup
-                        match appsrc.push_buffer(buffer) {
+                        match self.push_buffer_with_queue(&appsrc, buffer) {
                             Ok(_) => {
-                                gst::trace!(CAT, "Successfully pushed buffer on pad {} for channel {}", appsrc.name(), channel_id);
-                            }
-                            Err(gst::FlowError::NotLinked) => {
-                                gst::debug!(CAT, "Pad {} for channel {} not linked yet - continuing", appsrc.name(), channel_id);
-                            }
-                            Err(gst::FlowError::Flushing) => {
-                                gst::debug!(CAT, "Pad {} for channel {} is flushing - continuing", appsrc.name(), channel_id);
+                                gst::trace!(CAT, "Successfully handled buffer on pad {} for channel {}", appsrc.name(), channel_id);
                             }
                             Err(err) => {
-                                gst::error!(CAT, "Failed to push buffer on pad {} for channel {}: {}", appsrc.name(), channel_id, err);
+                                gst::error!(CAT, "Failed to handle buffer on pad {} for channel {}: {}", appsrc.name(), channel_id, err);
                                 return Err(err.into());
                             }
                         }
@@ -3178,6 +3446,7 @@ async fn udp_rtp_task(
     timeout: gst::ClockTime,
     receive_mtu: u32,
     sender_addr: Option<SocketAddr>,
+    buffer_queue: Option<Arc<Mutex<BufferQueue>>>,
 ) {
     let t = Duration::from_secs(timeout.into());
     let sender_addr = match sender_addr {
@@ -3258,23 +3527,44 @@ async fn udp_rtp_task(
                 gst_net::NetAddressMeta::add(bufref, &gio_addr);
                 gst::trace!(CAT, "received RTP packet from {addr:?}");
                 
-                match appsrc.push_buffer(buffer) {
+                // Use buffer queue system if available, otherwise drop buffers
+                let push_result = if let Some(ref buffer_queue_mutex) = buffer_queue {
+                    // Implement buffer queue logic directly since we can't call push_buffer_with_queue
+                    let timestamp = appsrc.current_running_time().unwrap_or(gst::ClockTime::ZERO);
+                    match appsrc.push_buffer(buffer.clone()) {
+                        Ok(success) => Ok(success),
+                        Err(gst::FlowError::NotLinked) => {
+                            // Queue the buffer for later flushing
+                            let mut queue = buffer_queue_mutex.lock().unwrap();
+                            if queue.push(buffer, appsrc.clone(), timestamp) {
+                                gst::debug!(CAT, "Queued UDP RTP buffer (pad not linked yet)");
+                                Ok(gst::FlowSuccess::Ok)
+                            } else {
+                                gst::error!(CAT, "Failed to queue UDP RTP buffer - queue full");
+                                Err(gst::FlowError::Error)
+                            }
+                        }
+                        Err(gst::FlowError::Flushing) => {
+                            gst::debug!(CAT, "UDP RTP pad is flushing - dropping buffer");
+                            Ok(gst::FlowSuccess::Ok)
+                        }
+                        Err(err) => Err(err),
+                    }
+                } else {
+                    appsrc.push_buffer(buffer)
+                };
+                
+                match push_result {
                     Ok(_) => {
-                        gst::trace!(CAT, "Successfully pushed UDP RTP buffer");
-                    }
-                    Err(gst::FlowError::NotLinked) => {
-                        gst::debug!(CAT, "UDP RTP pad not linked yet - continuing");
-                    }
-                    Err(gst::FlowError::Flushing) => {
-                        gst::debug!(CAT, "UDP RTP pad is flushing - continuing");
+                        gst::trace!(CAT, "Successfully handled UDP RTP buffer");
                     }
                     Err(gst::FlowError::Eos) => {
                         gst::debug!(CAT, "UDP RTP stream ended");
                         break "UDP RTP stream ended".to_string();
                     }
                     Err(err) => {
-                        gst::error!(CAT, "Failed to push UDP RTP buffer: {}", err);
-                        break format!("UDP RTP buffer push failed: {err:?}");
+                        gst::error!(CAT, "Failed to handle UDP RTP buffer: {}", err);
+                        break format!("UDP RTP buffer handling failed: {err:?}");
                     }
                 }
             }
@@ -3298,6 +3588,7 @@ async fn udp_rtcp_task(
     mut sender_addr: Option<SocketAddr>,
     is_multicast: bool,
     mut rx: mpsc::Receiver<MappedBuffer<Readable>>,
+    buffer_queue: Option<Arc<Mutex<BufferQueue>>>,
 ) {
     let mut buf = vec![0; UDP_PACKET_MAX_SIZE as usize];
     let mut cache: LruCache<_, _> = LruCache::new(NonZeroUsize::new(RTCP_ADDR_CACHE_SIZE).unwrap());
@@ -3343,23 +3634,44 @@ async fn udp_rtcp_task(
                         gio::InetSocketAddress::new(&inet_addr, addr.port())
                     });
                     gst_net::NetAddressMeta::add(bufref, gio_addr);
-                    match appsrc.push_buffer(buffer) {
+                    // Use buffer queue system if available, otherwise drop buffers
+                    let push_result = if let Some(ref buffer_queue_mutex) = buffer_queue {
+                        // Implement buffer queue logic directly since we can't call push_buffer_with_queue
+                        let timestamp = appsrc.current_running_time().unwrap_or(gst::ClockTime::ZERO);
+                        match appsrc.push_buffer(buffer.clone()) {
+                            Ok(success) => Ok(success),
+                            Err(gst::FlowError::NotLinked) => {
+                                // Queue the buffer for later flushing
+                                let mut queue = buffer_queue_mutex.lock().unwrap();
+                                if queue.push(buffer, appsrc.clone(), timestamp) {
+                                    gst::debug!(CAT, "Queued UDP RTCP buffer (pad not linked yet)");
+                                    Ok(gst::FlowSuccess::Ok)
+                                } else {
+                                    gst::error!(CAT, "Failed to queue UDP RTCP buffer - queue full");
+                                    Err(gst::FlowError::Error)
+                                }
+                            }
+                            Err(gst::FlowError::Flushing) => {
+                                gst::debug!(CAT, "UDP RTCP pad is flushing - dropping buffer");
+                                Ok(gst::FlowSuccess::Ok)
+                            }
+                            Err(err) => Err(err),
+                        }
+                    } else {
+                        appsrc.push_buffer(buffer)
+                    };
+                    
+                    match push_result {
                         Ok(_) => {
-                            gst::trace!(CAT, "Successfully pushed UDP RTCP buffer");
-                        }
-                        Err(gst::FlowError::NotLinked) => {
-                            gst::debug!(CAT, "UDP RTCP pad not linked yet - continuing");
-                        }
-                        Err(gst::FlowError::Flushing) => {
-                            gst::debug!(CAT, "UDP RTCP pad is flushing - continuing");
+                            gst::trace!(CAT, "Successfully handled UDP RTCP buffer");
                         }
                         Err(gst::FlowError::Eos) => {
                             gst::debug!(CAT, "UDP RTCP stream ended");
                             break "UDP RTCP stream ended".to_string();
                         }
                         Err(err) => {
-                            gst::error!(CAT, "Failed to push UDP RTCP buffer: {}", err);
-                            break format!("UDP RTCP buffer push failed: {err:?}");
+                            gst::error!(CAT, "Failed to handle UDP RTCP buffer: {}", err);
+                            break format!("UDP RTCP buffer handling failed: {err:?}");
                         }
                     }
                 }
