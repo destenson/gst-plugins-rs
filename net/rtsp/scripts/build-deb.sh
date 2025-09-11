@@ -128,9 +128,9 @@ generate_package() {
     cd "$RTSP_DIR"
     
     if [ "$VERBOSE" = "1" ]; then
-        cargo deb --verbose --no-cache --no-build --multiarch=same
+        cargo deb --verbose --no-strip --no-build --multiarch=same
     else
-        cargo deb --no-cache --no-build --multiarch=same
+        cargo deb --no-strip --no-build --multiarch=same
     fi
     
     # Find the generated package
