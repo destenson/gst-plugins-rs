@@ -1,0 +1,8 @@
+gst-plugin-rtp (0.14.0~git-1) unstable; urgency=medium
+
+  * Initial Debian package release
+  * Includes rtpsend, rtprecv, and rtpgccbwe elements
+  * Built from gst-plugins-rs repository
+  * Advanced RTP handling with custom payload support
+
+ -- GStreamer Rust Plugins Maintainers <gstreamer-rust@lists.freedesktop.org>  Wed, 11 Sep 2025 12:00:00 +0000
