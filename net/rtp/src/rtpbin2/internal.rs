@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use gst::glib;
+use gst::{glib, DebugLogger};
 use std::sync::{LazyLock, OnceLock};
 
 use super::config::Rtp2Session;
