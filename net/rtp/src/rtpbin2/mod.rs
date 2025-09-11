@@ -35,13 +35,13 @@ pub fn register(plugin: &gst::Plugin) -> Result<(), glib::BoolError> {
     gst::Element::register(
         Some(plugin),
         "rtpsend",
-        gst::Rank::NONE,
+        gst::Rank::PRIMARY,
         RtpSend::static_type(),
     )?;
     gst::Element::register(
         Some(plugin),
         "rtprecv",
-        gst::Rank::NONE,
+        gst::Rank::PRIMARY,
         RtpRecv::static_type(),
     )
 }
