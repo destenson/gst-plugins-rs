@@ -34,9 +34,9 @@ log_error() {
 
 # Cleanup function
 cleanup() {
-    log_info "Cleaning up build artifacts..."
-    cd "$RTSP_DIR"
-    cargo clean 2>/dev/null || true
+    log_info "[SKIP] Cleaning up build artifacts..."
+    # cd "$RTSP_DIR"
+    # cargo clean 2>/dev/null || true
 }
 
 # Trap cleanup on exit
@@ -109,9 +109,9 @@ build_plugin() {
     # Verify library was built
     local lib_file
     if [ "$(uname)" = "Linux" ]; then
-        lib_file="target/release/libgstrsrtsp.so"
+        lib_file="${PROJECT_ROOT}/target/release/libgstrsrtsp.so"
     else
-        lib_file="target/release/gstrsrtsp.dll"
+        lib_file="${PROJECT_ROOT}/target/release/gstrsrtsp.dll"
     fi
     
     if [ ! -f "$lib_file" ]; then
@@ -127,21 +127,18 @@ generate_package() {
     log_info "Generating Debian package..."
     cd "$RTSP_DIR"
     
-    # Ensure target directory exists
-    mkdir -p target/debian
-    
     if [ "$VERBOSE" = "1" ]; then
-        cargo deb --verbose
+        cargo deb --verbose --no-cache --no-build --multiarch=same
     else
-        cargo deb
+        cargo deb --no-cache --no-build --multiarch=same
     fi
     
     # Find the generated package
     local deb_file
-    deb_file=$(find target/debian -name "*.deb" | head -n 1)
+    deb_file=$(find ${PROJECT_ROOT}/target/debian -name "*.deb" | head -n 1)
     
     if [ -z "$deb_file" ]; then
-        log_error "No .deb file found in target/debian/"
+        log_error "No .deb file found in ${PROJECT_ROOT}/target/debian/"
         exit 1
     fi
     
@@ -188,7 +185,7 @@ main() {
     
     # Show final package location
     local final_deb
-    final_deb=$(find "$RTSP_DIR/target/debian" -name "*.deb" | head -n 1)
+    final_deb=$(find "${PROJECT_ROOT}/target/debian" -name "*.deb" | head -n 1)
     if [ -n "$final_deb" ]; then
         log_info "Final package: $final_deb"
         log_info "Package size: $(du -h "$final_deb" | cut -f1)"
