@@ -1167,6 +1167,38 @@ impl RtspSrc {
         obj.emit_by_name::<Option<gst::Caps>>("request-rtp-key", &[&stream_id])
     }
 
+    /// Emit soft-limit signal when jitterbuffer reaches soft threshold
+    /// This signal is emitted when a jitterbuffer approaches its capacity limit,
+    /// allowing applications to implement adaptive streaming strategies.
+    /// This is a placeholder for future jitterbuffer monitoring implementation.
+    #[allow(dead_code)]
+    fn emit_soft_limit(&self, stream_id: u32) {
+        let obj = self.obj();
+        gst::debug!(
+            CAT,
+            obj = obj,
+            "Emitting soft-limit signal for stream {}",
+            stream_id
+        );
+        obj.emit_by_name::<()>("soft-limit", &[&stream_id]);
+    }
+
+    /// Emit hard-limit signal when jitterbuffer reaches hard threshold
+    /// This signal is emitted when a jitterbuffer reaches critical capacity,
+    /// indicating imminent buffer overflow and possible frame drops.
+    /// This is a placeholder for future jitterbuffer monitoring implementation.
+    #[allow(dead_code)]
+    fn emit_hard_limit(&self, stream_id: u32) {
+        let obj = self.obj();
+        gst::debug!(
+            CAT,
+            obj = obj,
+            "Emitting hard-limit signal for stream {}",
+            stream_id
+        );
+        obj.emit_by_name::<()>("hard-limit", &[&stream_id]);
+    }
+
     /// Handle get-parameter action signal
     /// Sends a GET_PARAMETER RTSP request for a single parameter
     /// Returns true if request could be sent, false otherwise
@@ -2791,6 +2823,18 @@ impl ObjectImpl for RtspSrc {
 
                         Some(imp.handle_remove_key(stream_id).to_value())
                     })
+                    .build(),
+                // soft-limit signal: emitted when jitterbuffer reaches soft threshold (warning level)
+                // Notifies application of buffer fill approaching limit for adaptive streaming
+                // Since: 1.0
+                glib::subclass::Signal::builder("soft-limit")
+                    .param_types([u32::static_type()]) // stream index experiencing soft limit
+                    .build(),
+                // hard-limit signal: emitted when jitterbuffer reaches hard threshold (critical level)
+                // Alerts application of critical buffer overflow condition requiring immediate action
+                // Since: 1.0
+                glib::subclass::Signal::builder("hard-limit")
+                    .param_types([u32::static_type()]) // stream index experiencing hard limit
                     .build(),
             ]
         });
