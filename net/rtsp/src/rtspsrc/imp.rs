@@ -89,6 +89,13 @@ const DEFAULT_UDP_BUFFER_SIZE: i32 = 524288; // 512KB default
 const DEFAULT_IS_LIVE: bool = true;
 const DEFAULT_CONNECTION_SPEED: u64 = 0; // 0 = unknown/unspecified
 
+// Timestamp synchronization defaults (matching original rtspsrc)
+const DEFAULT_NTP_SYNC: bool = false;
+const DEFAULT_RFC7273_SYNC: bool = false;
+const DEFAULT_MAX_TS_OFFSET: i64 = 3000000000; // 3 seconds in nanoseconds
+const DEFAULT_MAX_TS_OFFSET_ADJUSTMENT: u64 = 0; // 0 = no limit
+const DEFAULT_ADD_REFERENCE_TIMESTAMP_META: bool = false;
+
 // Buffer queue management constants
 const DEFAULT_MAX_BUFFERED_BUFFERS: usize = 100;
 const DEFAULT_MAX_BUFFERED_BYTES: usize = 10 * 1024 * 1024; // 10 MB
@@ -197,6 +204,61 @@ pub enum SeekFormat {
 impl Default for SeekFormat {
     fn default() -> Self {
         SeekFormat::Npt
+    }
+}
+
+// NTP time source enum (matching original rtspsrc)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NtpTimeSource {
+    Ntp,         // NTP time based on realtime clock
+    Unix,        // UNIX time based on realtime clock
+    RunningTime, // Running time based on pipeline clock
+    ClockTime,   // Pipeline clock time
+}
+
+impl Default for NtpTimeSource {
+    fn default() -> Self {
+        NtpTimeSource::Ntp
+    }
+}
+
+impl NtpTimeSource {
+    fn as_str(&self) -> &'static str {
+        match self {
+            NtpTimeSource::Ntp => "ntp",
+            NtpTimeSource::Unix => "unix",
+            NtpTimeSource::RunningTime => "running-time",
+            NtpTimeSource::ClockTime => "clock-time",
+        }
+    }
+
+    fn from_str(s: &str) -> Result<Self, String> {
+        match s {
+            "ntp" => Ok(NtpTimeSource::Ntp),
+            "unix" => Ok(NtpTimeSource::Unix),
+            "running-time" => Ok(NtpTimeSource::RunningTime),
+            "clock-time" => Ok(NtpTimeSource::ClockTime),
+            _ => Err(format!("Invalid NTP time source: {}", s)),
+        }
+    }
+
+    fn as_int(&self) -> u32 {
+        match self {
+            NtpTimeSource::Ntp => 0,
+            NtpTimeSource::Unix => 1,
+            NtpTimeSource::RunningTime => 2,
+            NtpTimeSource::ClockTime => 3,
+        }
+    }
+
+    fn from_int(i: u32) -> Result<Self, String> {
+        match i {
+            0 => Ok(NtpTimeSource::Ntp),
+            1 => Ok(NtpTimeSource::Unix),
+            2 => Ok(NtpTimeSource::RunningTime),
+            3 => Ok(NtpTimeSource::ClockTime),
+            _ => Err(format!("Invalid NTP time source value: {}", i)),
+        }
     }
 }
 
@@ -439,6 +501,13 @@ struct Settings {
     is_live: bool,
     user_agent: String,
     connection_speed: u64,
+    // Timestamp synchronization properties
+    ntp_sync: bool,
+    rfc7273_sync: bool,
+    ntp_time_source: NtpTimeSource,
+    max_ts_offset: i64,
+    max_ts_offset_adjustment: u64,
+    add_reference_timestamp_meta: bool,
     #[cfg(feature = "adaptive")]
     adaptive_learning: bool,
     #[cfg(feature = "adaptive")]
@@ -503,6 +572,13 @@ impl Default for Settings {
             is_live: DEFAULT_IS_LIVE,
             user_agent: DEFAULT_USER_AGENT.to_string(),
             connection_speed: DEFAULT_CONNECTION_SPEED,
+            // Timestamp synchronization properties
+            ntp_sync: DEFAULT_NTP_SYNC,
+            rfc7273_sync: DEFAULT_RFC7273_SYNC,
+            ntp_time_source: NtpTimeSource::default(),
+            max_ts_offset: DEFAULT_MAX_TS_OFFSET,
+            max_ts_offset_adjustment: DEFAULT_MAX_TS_OFFSET_ADJUSTMENT,
+            add_reference_timestamp_meta: DEFAULT_ADD_REFERENCE_TIMESTAMP_META,
             #[cfg(feature = "adaptive")]
             adaptive_exploration_rate: 0.1,
             #[cfg(feature = "adaptive")]
@@ -1143,6 +1219,47 @@ impl ObjectImpl for RtspSrc {
                     .default_value(DEFAULT_CONNECTION_SPEED)
                     .mutable_ready()
                     .build(),
+                // Timestamp synchronization properties (matching original rtspsrc)
+                glib::ParamSpecBoolean::builder("ntp-sync")
+                    .nick("NTP Sync")
+                    .blurb("Synchronize received streams to the NTP clock")
+                    .default_value(DEFAULT_NTP_SYNC)
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecBoolean::builder("rfc7273-sync")
+                    .nick("RFC7273 Sync")
+                    .blurb("Synchronize received streams to the RFC7273 clock (requires clock and offset to be provided)")
+                    .default_value(DEFAULT_RFC7273_SYNC)
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecString::builder("ntp-time-source")
+                    .nick("NTP Time Source")
+                    .blurb("NTP time source for RTCP packets")
+                    .default_value(Some(NtpTimeSource::default().as_str()))
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecInt64::builder("max-ts-offset")
+                    .nick("Max Timestamp Offset")
+                    .blurb("The maximum absolute value of the time offset in (nanoseconds). Note, if the ntp-sync parameter is set the default value is changed to 0 (no limit)")
+                    .minimum(0)
+                    .maximum(i64::MAX)
+                    .default_value(DEFAULT_MAX_TS_OFFSET)
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecUInt64::builder("max-ts-offset-adjustment")
+                    .nick("Max Timestamp Offset Adjustment")
+                    .blurb("The maximum number of nanoseconds per frame that time stamp offsets may be adjusted (0 = no limit).")
+                    .minimum(0)
+                    .maximum(u64::MAX)
+                    .default_value(DEFAULT_MAX_TS_OFFSET_ADJUSTMENT)
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecBoolean::builder("add-reference-timestamp-meta")
+                    .nick("Add Reference Timestamp Meta")
+                    .blurb("Add Reference Timestamp Meta to buffers with the original clock timestamp before any adjustments when syncing to an RFC7273 clock.")
+                    .default_value(DEFAULT_ADD_REFERENCE_TIMESTAMP_META)
+                    .mutable_ready()
+                    .build(),
             ]
         });
 
@@ -1392,6 +1509,48 @@ impl ObjectImpl for RtspSrc {
                 settings.connection_speed = value.get::<u64>().expect("type checked upstream");
                 Ok(())
             }
+            // Timestamp synchronization properties
+            "ntp-sync" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.ntp_sync = value.get::<bool>().expect("type checked upstream");
+                Ok(())
+            }
+            "rfc7273-sync" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.rfc7273_sync = value.get::<bool>().expect("type checked upstream");
+                Ok(())
+            }
+            "ntp-time-source" => {
+                let source_str = value.get::<&str>().expect("type checked upstream");
+                match NtpTimeSource::from_str(source_str) {
+                    Ok(source) => {
+                        let mut settings = self.settings.lock().unwrap();
+                        settings.ntp_time_source = source;
+                        Ok(())
+                    }
+                    Err(err) => Err(glib::Error::new(
+                        gst::CoreError::Failed,
+                        &format!("Invalid NTP time source: {}", err),
+                    )),
+                }
+            }
+            "max-ts-offset" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.max_ts_offset = value.get::<i64>().expect("type checked upstream");
+                Ok(())
+            }
+            "max-ts-offset-adjustment" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.max_ts_offset_adjustment =
+                    value.get::<u64>().expect("type checked upstream");
+                Ok(())
+            }
+            "add-reference-timestamp-meta" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.add_reference_timestamp_meta =
+                    value.get::<bool>().expect("type checked upstream");
+                Ok(())
+            }
             name => unimplemented!("Property '{name}'"),
         };
 
@@ -1620,6 +1779,31 @@ impl ObjectImpl for RtspSrc {
             "connection-speed" => {
                 let settings = self.settings.lock().unwrap();
                 settings.connection_speed.to_value()
+            }
+            // Timestamp synchronization properties
+            "ntp-sync" => {
+                let settings = self.settings.lock().unwrap();
+                settings.ntp_sync.to_value()
+            }
+            "rfc7273-sync" => {
+                let settings = self.settings.lock().unwrap();
+                settings.rfc7273_sync.to_value()
+            }
+            "ntp-time-source" => {
+                let settings = self.settings.lock().unwrap();
+                settings.ntp_time_source.as_str().to_value()
+            }
+            "max-ts-offset" => {
+                let settings = self.settings.lock().unwrap();
+                settings.max_ts_offset.to_value()
+            }
+            "max-ts-offset-adjustment" => {
+                let settings = self.settings.lock().unwrap();
+                settings.max_ts_offset_adjustment.to_value()
+            }
+            "add-reference-timestamp-meta" => {
+                let settings = self.settings.lock().unwrap();
+                settings.add_reference_timestamp_meta.to_value()
             }
             name => unimplemented!("Property '{name}'"),
         }
