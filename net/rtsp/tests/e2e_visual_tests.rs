@@ -126,11 +126,14 @@ impl E2EVisualTest {
         ]);
     }
 
-    pub async fn run_visual_test(&self, config: &VisualTestConfig) -> Result<VisualTestResult, Box<dyn std::error::Error>> {
+    pub async fn run_visual_test(
+        &self,
+        config: &VisualTestConfig,
+    ) -> Result<VisualTestResult, Box<dyn std::error::Error>> {
         println!("\n🎥 Running Visual Test: {}", config.name);
         println!("Description: {}", config.description);
         println!("Duration: {}s", config.duration_seconds);
-        
+
         if config.requires_display && !self.has_display() {
             return Ok(VisualTestResult {
                 config: config.clone(),
@@ -143,7 +146,7 @@ impl E2EVisualTest {
         }
 
         println!("Pipeline: {}", config.pipeline);
-        
+
         if !self.auto_close {
             println!("\n⚠️  Press Ctrl+C to stop the test early");
             println!("The test will run for {} seconds", config.duration_seconds);
@@ -153,7 +156,7 @@ impl E2EVisualTest {
         let timeout_duration = Duration::from_secs(config.duration_seconds + 10);
 
         let mut cmd = Command::new("gst-launch-1.0");
-        
+
         if self.auto_close {
             cmd.arg(&format!("--timeout={}", config.duration_seconds));
         }
@@ -163,8 +166,7 @@ impl E2EVisualTest {
             cmd.arg(arg);
         }
 
-        cmd.stdout(Stdio::piped())
-           .stderr(Stdio::piped());
+        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
         // Set environment variables
         if let Some(path) = &self.plugin_path {
@@ -178,8 +180,9 @@ impl E2EVisualTest {
         // Execute with timeout
         let output = timeout(
             timeout_duration,
-            tokio::task::spawn_blocking(move || cmd.output())
-        ).await??;
+            tokio::task::spawn_blocking(move || cmd.output()),
+        )
+        .await??;
 
         let execution_time = start_time.elapsed();
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -190,11 +193,11 @@ impl E2EVisualTest {
             true
         } else {
             // Check for acceptable failures
-            stderr.contains("Could not resolve") ||
-            stderr.contains("Connection refused") ||
-            stderr.contains("Network is unreachable") ||
-            stderr.contains("No route to host") ||
-            stderr.contains("Temporary failure in name resolution")
+            stderr.contains("Could not resolve")
+                || stderr.contains("Connection refused")
+                || stderr.contains("Network is unreachable")
+                || stderr.contains("No route to host")
+                || stderr.contains("Temporary failure in name resolution")
         };
 
         let error_message = if !success && !stderr.is_empty() {
@@ -222,18 +225,18 @@ impl E2EVisualTest {
 
     fn has_display(&self) -> bool {
         // Check for display availability
-        std::env::var("DISPLAY").is_ok() || 
-        std::env::var("WAYLAND_DISPLAY").is_ok() ||
-        cfg!(target_os = "windows") ||
-        cfg!(target_os = "macos")
+        std::env::var("DISPLAY").is_ok()
+            || std::env::var("WAYLAND_DISPLAY").is_ok()
+            || cfg!(target_os = "windows")
+            || cfg!(target_os = "macos")
     }
 
     async fn get_user_feedback(&self) -> UserFeedback {
         use std::io::{self, Write};
-        
+
         println!("\n📋 Please provide feedback on the visual test:");
         println!("1. Did you see video output? (y/n)");
-        
+
         let mut input = String::new();
         print!("> ");
         io::stdout().flush().unwrap();
@@ -275,16 +278,32 @@ impl E2EVisualTest {
 
         for (i, config) in self.test_configs.iter().enumerate() {
             println!("\n=== Test {}/{} ===", i + 1, self.test_configs.len());
-            
+
             match self.run_visual_test(config).await {
                 Ok(result) => {
                     if result.skipped {
-                        println!("⏭️  SKIPPED: {}", result.error_message.as_ref().unwrap_or(&"Unknown reason".to_string()));
+                        println!(
+                            "⏭️  SKIPPED: {}",
+                            result
+                                .error_message
+                                .as_ref()
+                                .unwrap_or(&"Unknown reason".to_string())
+                        );
                     } else if result.success {
                         println!("✅ PASSED");
                         if let Some(feedback) = &result.user_feedback {
-                            println!("   Video visible: {}", if feedback.video_visible { "✅" } else { "❌" });
-                            println!("   Quality acceptable: {}", if feedback.quality_acceptable { "✅" } else { "❌" });
+                            println!(
+                                "   Video visible: {}",
+                                if feedback.video_visible { "✅" } else { "❌" }
+                            );
+                            println!(
+                                "   Quality acceptable: {}",
+                                if feedback.quality_acceptable {
+                                    "✅"
+                                } else {
+                                    "❌"
+                                }
+                            );
                             if let Some(issues) = &feedback.issues {
                                 println!("   Issues: {}", issues);
                             }
@@ -292,7 +311,10 @@ impl E2EVisualTest {
                     } else {
                         println!("❌ FAILED");
                         if let Some(error) = &result.error_message {
-                            println!("   Error: {}", error.lines().next().unwrap_or("Unknown error"));
+                            println!(
+                                "   Error: {}",
+                                error.lines().next().unwrap_or("Unknown error")
+                            );
                         }
                     }
                     results.push(result);
@@ -316,16 +338,28 @@ impl E2EVisualTest {
 
     pub fn generate_visual_test_report(&self, results: &[VisualTestResult]) -> String {
         let mut report = String::from("# Visual E2E Test Report\n\n");
-        
+
         let total = results.len();
         let passed = results.iter().filter(|r| r.success).count();
         let failed = results.iter().filter(|r| !r.success && !r.skipped).count();
         let skipped = results.iter().filter(|r| r.skipped).count();
 
         report.push_str(&format!("**Total Tests**: {}\n", total));
-        report.push_str(&format!("**Passed**: {} ({:.1}%)\n", passed, (passed as f64 / total as f64) * 100.0));
-        report.push_str(&format!("**Failed**: {} ({:.1}%)\n", failed, (failed as f64 / total as f64) * 100.0));
-        report.push_str(&format!("**Skipped**: {} ({:.1}%)\n\n", skipped, (skipped as f64 / total as f64) * 100.0));
+        report.push_str(&format!(
+            "**Passed**: {} ({:.1}%)\n",
+            passed,
+            (passed as f64 / total as f64) * 100.0
+        ));
+        report.push_str(&format!(
+            "**Failed**: {} ({:.1}%)\n",
+            failed,
+            (failed as f64 / total as f64) * 100.0
+        ));
+        report.push_str(&format!(
+            "**Skipped**: {} ({:.1}%)\n\n",
+            skipped,
+            (skipped as f64 / total as f64) * 100.0
+        ));
 
         report.push_str("## Test Results\n\n");
 
@@ -333,7 +367,7 @@ impl E2EVisualTest {
             report.push_str(&format!("### {}\n", result.config.name));
             report.push_str(&format!("**Description**: {}\n", result.config.description));
             report.push_str(&format!("**Pipeline**: `{}`\n", result.config.pipeline));
-            
+
             let status = if result.skipped {
                 "⏭️ SKIPPED"
             } else if result.success {
@@ -343,20 +377,30 @@ impl E2EVisualTest {
             };
             report.push_str(&format!("**Result**: {}\n", status));
             report.push_str(&format!("**Duration**: {:?}\n", result.execution_time));
-            
+
             if let Some(feedback) = &result.user_feedback {
                 report.push_str("**User Feedback**:\n");
-                report.push_str(&format!("- Video visible: {}\n", if feedback.video_visible { "Yes" } else { "No" }));
-                report.push_str(&format!("- Quality acceptable: {}\n", if feedback.quality_acceptable { "Yes" } else { "No" }));
+                report.push_str(&format!(
+                    "- Video visible: {}\n",
+                    if feedback.video_visible { "Yes" } else { "No" }
+                ));
+                report.push_str(&format!(
+                    "- Quality acceptable: {}\n",
+                    if feedback.quality_acceptable {
+                        "Yes"
+                    } else {
+                        "No"
+                    }
+                ));
                 if let Some(issues) = &feedback.issues {
                     report.push_str(&format!("- Issues: {}\n", issues));
                 }
             }
-            
+
             if let Some(error) = &result.error_message {
                 report.push_str(&format!("**Error**: ```\n{}\n```\n", error));
             }
-            
+
             report.push_str("\n");
         }
 
@@ -371,7 +415,9 @@ impl E2EVisualTest {
 
         report.push_str("## Troubleshooting\n\n");
         report.push_str("- **Black screen**: Check network connectivity and RTSP URL\n");
-        report.push_str("- **No video window**: Ensure display is available and autovideosink works\n");
+        report.push_str(
+            "- **No video window**: Ensure display is available and autovideosink works\n",
+        );
         report.push_str("- **Codec errors**: Install gstreamer1.0-libav (Ubuntu) or equivalent\n");
         report.push_str("- **Auth errors**: Verify username/password for camera streams\n");
 
@@ -384,23 +430,28 @@ impl E2EVisualTest {
         println!("This will run visual tests with autovideosink for manual verification\n");
 
         self.load_visual_test_configs();
-        
+
         loop {
             println!("Available tests:");
             for (i, config) in self.test_configs.iter().enumerate() {
-                println!("  {}. {} ({}s)", i + 1, config.name, config.duration_seconds);
+                println!(
+                    "  {}. {} ({}s)",
+                    i + 1,
+                    config.name,
+                    config.duration_seconds
+                );
             }
             println!("  a. Run all tests");
             println!("  q. Quit");
-            
+
             use std::io::{self, Write};
             print!("\nSelect test (1-{}, a, q): ", self.test_configs.len());
             io::stdout().flush().unwrap();
-            
+
             let mut input = String::new();
             io::stdin().read_line(&mut input).unwrap();
             let input = input.trim();
-            
+
             if input.eq_ignore_ascii_case("q") {
                 break;
             } else if input.eq_ignore_ascii_case("a") {
@@ -453,9 +504,12 @@ mod tests {
     async fn test_visual_test_config_loading() {
         let mut tester = E2EVisualTest::new();
         tester.load_visual_test_configs();
-        
+
         assert!(!tester.test_configs.is_empty());
-        assert!(tester.test_configs.iter().any(|c| c.name.contains("Public")));
+        assert!(tester
+            .test_configs
+            .iter()
+            .any(|c| c.name.contains("Public")));
     }
 
     #[tokio::test]
@@ -481,13 +535,20 @@ mod tests {
 
         println!("Running 5-second visual test...");
         let result = tester.run_visual_test(&config).await;
-        
+
         match result {
             Ok(test_result) => {
                 if test_result.skipped {
                     println!("Test skipped: no display available");
                 } else {
-                    println!("Visual test completed: {}", if test_result.success { "SUCCESS" } else { "FAILED" });
+                    println!(
+                        "Visual test completed: {}",
+                        if test_result.success {
+                            "SUCCESS"
+                        } else {
+                            "FAILED"
+                        }
+                    );
                 }
             }
             Err(e) => {

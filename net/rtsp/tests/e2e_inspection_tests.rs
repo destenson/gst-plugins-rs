@@ -1,8 +1,8 @@
 // End-to-End GStreamer Element Inspection Tests
 // Validates gst-inspect-1.0 output and element metadata
 
-use std::process::Command;
 use std::collections::HashMap;
+use std::process::Command;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -26,7 +26,7 @@ pub struct PropertyInfo {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct PadInfo {
-    pub direction: String, // "SRC" or "SINK"
+    pub direction: String,    // "SRC" or "SINK"
     pub availability: String, // "ALWAYS", "SOMETIMES", "REQUEST"
     pub capabilities: Vec<String>,
 }
@@ -61,70 +61,92 @@ impl ElementInspectionTest {
 
     pub fn setup_rtspsrc2_expectations(&mut self) {
         // Expected properties for rtspsrc2
-        self.expected_properties.insert("location".to_string(), PropertyInfo {
-            property_type: "gchararray".to_string(),
-            readable: true,
-            writable: true,
-            default_value: None,
-            description: Some("RTSP location URI".to_string()),
-        });
+        self.expected_properties.insert(
+            "location".to_string(),
+            PropertyInfo {
+                property_type: "gchararray".to_string(),
+                readable: true,
+                writable: true,
+                default_value: None,
+                description: Some("RTSP location URI".to_string()),
+            },
+        );
 
-        self.expected_properties.insert("latency".to_string(), PropertyInfo {
-            property_type: "guint64".to_string(),
-            readable: true,
-            writable: true,
-            default_value: Some("2000".to_string()),
-            description: Some("Amount of latency to add".to_string()),
-        });
+        self.expected_properties.insert(
+            "latency".to_string(),
+            PropertyInfo {
+                property_type: "guint64".to_string(),
+                readable: true,
+                writable: true,
+                default_value: Some("2000".to_string()),
+                description: Some("Amount of latency to add".to_string()),
+            },
+        );
 
-        self.expected_properties.insert("retry-strategy".to_string(), PropertyInfo {
-            property_type: "gchararray".to_string(),
-            readable: true,
-            writable: true,
-            default_value: Some("auto".to_string()),
-            description: Some("Connection retry strategy".to_string()),
-        });
+        self.expected_properties.insert(
+            "retry-strategy".to_string(),
+            PropertyInfo {
+                property_type: "gchararray".to_string(),
+                readable: true,
+                writable: true,
+                default_value: Some("auto".to_string()),
+                description: Some("Connection retry strategy".to_string()),
+            },
+        );
 
-        self.expected_properties.insert("max-reconnection-attempts".to_string(), PropertyInfo {
-            property_type: "gint".to_string(),
-            readable: true,
-            writable: true,
-            default_value: Some("5".to_string()),
-            description: Some("Maximum retry attempts".to_string()),
-        });
+        self.expected_properties.insert(
+            "max-reconnection-attempts".to_string(),
+            PropertyInfo {
+                property_type: "gint".to_string(),
+                readable: true,
+                writable: true,
+                default_value: Some("5".to_string()),
+                description: Some("Maximum retry attempts".to_string()),
+            },
+        );
 
-        self.expected_properties.insert("protocols".to_string(), PropertyInfo {
-            property_type: "gchararray".to_string(),
-            readable: true,
-            writable: true,
-            default_value: Some("tcp+udp+http".to_string()),
-            description: Some("Allowed protocols".to_string()),
-        });
+        self.expected_properties.insert(
+            "protocols".to_string(),
+            PropertyInfo {
+                property_type: "gchararray".to_string(),
+                readable: true,
+                writable: true,
+                default_value: Some("tcp+udp+http".to_string()),
+                description: Some("Allowed protocols".to_string()),
+            },
+        );
 
-        self.expected_properties.insert("user-id".to_string(), PropertyInfo {
-            property_type: "gchararray".to_string(),
-            readable: true,
-            writable: true,
-            default_value: None,
-            description: Some("User ID for authentication".to_string()),
-        });
+        self.expected_properties.insert(
+            "user-id".to_string(),
+            PropertyInfo {
+                property_type: "gchararray".to_string(),
+                readable: true,
+                writable: true,
+                default_value: None,
+                description: Some("User ID for authentication".to_string()),
+            },
+        );
 
-        self.expected_properties.insert("user-pw".to_string(), PropertyInfo {
-            property_type: "gchararray".to_string(),
-            readable: true,
-            writable: true,
-            default_value: None,
-            description: Some("User password for authentication".to_string()),
-        });
+        self.expected_properties.insert(
+            "user-pw".to_string(),
+            PropertyInfo {
+                property_type: "gchararray".to_string(),
+                readable: true,
+                writable: true,
+                default_value: None,
+                description: Some("User password for authentication".to_string()),
+            },
+        );
 
         // Expected pads
-        self.expected_pads.insert("stream_%u".to_string(), PadInfo {
-            direction: "SRC".to_string(),
-            availability: "SOMETIMES".to_string(),
-            capabilities: vec![
-                "application/x-rtp".to_string(),
-            ],
-        });
+        self.expected_pads.insert(
+            "stream_%u".to_string(),
+            PadInfo {
+                direction: "SRC".to_string(),
+                availability: "SOMETIMES".to_string(),
+                capabilities: vec!["application/x-rtp".to_string()],
+            },
+        );
 
         // Expected signals (if any)
         // rtspsrc2 may have signals for connection events, etc.
@@ -133,7 +155,10 @@ impl ElementInspectionTest {
         ]);
     }
 
-    pub fn inspect_element(&self, element_name: &str) -> Result<InspectionResult, Box<dyn std::error::Error>> {
+    pub fn inspect_element(
+        &self,
+        element_name: &str,
+    ) -> Result<InspectionResult, Box<dyn std::error::Error>> {
         let mut cmd = Command::new("gst-inspect-1.0");
         cmd.arg(element_name);
 
@@ -143,7 +168,7 @@ impl ElementInspectionTest {
 
         let output = cmd.output()?;
         let raw_output = String::from_utf8_lossy(&output.stdout).to_string();
-        
+
         let mut result = InspectionResult {
             element_found: output.status.success(),
             properties_valid: false,
@@ -175,14 +200,18 @@ impl ElementInspectionTest {
 
         // Look for element properties section
         if !output.contains("Element Properties:") && !output.contains("Object properties:") {
-            result.warnings.push("No properties section found in output".to_string());
+            result
+                .warnings
+                .push("No properties section found in output".to_string());
             return self.expected_properties.is_empty();
         }
 
         // Validate each expected property
         for (prop_name, expected) in &self.expected_properties {
             if !output.contains(prop_name) {
-                result.errors.push(format!("Property '{}' not found", prop_name));
+                result
+                    .errors
+                    .push(format!("Property '{}' not found", prop_name));
                 all_valid = false;
                 continue;
             }
@@ -196,7 +225,7 @@ impl ElementInspectionTest {
                 // Validate property type
                 if !prop_text.contains(&expected.property_type) {
                     result.warnings.push(format!(
-                        "Property '{}' type mismatch. Expected: {}", 
+                        "Property '{}' type mismatch. Expected: {}",
                         prop_name, expected.property_type
                     ));
                 }
@@ -206,18 +235,22 @@ impl ElementInspectionTest {
                 let is_writable = prop_text.contains("writable") || prop_text.contains("w");
 
                 if expected.readable && !is_readable {
-                    result.warnings.push(format!("Property '{}' should be readable", prop_name));
+                    result
+                        .warnings
+                        .push(format!("Property '{}' should be readable", prop_name));
                 }
 
                 if expected.writable && !is_writable {
-                    result.warnings.push(format!("Property '{}' should be writable", prop_name));
+                    result
+                        .warnings
+                        .push(format!("Property '{}' should be writable", prop_name));
                 }
 
                 // Validate default value if specified
                 if let Some(default) = &expected.default_value {
                     if !prop_text.contains(&format!("Default: {}", default)) {
                         result.warnings.push(format!(
-                            "Property '{}' default value mismatch. Expected: {}", 
+                            "Property '{}' default value mismatch. Expected: {}",
                             prop_name, default
                         ));
                     }
@@ -232,8 +265,13 @@ impl ElementInspectionTest {
         let mut all_valid = true;
 
         // Look for pad templates section
-        if !output.contains("Pad Templates:") && !output.contains("SRC template:") && !output.contains("SINK template:") {
-            result.warnings.push("No pad templates section found".to_string());
+        if !output.contains("Pad Templates:")
+            && !output.contains("SRC template:")
+            && !output.contains("SINK template:")
+        {
+            result
+                .warnings
+                .push("No pad templates section found".to_string());
             return self.expected_pads.is_empty();
         }
 
@@ -241,14 +279,16 @@ impl ElementInspectionTest {
         for (pad_name, expected) in &self.expected_pads {
             // Look for pad template or direction
             if !output.contains(&expected.direction) {
-                result.errors.push(format!("Expected {} pad not found", expected.direction));
+                result
+                    .errors
+                    .push(format!("Expected {} pad not found", expected.direction));
                 all_valid = false;
             }
 
             // Check for availability
             if !output.contains(&expected.availability) {
                 result.warnings.push(format!(
-                    "Pad availability '{}' not found for {}", 
+                    "Pad availability '{}' not found for {}",
                     expected.availability, pad_name
                 ));
             }
@@ -257,7 +297,7 @@ impl ElementInspectionTest {
             for capability in &expected.capabilities {
                 if !output.contains(capability) {
                     result.warnings.push(format!(
-                        "Capability '{}' not found for pad {}", 
+                        "Capability '{}' not found for pad {}",
                         capability, pad_name
                     ));
                 }
@@ -269,8 +309,9 @@ impl ElementInspectionTest {
 
     fn validate_signals(&self, output: &str, _result: &mut InspectionResult) -> bool {
         // Check if signals section exists
-        let has_signals_section = output.contains("Element Signals:") || output.contains("Object signals:");
-        
+        let has_signals_section =
+            output.contains("Element Signals:") || output.contains("Object signals:");
+
         if self.expected_signals.is_empty() {
             return true; // No signals expected, so valid
         }
@@ -294,25 +335,34 @@ impl ElementInspectionTest {
 
         // Check for basic element metadata
         if !output.contains("Factory Details:") && !output.contains("Plugin Details:") {
-            result.warnings.push("No factory/plugin details found".to_string());
+            result
+                .warnings
+                .push("No factory/plugin details found".to_string());
             valid = false;
         }
 
         // Check element class
         if !output.contains("Source") {
-            result.warnings.push("Element not classified as Source".to_string());
+            result
+                .warnings
+                .push("Element not classified as Source".to_string());
             valid = false;
         }
 
         // Check for author/description
         if !output.contains("Author") && !output.contains("Description") {
-            result.warnings.push("Missing author or description metadata".to_string());
+            result
+                .warnings
+                .push("Missing author or description metadata".to_string());
         }
 
         valid
     }
 
-    pub fn test_element_exists(&self, element_name: &str) -> Result<bool, Box<dyn std::error::Error>> {
+    pub fn test_element_exists(
+        &self,
+        element_name: &str,
+    ) -> Result<bool, Box<dyn std::error::Error>> {
         let mut cmd = Command::new("gst-inspect-1.0");
         cmd.args(&["--exists", element_name]);
 
@@ -324,7 +374,10 @@ impl ElementInspectionTest {
         Ok(output.status.success())
     }
 
-    pub fn get_element_factory_info(&self, element_name: &str) -> Result<String, Box<dyn std::error::Error>> {
+    pub fn get_element_factory_info(
+        &self,
+        element_name: &str,
+    ) -> Result<String, Box<dyn std::error::Error>> {
         let mut cmd = Command::new("gst-inspect-1.0");
         cmd.args(&["--print-plugin-auto-install-info", element_name]);
 
@@ -345,7 +398,7 @@ impl ElementInspectionTest {
 
         let output = cmd.output()?;
         let output_str = String::from_utf8_lossy(&output.stdout);
-        
+
         let elements: Vec<String> = output_str
             .lines()
             .filter_map(|line| {
@@ -365,12 +418,47 @@ impl ElementInspectionTest {
 
         for (element_name, result) in results {
             report.push_str(&format!("## Element: {}\n\n", element_name));
-            
-            report.push_str(&format!("- **Found**: {}\n", if result.element_found { "✅ Yes" } else { "❌ No" }));
-            report.push_str(&format!("- **Properties Valid**: {}\n", if result.properties_valid { "✅ Yes" } else { "⚠️ Issues" }));
-            report.push_str(&format!("- **Pads Valid**: {}\n", if result.pads_valid { "✅ Yes" } else { "⚠️ Issues" }));
-            report.push_str(&format!("- **Signals Valid**: {}\n", if result.signals_valid { "✅ Yes" } else { "⚠️ Issues" }));
-            report.push_str(&format!("- **Metadata Valid**: {}\n", if result.metadata_valid { "✅ Yes" } else { "⚠️ Issues" }));
+
+            report.push_str(&format!(
+                "- **Found**: {}\n",
+                if result.element_found {
+                    "✅ Yes"
+                } else {
+                    "❌ No"
+                }
+            ));
+            report.push_str(&format!(
+                "- **Properties Valid**: {}\n",
+                if result.properties_valid {
+                    "✅ Yes"
+                } else {
+                    "⚠️ Issues"
+                }
+            ));
+            report.push_str(&format!(
+                "- **Pads Valid**: {}\n",
+                if result.pads_valid {
+                    "✅ Yes"
+                } else {
+                    "⚠️ Issues"
+                }
+            ));
+            report.push_str(&format!(
+                "- **Signals Valid**: {}\n",
+                if result.signals_valid {
+                    "✅ Yes"
+                } else {
+                    "⚠️ Issues"
+                }
+            ));
+            report.push_str(&format!(
+                "- **Metadata Valid**: {}\n",
+                if result.metadata_valid {
+                    "✅ Yes"
+                } else {
+                    "⚠️ Issues"
+                }
+            ));
 
             if !result.errors.is_empty() {
                 report.push_str("\n### Errors\n");
@@ -415,7 +503,7 @@ mod tests {
         assert!(result.is_ok(), "Failed to check fakesrc existence");
         assert!(result.unwrap(), "fakesrc should exist");
 
-        // Test with non-existing element  
+        // Test with non-existing element
         let result = inspector.test_element_exists("nonexistentelement");
         assert!(result.is_ok(), "Failed to check non-existent element");
         assert!(!result.unwrap(), "Non-existent element should not exist");
@@ -485,7 +573,7 @@ mod tests {
         match inspector.list_all_elements() {
             Ok(elements) => {
                 println!("Found {} GStreamer elements", elements.len());
-                
+
                 // Check for some common elements
                 let common_elements = ["fakesrc", "fakesink", "videotestsrc"];
                 for element in common_elements {

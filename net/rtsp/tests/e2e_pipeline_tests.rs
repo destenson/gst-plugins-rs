@@ -153,7 +153,10 @@ impl E2EPipelineTest {
         });
     }
 
-    pub async fn test_single_pipeline(&self, config: &PipelineTestConfig) -> Result<PipelineTestResult, Box<dyn std::error::Error>> {
+    pub async fn test_single_pipeline(
+        &self,
+        config: &PipelineTestConfig,
+    ) -> Result<PipelineTestResult, Box<dyn std::error::Error>> {
         println!("Testing pipeline: {}", config.name);
         println!("Command: gst-launch-1.0 {}", config.pipeline);
 
@@ -175,14 +178,13 @@ impl E2EPipelineTest {
 
         let mut cmd = Command::new("gst-launch-1.0");
         cmd.args(&["--quiet", &format!("--timeout={}", config.timeout_seconds)]);
-        
+
         // Add pipeline arguments
         for arg in config.pipeline.split_whitespace() {
             cmd.arg(arg);
         }
 
-        cmd.stdout(Stdio::piped())
-           .stderr(Stdio::piped());
+        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
         // Set environment variables
         if let Some(path) = &self.plugin_path {
@@ -196,8 +198,9 @@ impl E2EPipelineTest {
         // Execute with timeout
         let output = timeout(
             Duration::from_secs(config.timeout_seconds + 5),
-            tokio::task::spawn_blocking(move || cmd.output())
-        ).await??;
+            tokio::task::spawn_blocking(move || cmd.output()),
+        )
+        .await??;
 
         let execution_time = start_time.elapsed();
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -209,13 +212,13 @@ impl E2EPipelineTest {
             ExpectedResult::Failure => !output.status.success(),
             ExpectedResult::NetworkDependent => {
                 // Success or reasonable network failure
-                output.status.success() || 
-                stderr.contains("Could not resolve") ||
-                stderr.contains("Connection refused") ||
-                stderr.contains("Network is unreachable") ||
-                stderr.contains("No route to host") ||
-                stderr.contains("Temporary failure in name resolution")
-            },
+                output.status.success()
+                    || stderr.contains("Could not resolve")
+                    || stderr.contains("Connection refused")
+                    || stderr.contains("Network is unreachable")
+                    || stderr.contains("No route to host")
+                    || stderr.contains("Temporary failure in name resolution")
+            }
         };
 
         let error_message = if !success && !stderr.is_empty() {
@@ -234,7 +237,10 @@ impl E2EPipelineTest {
         })
     }
 
-    fn check_element_available(&self, element_name: &str) -> Result<bool, Box<dyn std::error::Error>> {
+    fn check_element_available(
+        &self,
+        element_name: &str,
+    ) -> Result<bool, Box<dyn std::error::Error>> {
         let mut cmd = Command::new("gst-inspect-1.0");
         cmd.args(&["--exists", element_name]);
 
@@ -252,8 +258,13 @@ impl E2EPipelineTest {
         println!("🚀 Running {} pipeline tests...\n", self.test_configs.len());
 
         for (i, config) in self.test_configs.iter().enumerate() {
-            println!("Test {}/{}: {}", i + 1, self.test_configs.len(), config.name);
-            
+            println!(
+                "Test {}/{}: {}",
+                i + 1,
+                self.test_configs.len(),
+                config.name
+            );
+
             match self.test_single_pipeline(config).await {
                 Ok(result) => {
                     if result.success {
@@ -284,8 +295,11 @@ impl E2EPipelineTest {
                     });
                 }
             }
-            
-            println!("  Execution time: {:?}\n", results.last().unwrap().execution_time);
+
+            println!(
+                "  Execution time: {:?}\n",
+                results.last().unwrap().execution_time
+            );
         }
 
         results
@@ -293,32 +307,53 @@ impl E2EPipelineTest {
 
     pub fn generate_test_report(&self, results: &[PipelineTestResult]) -> String {
         let mut report = String::from("# End-to-End Pipeline Test Report\n\n");
-        
+
         let total = results.len();
         let passed = results.iter().filter(|r| r.success).count();
         let failed = total - passed;
 
         report.push_str(&format!("**Total Tests**: {}\n", total));
-        report.push_str(&format!("**Passed**: {} ({:.1}%)\n", passed, (passed as f64 / total as f64) * 100.0));
-        report.push_str(&format!("**Failed**: {} ({:.1}%)\n\n", failed, (failed as f64 / total as f64) * 100.0));
+        report.push_str(&format!(
+            "**Passed**: {} ({:.1}%)\n",
+            passed,
+            (passed as f64 / total as f64) * 100.0
+        ));
+        report.push_str(&format!(
+            "**Failed**: {} ({:.1}%)\n\n",
+            failed,
+            (failed as f64 / total as f64) * 100.0
+        ));
 
         report.push_str("## Test Results\n\n");
 
         for result in results {
             report.push_str(&format!("### {}\n", result.config.name));
             report.push_str(&format!("**Pipeline**: `{}`\n", result.config.pipeline));
-            report.push_str(&format!("**Expected**: {:?}\n", result.config.expected_result));
-            report.push_str(&format!("**Result**: {}\n", if result.success { "✅ PASSED" } else { "❌ FAILED" }));
-            report.push_str(&format!("**Execution Time**: {:?}\n", result.execution_time));
-            
+            report.push_str(&format!(
+                "**Expected**: {:?}\n",
+                result.config.expected_result
+            ));
+            report.push_str(&format!(
+                "**Result**: {}\n",
+                if result.success {
+                    "✅ PASSED"
+                } else {
+                    "❌ FAILED"
+                }
+            ));
+            report.push_str(&format!(
+                "**Execution Time**: {:?}\n",
+                result.execution_time
+            ));
+
             if let Some(error) = &result.error_message {
                 report.push_str(&format!("**Error**: ```\n{}\n```\n", error));
             }
-            
+
             if !result.stdout.is_empty() {
                 report.push_str(&format!("**Output**: ```\n{}\n```\n", result.stdout));
             }
-            
+
             report.push_str("\n");
         }
 
@@ -358,7 +393,9 @@ mod tests {
         tester.load_default_test_configs();
 
         // Run a subset of tests
-        let basic_tests: Vec<_> = tester.test_configs.iter()
+        let basic_tests: Vec<_> = tester
+            .test_configs
+            .iter()
             .filter(|config| config.name.contains("Basic") || config.name.contains("Property"))
             .cloned()
             .collect();
@@ -367,9 +404,26 @@ mod tests {
             let result = tester.test_single_pipeline(&config).await;
             match result {
                 Ok(test_result) => {
-                    println!("Test '{}': {}", config.name, if test_result.success { "PASSED" } else { "FAILED" });
+                    println!(
+                        "Test '{}': {}",
+                        config.name,
+                        if test_result.success {
+                            "PASSED"
+                        } else {
+                            "FAILED"
+                        }
+                    );
                     if !test_result.success && test_result.error_message.is_some() {
-                        println!("  Error: {}", test_result.error_message.as_ref().unwrap().lines().next().unwrap_or("Unknown error"));
+                        println!(
+                            "  Error: {}",
+                            test_result
+                                .error_message
+                                .as_ref()
+                                .unwrap()
+                                .lines()
+                                .next()
+                                .unwrap_or("Unknown error")
+                        );
                     }
                 }
                 Err(e) => {
@@ -396,7 +450,7 @@ mod tests {
         tester.add_camera_specific_tests();
 
         let results = tester.run_all_pipeline_tests().await;
-        
+
         // Generate and print report
         let report = tester.generate_test_report(&results);
         println!("{}", report);
@@ -405,11 +459,15 @@ mod tests {
         std::fs::write("e2e_pipeline_test_report.md", report).ok();
 
         // Check that at least some basic tests passed
-        let basic_passed = results.iter()
+        let basic_passed = results
+            .iter()
             .filter(|r| r.config.name.contains("Basic") || r.config.name.contains("Property"))
             .any(|r| r.success);
 
-        assert!(basic_passed, "At least some basic pipeline tests should pass");
+        assert!(
+            basic_passed,
+            "At least some basic pipeline tests should pass"
+        );
     }
 
     #[tokio::test]
@@ -426,11 +484,19 @@ mod tests {
 
         // Test availability of core elements
         let elements = vec!["rtspsrc2", "rtph264depay", "h264parse", "fakesink"];
-        
+
         for element in elements {
             match tester.check_element_available(element) {
                 Ok(available) => {
-                    println!("Element '{}': {}", element, if available { "Available" } else { "Not Available" });
+                    println!(
+                        "Element '{}': {}",
+                        element,
+                        if available {
+                            "Available"
+                        } else {
+                            "Not Available"
+                        }
+                    );
                 }
                 Err(e) => {
                     println!("Failed to check element '{}': {}", element, e);
@@ -462,9 +528,19 @@ mod tests {
         let result = tester.test_single_pipeline(&config).await;
         match result {
             Ok(test_result) => {
-                println!("Public stream test: {}", if test_result.success { "PASSED" } else { "FAILED (may be expected)" });
+                println!(
+                    "Public stream test: {}",
+                    if test_result.success {
+                        "PASSED"
+                    } else {
+                        "FAILED (may be expected)"
+                    }
+                );
                 if !test_result.stderr.is_empty() {
-                    println!("stderr: {}", test_result.stderr.lines().next().unwrap_or(""));
+                    println!(
+                        "stderr: {}",
+                        test_result.stderr.lines().next().unwrap_or("")
+                    );
                 }
             }
             Err(e) => {

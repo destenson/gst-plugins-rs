@@ -1,16 +1,16 @@
 // End-to-End Integration Test Suite
 // Comprehensive E2E testing orchestrator for the RTSP plugin
 
-#[path = "e2e_plugin_tests.rs"]
-mod e2e_plugin_tests;
-#[path = "e2e_pipeline_tests.rs"]
-mod e2e_pipeline_tests;
 #[path = "e2e_inspection_tests.rs"]
 mod e2e_inspection_tests;
+#[path = "e2e_pipeline_tests.rs"]
+mod e2e_pipeline_tests;
+#[path = "e2e_plugin_tests.rs"]
+mod e2e_plugin_tests;
 
-use e2e_plugin_tests::*;
-use e2e_pipeline_tests::*;
 use e2e_inspection_tests::*;
+use e2e_pipeline_tests::*;
+use e2e_plugin_tests::*;
 
 use std::time::Duration;
 
@@ -159,8 +159,16 @@ impl E2EIntegrationSuite {
 
         println!("\n🏁 E2E Test Suite Complete!");
         println!("Total Tests: {}", total_tests);
-        println!("Passed: {} ({:.1}%)", passed_tests, (passed_tests as f64 / total_tests as f64) * 100.0);
-        println!("Failed: {} ({:.1}%)", failed_tests, (failed_tests as f64 / total_tests as f64) * 100.0);
+        println!(
+            "Passed: {} ({:.1}%)",
+            passed_tests,
+            (passed_tests as f64 / total_tests as f64) * 100.0
+        );
+        println!(
+            "Failed: {} ({:.1}%)",
+            failed_tests,
+            (failed_tests as f64 / total_tests as f64) * 100.0
+        );
         println!("Execution Time: {:?}", execution_time);
 
         if !errors.is_empty() {
@@ -198,7 +206,7 @@ impl E2EIntegrationSuite {
 
     async fn run_plugin_tests(&self) -> Result<bool, Box<dyn std::error::Error>> {
         let mut tester = GstPluginE2ETest::new();
-        
+
         if let Some(path) = &self.plugin_path {
             tester = tester.with_plugin_path(path);
         }
@@ -230,7 +238,7 @@ impl E2EIntegrationSuite {
 
     async fn run_inspection_tests(&self) -> Result<bool, Box<dyn std::error::Error>> {
         let mut inspector = ElementInspectionTest::new();
-        
+
         if let Some(path) = &self.plugin_path {
             inspector = inspector.with_plugin_path(path);
         }
@@ -255,23 +263,24 @@ impl E2EIntegrationSuite {
             Ok(result) => {
                 if result.element_found && result.properties_valid && result.metadata_valid {
                     println!("  ✅ Element inspection passed");
-                    
+
                     if self.generate_reports {
                         let report = inspector.generate_inspection_report(&[("rtspsrc2", result)]);
-                        let report_path = format!("{}/element_inspection_report.md", self.output_dir);
+                        let report_path =
+                            format!("{}/element_inspection_report.md", self.output_dir);
                         std::fs::write(report_path, report)?;
                     }
-                    
+
                     Ok(true)
                 } else {
                     println!("  ❌ Element inspection failed");
                     println!("    Properties valid: {}", result.properties_valid);
                     println!("    Metadata valid: {}", result.metadata_valid);
-                    
+
                     for error in &result.errors {
                         println!("    Error: {}", error);
                     }
-                    
+
                     Ok(false)
                 }
             }
@@ -281,7 +290,7 @@ impl E2EIntegrationSuite {
 
     async fn run_pipeline_tests(&self) -> Result<bool, Box<dyn std::error::Error>> {
         let mut pipeline_tester = E2EPipelineTest::new();
-        
+
         if let Some(path) = &self.plugin_path {
             pipeline_tester = pipeline_tester.with_plugin_path(path);
         }
@@ -291,7 +300,7 @@ impl E2EIntegrationSuite {
 
         // Run pipeline tests
         let results = pipeline_tester.run_all_pipeline_tests().await;
-        
+
         let total = results.len();
         let passed = results.iter().filter(|r| r.success).count();
         let failed = total - passed;
@@ -306,7 +315,8 @@ impl E2EIntegrationSuite {
         }
 
         // Consider success if at least basic tests pass
-        let basic_tests_passed = results.iter()
+        let basic_tests_passed = results
+            .iter()
             .filter(|r| r.config.name.contains("Basic") || r.config.name.contains("Property"))
             .any(|r| r.success);
 
@@ -319,22 +329,60 @@ impl E2EIntegrationSuite {
         }
     }
 
-    fn generate_summary_report(&self, result: &E2ESuiteResult) -> Result<(), Box<dyn std::error::Error>> {
+    fn generate_summary_report(
+        &self,
+        result: &E2ESuiteResult,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut report = String::from("# RTSP Plugin E2E Test Suite Results\n\n");
-        
-        report.push_str(&format!("**Test Date**: {}\n", chrono::Local::now().format("%Y-%m-%d %H:%M:%S")));
+
+        report.push_str(&format!(
+            "**Test Date**: {}\n",
+            chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
+        ));
         report.push_str(&format!("**Plugin Path**: {:?}\n", self.plugin_path));
-        report.push_str(&format!("**Execution Time**: {:?}\n\n", result.execution_time));
+        report.push_str(&format!(
+            "**Execution Time**: {:?}\n\n",
+            result.execution_time
+        ));
 
         report.push_str("## Summary\n\n");
         report.push_str(&format!("- **Total Tests**: {}\n", result.total_tests));
-        report.push_str(&format!("- **Passed**: {} ({:.1}%)\n", result.passed_tests, (result.passed_tests as f64 / result.total_tests as f64) * 100.0));
-        report.push_str(&format!("- **Failed**: {} ({:.1}%)\n\n", result.failed_tests, (result.failed_tests as f64 / result.total_tests as f64) * 100.0));
+        report.push_str(&format!(
+            "- **Passed**: {} ({:.1}%)\n",
+            result.passed_tests,
+            (result.passed_tests as f64 / result.total_tests as f64) * 100.0
+        ));
+        report.push_str(&format!(
+            "- **Failed**: {} ({:.1}%)\n\n",
+            result.failed_tests,
+            (result.failed_tests as f64 / result.total_tests as f64) * 100.0
+        ));
 
         report.push_str("## Test Phase Results\n\n");
-        report.push_str(&format!("1. **Plugin Loading**: {}\n", if result.plugin_tests_passed { "✅ PASSED" } else { "❌ FAILED" }));
-        report.push_str(&format!("2. **Element Inspection**: {}\n", if result.inspection_tests_passed { "✅ PASSED" } else { "❌ FAILED" }));
-        report.push_str(&format!("3. **Pipeline Execution**: {}\n", if result.pipeline_tests_passed { "✅ PASSED" } else { "❌ FAILED" }));
+        report.push_str(&format!(
+            "1. **Plugin Loading**: {}\n",
+            if result.plugin_tests_passed {
+                "✅ PASSED"
+            } else {
+                "❌ FAILED"
+            }
+        ));
+        report.push_str(&format!(
+            "2. **Element Inspection**: {}\n",
+            if result.inspection_tests_passed {
+                "✅ PASSED"
+            } else {
+                "❌ FAILED"
+            }
+        ));
+        report.push_str(&format!(
+            "3. **Pipeline Execution**: {}\n",
+            if result.pipeline_tests_passed {
+                "✅ PASSED"
+            } else {
+                "❌ FAILED"
+            }
+        ));
 
         if !result.errors.is_empty() {
             report.push_str("\n## Errors\n\n");
@@ -344,17 +392,17 @@ impl E2EIntegrationSuite {
         }
 
         report.push_str("\n## Recommendations\n\n");
-        
+
         if !result.plugin_tests_passed {
             report.push_str("- Build the plugin with `cargo build -p gst-plugin-rtsp`\n");
             report.push_str("- Ensure GST_PLUGIN_PATH is set correctly\n");
         }
-        
+
         if !result.inspection_tests_passed {
             report.push_str("- Verify element properties are correctly implemented\n");
             report.push_str("- Check element metadata and registration\n");
         }
-        
+
         if !result.pipeline_tests_passed {
             report.push_str("- Test with real RTSP streams if possible\n");
             report.push_str("- Verify network connectivity for public test streams\n");
@@ -366,9 +414,12 @@ impl E2EIntegrationSuite {
 
         let report_path = format!("{}/e2e_suite_summary.md", self.output_dir);
         std::fs::write(report_path, report)?;
-        
-        println!("📄 Summary report saved to {}/e2e_suite_summary.md", self.output_dir);
-        
+
+        println!(
+            "📄 Summary report saved to {}/e2e_suite_summary.md",
+            self.output_dir
+        );
+
         Ok(())
     }
 }
@@ -384,10 +435,13 @@ pub async fn run_quick_e2e_check() -> bool {
     }
 
     let suite = E2EIntegrationSuite::new().with_reports(false);
-    
+
     match suite.run_full_e2e_suite().await {
         Ok(result) => {
-            println!("E2E Quick Check: {}/{} tests passed", result.passed_tests, result.total_tests);
+            println!(
+                "E2E Quick Check: {}/{} tests passed",
+                result.passed_tests, result.total_tests
+            );
             result.plugin_tests_passed && result.passed_tests > 0
         }
         Err(e) => {
@@ -409,8 +463,11 @@ mod tests {
         }
 
         let result = run_quick_e2e_check().await;
-        println!("Quick E2E check result: {}", if result { "PASSED" } else { "FAILED" });
-        
+        println!(
+            "Quick E2E check result: {}",
+            if result { "PASSED" } else { "FAILED" }
+        );
+
         // Don't assert as this may fail in environments without the plugin built
     }
 
@@ -423,15 +480,39 @@ mod tests {
         }
 
         let suite = E2EIntegrationSuite::new();
-        
+
         match suite.run_full_e2e_suite().await {
             Ok(result) => {
                 println!("Full E2E Suite Results:");
-                println!("  Plugin Tests: {}", if result.plugin_tests_passed { "PASSED" } else { "FAILED" });
-                println!("  Inspection Tests: {}", if result.inspection_tests_passed { "PASSED" } else { "FAILED" });
-                println!("  Pipeline Tests: {}", if result.pipeline_tests_passed { "PASSED" } else { "FAILED" });
-                println!("  Total: {}/{} tests passed", result.passed_tests, result.total_tests);
-                
+                println!(
+                    "  Plugin Tests: {}",
+                    if result.plugin_tests_passed {
+                        "PASSED"
+                    } else {
+                        "FAILED"
+                    }
+                );
+                println!(
+                    "  Inspection Tests: {}",
+                    if result.inspection_tests_passed {
+                        "PASSED"
+                    } else {
+                        "FAILED"
+                    }
+                );
+                println!(
+                    "  Pipeline Tests: {}",
+                    if result.pipeline_tests_passed {
+                        "PASSED"
+                    } else {
+                        "FAILED"
+                    }
+                );
+                println!(
+                    "  Total: {}/{} tests passed",
+                    result.passed_tests, result.total_tests
+                );
+
                 // Don't assert success as plugin may not be built in test environment
             }
             Err(e) => {
@@ -443,12 +524,15 @@ mod tests {
     #[tokio::test]
     async fn test_environment_setup() {
         // Test basic environment requirements
-        assert!(check_gstreamer_available(), "GStreamer should be available for E2E tests");
-        
+        assert!(
+            check_gstreamer_available(),
+            "GStreamer should be available for E2E tests"
+        );
+
         // Test plugin path detection
         let plugin_path = find_gst_plugin_path();
         println!("Detected plugin path: {:?}", plugin_path);
-        
+
         // Create a minimal suite to test setup
         let suite = E2EIntegrationSuite::new();
         assert_eq!(suite.output_dir, "e2e_test_results");

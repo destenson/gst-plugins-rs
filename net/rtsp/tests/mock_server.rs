@@ -15,9 +15,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
-use rtsp_types::{
-    headers, Method, Response, StatusCode, Version,
-};
+use rtsp_types::{headers, Method, Response, StatusCode, Version};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
@@ -65,7 +63,7 @@ impl MockRtspServer {
         let listener = TcpListener::bind(format!("127.0.0.1:{}", port))
             .await
             .expect("Failed to bind to port");
-        
+
         let local_addr = listener.local_addr().unwrap();
         let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
 
@@ -114,7 +112,7 @@ impl MockRtspServer {
                         if let Ok((stream, _addr)) = accept_result {
                             let sessions = sessions.clone();
                             let sdp_content = sdp_content.clone();
-                            
+
                             tokio::spawn(async move {
                                 if let Err(e) = handle_client(stream, sessions, sdp_content).await {
                                     eprintln!("Error handling client: {}", e);
@@ -185,7 +183,7 @@ async fn handle_client(
 
     loop {
         buffer.clear();
-        
+
         // Read request line
         let mut line = String::new();
         if reader.read_line(&mut line).await? == 0 {
@@ -230,12 +228,10 @@ async fn handle_client(
 
         // Handle the request based on method
         let response = match request.method() {
-            Method::Options => {
-                Response::builder(Version::V1_0, StatusCode::Ok)
-                    .header(headers::CSEQ, cseq)
-                    .header(headers::PUBLIC, "OPTIONS, DESCRIBE, SETUP, PLAY, TEARDOWN")
-                    .build(Vec::new())
-            }
+            Method::Options => Response::builder(Version::V1_0, StatusCode::Ok)
+                .header(headers::CSEQ, cseq)
+                .header(headers::PUBLIC, "OPTIONS, DESCRIBE, SETUP, PLAY, TEARDOWN")
+                .build(Vec::new()),
             Method::Describe => {
                 let sdp_bytes = sdp_content.as_bytes().to_vec();
                 Response::builder(Version::V1_0, StatusCode::Ok)
@@ -246,11 +242,12 @@ async fn handle_client(
             }
             Method::Setup => {
                 // Parse transport header
-                let transport = request.headers()
+                let transport = request
+                    .headers()
                     .find(|(name, _)| name == &headers::TRANSPORT)
                     .map(|(_, value)| value.as_str())
                     .unwrap_or("RTP/AVP;unicast;client_port=5002-5003");
-                
+
                 // Generate session ID
                 let session_id = format!("session{}", next_session_num);
                 next_session_num += 1;
@@ -263,7 +260,10 @@ async fn handle_client(
                     state: PlaybackState::Ready,
                 };
 
-                sessions.lock().unwrap().insert(session_id.clone(), session_state);
+                sessions
+                    .lock()
+                    .unwrap()
+                    .insert(session_id.clone(), session_state);
 
                 // Build transport response with server ports
                 let response_transport = format!(
@@ -279,10 +279,11 @@ async fn handle_client(
             }
             Method::Play => {
                 // Get session from header
-                if let Some(session_id) = request.headers()
+                if let Some(session_id) = request
+                    .headers()
                     .find(|(name, _)| name == &headers::SESSION)
-                    .map(|(_, value)| value.as_str()) {
-                    
+                    .map(|(_, value)| value.as_str())
+                {
                     // Update session state
                     if let Some(session) = sessions.lock().unwrap().get_mut(session_id) {
                         session.state = PlaybackState::Playing;
@@ -300,12 +301,14 @@ async fn handle_client(
             }
             Method::Teardown => {
                 // Get session from header and remove it
-                if let Some(session_id) = request.headers()
+                if let Some(session_id) = request
+                    .headers()
                     .find(|(name, _)| name == &headers::SESSION)
-                    .map(|(_, value)| value.as_str()) {
+                    .map(|(_, value)| value.as_str())
+                {
                     sessions.lock().unwrap().remove(session_id);
                 }
-                
+
                 Response::builder(Version::V1_0, StatusCode::Ok)
                     .header(headers::CSEQ, cseq)
                     .build(Vec::new())
@@ -337,13 +340,13 @@ mod tests {
         let server = MockRtspServer::new().await;
         let addr = server.addr();
         assert!(addr.port() > 0);
-        
+
         let handle = server.start().await;
-        
+
         // Try to connect to ensure it's listening
         let stream = TcpStream::connect(addr).await;
         assert!(stream.is_ok());
-        
+
         handle.shutdown().await;
     }
 
@@ -352,9 +355,9 @@ mod tests {
         let server = MockRtspServer::new().await;
         let addr = server.addr();
         let handle = server.start().await;
-        
+
         let mut stream = TcpStream::connect(addr).await.unwrap();
-        
+
         // Send OPTIONS request
         let request = format!(
             "OPTIONS rtsp://{}/test RTSP/1.0\r\n\
@@ -363,15 +366,15 @@ mod tests {
             addr
         );
         stream.write_all(request.as_bytes()).await.unwrap();
-        
+
         // Read response
         let mut buffer = vec![0u8; 1024];
         let n = stream.read(&mut buffer).await.unwrap();
         let response = String::from_utf8_lossy(&buffer[..n]);
-        
+
         assert!(response.contains("RTSP/1.0 200 Ok"));
         assert!(response.contains("Public:"));
-        
+
         handle.shutdown().await;
     }
 }

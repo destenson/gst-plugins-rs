@@ -33,7 +33,7 @@ fn test_element_registration() {
     // Check element metadata
     let factory = factory.unwrap();
     assert_eq!(factory.element_type().name(), "GstRtspSrc2");
-    
+
     // Check that it's in the right category
     let klass = factory.metadata("klass").unwrap();
     assert!(klass.contains("Source"));
@@ -70,7 +70,7 @@ fn test_property_defaults() {
     let location: Option<String> = element.property("location");
     assert_eq!(location, None);
 
-    // Test protocols property 
+    // Test protocols property
     let protocols: String = element.property("protocols");
     assert!(!protocols.is_empty());
 
@@ -89,104 +89,107 @@ fn test_property_defaults() {
     // Note: is-live is a property of GstBin, not specific to rtspsrc2
 }
 
-#[test]  
+#[test]
 #[serial]
 fn test_jitterbuffer_properties() {
     init();
-    
-    let element = gst::ElementFactory::make("rtspsrc2")
-        .build()
-        .unwrap();
-    
+
+    let element = gst::ElementFactory::make("rtspsrc2").build().unwrap();
+
     // Test that the properties exist and can be read/written
     assert!(element.property_type("latency").is_some());
     assert!(element.property_type("drop-on-latency").is_some());
     assert!(element.property_type("probation").is_some());
-    
+
     // Test default values
     assert_eq!(element.property::<u32>("latency"), 2000);
     assert_eq!(element.property::<bool>("drop-on-latency"), false);
     assert_eq!(element.property::<u32>("probation"), 2);
-    
+
     // Test setting values
     element.set_property("latency", 5000u32);
     assert_eq!(element.property::<u32>("latency"), 5000);
-    
+
     element.set_property("drop-on-latency", true);
     assert_eq!(element.property::<bool>("drop-on-latency"), true);
-    
+
     element.set_property("probation", 10u32);
     assert_eq!(element.property::<u32>("probation"), 10);
-    
+
     // Test edge values
     element.set_property("latency", 0u32);
     assert_eq!(element.property::<u32>("latency"), 0);
-    
+
     element.set_property("latency", u32::MAX);
     assert_eq!(element.property::<u32>("latency"), u32::MAX);
 }
 
-#[test]  
+#[test]
 #[serial]
 fn test_buffer_mode_property() {
     init();
-    
-    let element = gst::ElementFactory::make("rtspsrc2")
-        .build()
-        .unwrap();
-    
+
+    let element = gst::ElementFactory::make("rtspsrc2").build().unwrap();
+
     // Test that buffer-mode property exists and has correct default
     assert!(element.property_type("buffer-mode").is_some());
-    assert_eq!(element.property::<Option<String>>("buffer-mode"), Some("auto".to_string()));
-    
+    assert_eq!(
+        element.property::<Option<String>>("buffer-mode"),
+        Some("auto".to_string())
+    );
+
     // Test setting all valid buffer modes
     let valid_modes = ["none", "slave", "buffer", "auto", "synced"];
     for mode in &valid_modes {
         element.set_property("buffer-mode", mode);
-        assert_eq!(element.property::<Option<String>>("buffer-mode"), Some(mode.to_string()));
+        assert_eq!(
+            element.property::<Option<String>>("buffer-mode"),
+            Some(mode.to_string())
+        );
     }
-    
+
     // Test setting invalid mode should not crash (but may emit warnings)
     element.set_property("buffer-mode", "invalid-mode");
     // Element should keep previous valid value or reset to default
     let current_value = element.property::<Option<String>>("buffer-mode");
-    assert!(current_value.is_some(), "Property should have some value even after invalid input");
+    assert!(
+        current_value.is_some(),
+        "Property should have some value even after invalid input"
+    );
 }
 
-#[test]  
+#[test]
 #[serial]
 fn test_rtcp_properties() {
     init();
-    
-    let element = gst::ElementFactory::make("rtspsrc2")
-        .build()
-        .unwrap();
-    
+
+    let element = gst::ElementFactory::make("rtspsrc2").build().unwrap();
+
     // Test that RTCP properties exist and have correct defaults
     assert!(element.property_type("do-rtcp").is_some());
-    assert!(element.property_type("do-retransmission").is_some());  
+    assert!(element.property_type("do-retransmission").is_some());
     assert!(element.property_type("max-rtcp-rtp-time-diff").is_some());
-    
+
     // Test default values (matching original rtspsrc)
     assert_eq!(element.property::<bool>("do-rtcp"), true);
     assert_eq!(element.property::<bool>("do-retransmission"), true);
     assert_eq!(element.property::<i32>("max-rtcp-rtp-time-diff"), -1);
-    
+
     // Test setting boolean RTCP properties
     element.set_property("do-rtcp", false);
     assert_eq!(element.property::<bool>("do-rtcp"), false);
-    
+
     element.set_property("do-retransmission", false);
     assert_eq!(element.property::<bool>("do-retransmission"), false);
-    
+
     // Test setting max-rtcp-rtp-time-diff with different values
     element.set_property("max-rtcp-rtp-time-diff", 1000i32);
     assert_eq!(element.property::<i32>("max-rtcp-rtp-time-diff"), 1000);
-    
+
     // Test disabled value (-1)
     element.set_property("max-rtcp-rtp-time-diff", -1i32);
     assert_eq!(element.property::<i32>("max-rtcp-rtp-time-diff"), -1);
-    
+
     // Test maximum value
     element.set_property("max-rtcp-rtp-time-diff", i32::MAX);
     assert_eq!(element.property::<i32>("max-rtcp-rtp-time-diff"), i32::MAX);
@@ -237,8 +240,12 @@ fn test_state_changes() {
 
     // NULL -> READY state change should succeed with a valid location
     let result = element.set_state(gst::State::Ready);
-    assert!(result.is_ok(), "Failed to change state to READY: {:?}", result);
-    
+    assert!(
+        result.is_ok(),
+        "Failed to change state to READY: {:?}",
+        result
+    );
+
     // Wait for state change to complete
     let (result, state, _pending) = element.state(gst::ClockTime::from_seconds(1));
     assert_eq!(result, Ok(gst::StateChangeSuccess::Success));
@@ -320,15 +327,15 @@ fn test_invalid_location_handling() {
 
     // Set various invalid locations
     let invalid_urls = vec![
-        "",                    // Empty string
+        "",                   // Empty string
         "not-a-url",          // Invalid scheme
         "http://example.com", // Wrong protocol
-        "rtsp://",           // Missing host
+        "rtsp://",            // Missing host
     ];
 
     for invalid_url in invalid_urls {
         element.set_property("location", invalid_url);
-        
+
         // Try to go to PAUSED - should fail for invalid URLs
         let result = element.set_state(gst::State::Paused);
         assert!(
@@ -336,7 +343,7 @@ fn test_invalid_location_handling() {
             "Expected state change to fail for URL: {}",
             invalid_url
         );
-        
+
         // Reset to NULL for next test
         element.set_state(gst::State::Null).unwrap();
     }

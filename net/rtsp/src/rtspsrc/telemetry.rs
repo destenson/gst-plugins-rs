@@ -9,8 +9,8 @@ use tracing::{event, info_span, span, Level, Span};
 
 #[cfg(feature = "prometheus")]
 use prometheus::{
-    register_counter_vec, register_gauge_vec, register_histogram_vec,
-    CounterVec, GaugeVec, HistogramVec,
+    register_counter_vec, register_gauge_vec, register_histogram_vec, CounterVec, GaugeVec,
+    HistogramVec,
 };
 
 /// Prometheus metrics for RTSP
@@ -107,29 +107,29 @@ struct MetricsInner {
     connection_attempts: AtomicU64,
     connection_successes: AtomicU64,
     connection_failures: AtomicU64,
-    
+
     // Retry metrics
     retry_count: AtomicU64,
     retry_strategy_changes: AtomicU64,
-    
+
     // Performance metrics
     total_packets_received: AtomicU64,
     total_packets_lost: AtomicU64,
     total_bytes_received: AtomicU64,
-    
+
     // Timing metrics
     last_connection_time_ms: AtomicU64,
     average_jitter_ms: AtomicU64,
-    
+
     // RTCP statistics
     rtcp_packets_sent: AtomicU64,
     rtcp_packets_received: AtomicU64,
-    
+
     // Error tracking
     network_errors: AtomicU64,
     protocol_errors: AtomicU64,
     timeout_errors: AtomicU64,
-    
+
     // Element identification
     element_id: String,
     url: String,
@@ -145,11 +145,11 @@ impl RtspMetrics {
     pub fn new() -> Self {
         Self::with_id("unknown", "")
     }
-    
+
     pub fn with_id(element_id: &str, url: &str) -> Self {
         #[cfg(feature = "prometheus")]
         let prometheus = PrometheusMetrics::new().ok().map(Arc::new);
-        
+
         Self {
             inner: Arc::new(MetricsInner {
                 connection_attempts: AtomicU64::new(0),
@@ -174,12 +174,14 @@ impl RtspMetrics {
             prometheus,
         }
     }
-    
+
     // Connection tracking
     pub fn record_connection_attempt(&self) {
-        self.inner.connection_attempts.fetch_add(1, Ordering::Relaxed);
+        self.inner
+            .connection_attempts
+            .fetch_add(1, Ordering::Relaxed);
         event!(Level::DEBUG, metric = "connection_attempt", count = 1);
-        
+
         #[cfg(feature = "prometheus")]
         if let Some(ref prom) = self.prometheus {
             prom.connection_attempts
@@ -187,17 +189,21 @@ impl RtspMetrics {
                 .inc();
         }
     }
-    
+
     pub fn record_connection_success(&self, duration_ms: u64) {
-        self.inner.connection_successes.fetch_add(1, Ordering::Relaxed);
-        self.inner.last_connection_time_ms.store(duration_ms, Ordering::Relaxed);
+        self.inner
+            .connection_successes
+            .fetch_add(1, Ordering::Relaxed);
+        self.inner
+            .last_connection_time_ms
+            .store(duration_ms, Ordering::Relaxed);
         event!(
             Level::INFO,
             metric = "connection_success",
             duration_ms = duration_ms,
             total_successes = self.inner.connection_successes.load(Ordering::Relaxed)
         );
-        
+
         #[cfg(feature = "prometheus")]
         if let Some(ref prom) = self.prometheus {
             prom.connection_successes
@@ -208,24 +214,30 @@ impl RtspMetrics {
                 .observe(duration_ms as f64 / 1000.0);
         }
     }
-    
+
     pub fn record_connection_failure(&self, reason: &str) {
-        self.inner.connection_failures.fetch_add(1, Ordering::Relaxed);
+        self.inner
+            .connection_failures
+            .fetch_add(1, Ordering::Relaxed);
         event!(
             Level::WARN,
             metric = "connection_failure",
             reason = reason,
             total_failures = self.inner.connection_failures.load(Ordering::Relaxed)
         );
-        
+
         #[cfg(feature = "prometheus")]
         if let Some(ref prom) = self.prometheus {
             prom.connection_failures
-                .with_label_values(&[self.inner.url.as_str(), self.inner.element_id.as_str(), reason])
+                .with_label_values(&[
+                    self.inner.url.as_str(),
+                    self.inner.element_id.as_str(),
+                    reason,
+                ])
                 .inc();
         }
     }
-    
+
     // Retry tracking
     pub fn record_retry(&self, strategy: &str) {
         self.inner.retry_count.fetch_add(1, Ordering::Relaxed);
@@ -235,7 +247,7 @@ impl RtspMetrics {
             strategy = strategy,
             retry_count = self.inner.retry_count.load(Ordering::Relaxed)
         );
-        
+
         #[cfg(feature = "prometheus")]
         if let Some(ref prom) = self.prometheus {
             prom.retry_count
@@ -243,9 +255,11 @@ impl RtspMetrics {
                 .inc();
         }
     }
-    
+
     pub fn record_retry_strategy_change(&self, old_strategy: &str, new_strategy: &str) {
-        self.inner.retry_strategy_changes.fetch_add(1, Ordering::Relaxed);
+        self.inner
+            .retry_strategy_changes
+            .fetch_add(1, Ordering::Relaxed);
         event!(
             Level::INFO,
             metric = "retry_strategy_change",
@@ -253,12 +267,16 @@ impl RtspMetrics {
             new_strategy = new_strategy
         );
     }
-    
+
     // Packet tracking
     pub fn record_packets_received(&self, count: u64, bytes: u64) {
-        self.inner.total_packets_received.fetch_add(count, Ordering::Relaxed);
-        self.inner.total_bytes_received.fetch_add(bytes, Ordering::Relaxed);
-        
+        self.inner
+            .total_packets_received
+            .fetch_add(count, Ordering::Relaxed);
+        self.inner
+            .total_bytes_received
+            .fetch_add(bytes, Ordering::Relaxed);
+
         #[cfg(feature = "prometheus")]
         if let Some(ref prom) = self.prometheus {
             prom.packets_received
@@ -269,12 +287,14 @@ impl RtspMetrics {
                 .inc_by(bytes as f64);
         }
     }
-    
+
     pub fn record_packet_loss(&self, count: u64) {
-        self.inner.total_packets_lost.fetch_add(count, Ordering::Relaxed);
+        self.inner
+            .total_packets_lost
+            .fetch_add(count, Ordering::Relaxed);
         let total_received = self.inner.total_packets_received.load(Ordering::Relaxed);
         let total_lost = self.inner.total_packets_lost.load(Ordering::Relaxed);
-        
+
         if total_received > 0 {
             let loss_rate = (total_lost as f64 / (total_received + total_lost) as f64) * 100.0;
             event!(
@@ -285,7 +305,7 @@ impl RtspMetrics {
                 loss_rate_percent = loss_rate
             );
         }
-        
+
         #[cfg(feature = "prometheus")]
         if let Some(ref prom) = self.prometheus {
             prom.packets_lost
@@ -293,7 +313,7 @@ impl RtspMetrics {
                 .inc_by(count as f64);
         }
     }
-    
+
     // Jitter tracking
     pub fn update_jitter(&self, jitter_ms: u64) {
         let current = self.inner.average_jitter_ms.load(Ordering::Relaxed);
@@ -303,8 +323,10 @@ impl RtspMetrics {
         } else {
             (current * 7 + jitter_ms * 3) / 10
         };
-        self.inner.average_jitter_ms.store(new_avg, Ordering::Relaxed);
-        
+        self.inner
+            .average_jitter_ms
+            .store(new_avg, Ordering::Relaxed);
+
         if jitter_ms > 100 {
             event!(
                 Level::WARN,
@@ -314,16 +336,18 @@ impl RtspMetrics {
             );
         }
     }
-    
+
     // RTCP tracking
     pub fn record_rtcp_sent(&self) {
         self.inner.rtcp_packets_sent.fetch_add(1, Ordering::Relaxed);
     }
-    
+
     pub fn record_rtcp_received(&self) {
-        self.inner.rtcp_packets_received.fetch_add(1, Ordering::Relaxed);
+        self.inner
+            .rtcp_packets_received
+            .fetch_add(1, Ordering::Relaxed);
     }
-    
+
     // Error tracking
     pub fn record_network_error(&self) {
         self.inner.network_errors.fetch_add(1, Ordering::Relaxed);
@@ -332,7 +356,7 @@ impl RtspMetrics {
             metric = "network_error",
             total_network_errors = self.inner.network_errors.load(Ordering::Relaxed)
         );
-        
+
         #[cfg(feature = "prometheus")]
         if let Some(ref prom) = self.prometheus {
             prom.errors
@@ -340,7 +364,7 @@ impl RtspMetrics {
                 .inc();
         }
     }
-    
+
     pub fn record_protocol_error(&self) {
         self.inner.protocol_errors.fetch_add(1, Ordering::Relaxed);
         event!(
@@ -348,7 +372,7 @@ impl RtspMetrics {
             metric = "protocol_error",
             total_protocol_errors = self.inner.protocol_errors.load(Ordering::Relaxed)
         );
-        
+
         #[cfg(feature = "prometheus")]
         if let Some(ref prom) = self.prometheus {
             prom.errors
@@ -356,7 +380,7 @@ impl RtspMetrics {
                 .inc();
         }
     }
-    
+
     pub fn record_timeout_error(&self) {
         self.inner.timeout_errors.fetch_add(1, Ordering::Relaxed);
         event!(
@@ -364,7 +388,7 @@ impl RtspMetrics {
             metric = "timeout_error",
             total_timeout_errors = self.inner.timeout_errors.load(Ordering::Relaxed)
         );
-        
+
         #[cfg(feature = "prometheus")]
         if let Some(ref prom) = self.prometheus {
             prom.errors
@@ -372,7 +396,7 @@ impl RtspMetrics {
                 .inc();
         }
     }
-    
+
     // Get current metrics as properties
     pub fn get_metrics_summary(&self) -> MetricsSummary {
         MetricsSummary {
@@ -391,17 +415,23 @@ impl RtspMetrics {
             timeout_errors: self.inner.timeout_errors.load(Ordering::Relaxed),
         }
     }
-    
+
     pub fn reset(&self) {
         self.inner.connection_attempts.store(0, Ordering::Relaxed);
         self.inner.connection_successes.store(0, Ordering::Relaxed);
         self.inner.connection_failures.store(0, Ordering::Relaxed);
         self.inner.retry_count.store(0, Ordering::Relaxed);
-        self.inner.retry_strategy_changes.store(0, Ordering::Relaxed);
-        self.inner.total_packets_received.store(0, Ordering::Relaxed);
+        self.inner
+            .retry_strategy_changes
+            .store(0, Ordering::Relaxed);
+        self.inner
+            .total_packets_received
+            .store(0, Ordering::Relaxed);
         self.inner.total_packets_lost.store(0, Ordering::Relaxed);
         self.inner.total_bytes_received.store(0, Ordering::Relaxed);
-        self.inner.last_connection_time_ms.store(0, Ordering::Relaxed);
+        self.inner
+            .last_connection_time_ms
+            .store(0, Ordering::Relaxed);
         self.inner.average_jitter_ms.store(0, Ordering::Relaxed);
         self.inner.rtcp_packets_sent.store(0, Ordering::Relaxed);
         self.inner.rtcp_packets_received.store(0, Ordering::Relaxed);
@@ -440,7 +470,7 @@ impl SpanHelper {
             otel.status_code = tracing::field::Empty,
         )
     }
-    
+
     pub fn retry_span(strategy: &str, attempt: u32) -> Span {
         info_span!(
             "retry_attempt",
@@ -448,25 +478,21 @@ impl SpanHelper {
             attempt = attempt,
         )
     }
-    
+
     pub fn setup_span() -> Span {
         info_span!("rtsp_setup")
     }
-    
+
     pub fn play_span() -> Span {
         info_span!("rtsp_play")
     }
-    
+
     pub fn teardown_span() -> Span {
         info_span!("rtsp_teardown")
     }
-    
+
     pub fn packet_processing_span(stream_id: u32) -> Span {
-        span!(
-            Level::TRACE,
-            "packet_processing",
-            stream_id = stream_id,
-        )
+        span!(Level::TRACE, "packet_processing", stream_id = stream_id,)
     }
 }
 
@@ -481,7 +507,7 @@ impl OperationTimer {
     pub fn new(name: impl Into<String>) -> Self {
         Self::with_threshold(name, 100)
     }
-    
+
     pub fn with_threshold(name: impl Into<String>, threshold_ms: u64) -> Self {
         Self {
             name: name.into(),
@@ -495,7 +521,7 @@ impl Drop for OperationTimer {
     fn drop(&mut self) {
         let duration = self.start.elapsed();
         let duration_ms = duration.as_millis() as u64;
-        
+
         if duration_ms > self.threshold_ms {
             event!(
                 Level::WARN,
@@ -521,44 +547,59 @@ pub fn init_telemetry() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("rtspsrc2=debug".parse().unwrap())
+                .add_directive("rtspsrc2=debug".parse().unwrap()),
         )
         .try_init();
-    
+
     // Initialize tokio-console if feature is enabled
     #[cfg(feature = "tokio-console")]
     {
         console_subscriber::init();
         event!(Level::INFO, "tokio-console subscriber initialized");
     }
-    
+
     event!(Level::INFO, "RTSP telemetry initialized");
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_metrics_recording() {
         let metrics = RtspMetrics::new();
-        
+
         // Test connection metrics
         metrics.record_connection_attempt();
         metrics.record_connection_success(150);
         assert_eq!(metrics.inner.connection_attempts.load(Ordering::Relaxed), 1);
-        assert_eq!(metrics.inner.connection_successes.load(Ordering::Relaxed), 1);
-        assert_eq!(metrics.inner.last_connection_time_ms.load(Ordering::Relaxed), 150);
-        
+        assert_eq!(
+            metrics.inner.connection_successes.load(Ordering::Relaxed),
+            1
+        );
+        assert_eq!(
+            metrics
+                .inner
+                .last_connection_time_ms
+                .load(Ordering::Relaxed),
+            150
+        );
+
         // Test retry metrics
         metrics.record_retry("exponential");
         assert_eq!(metrics.inner.retry_count.load(Ordering::Relaxed), 1);
-        
+
         // Test packet metrics
         metrics.record_packets_received(100, 50000);
-        assert_eq!(metrics.inner.total_packets_received.load(Ordering::Relaxed), 100);
-        assert_eq!(metrics.inner.total_bytes_received.load(Ordering::Relaxed), 50000);
-        
+        assert_eq!(
+            metrics.inner.total_packets_received.load(Ordering::Relaxed),
+            100
+        );
+        assert_eq!(
+            metrics.inner.total_bytes_received.load(Ordering::Relaxed),
+            50000
+        );
+
         // Test jitter
         metrics.update_jitter(50);
         assert_eq!(metrics.inner.average_jitter_ms.load(Ordering::Relaxed), 50);
@@ -566,30 +607,33 @@ mod tests {
         // Should be (50 * 7 + 70 * 3) / 10 = 56
         assert_eq!(metrics.inner.average_jitter_ms.load(Ordering::Relaxed), 56);
     }
-    
+
     #[test]
     fn test_metrics_reset() {
         let metrics = RtspMetrics::new();
-        
+
         metrics.record_connection_attempt();
         metrics.record_packets_received(100, 50000);
         metrics.record_network_error();
-        
+
         metrics.reset();
-        
+
         assert_eq!(metrics.inner.connection_attempts.load(Ordering::Relaxed), 0);
-        assert_eq!(metrics.inner.total_packets_received.load(Ordering::Relaxed), 0);
+        assert_eq!(
+            metrics.inner.total_packets_received.load(Ordering::Relaxed),
+            0
+        );
         assert_eq!(metrics.inner.network_errors.load(Ordering::Relaxed), 0);
     }
-    
+
     #[test]
     fn test_metrics_summary() {
         let metrics = RtspMetrics::new();
-        
+
         metrics.record_connection_attempt();
         metrics.record_connection_success(100);
         metrics.record_packets_received(50, 25000);
-        
+
         let summary = metrics.get_metrics_summary();
         assert_eq!(summary.connection_attempts, 1);
         assert_eq!(summary.connection_successes, 1);

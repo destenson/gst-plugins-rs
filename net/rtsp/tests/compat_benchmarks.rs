@@ -2,7 +2,7 @@
 // Measures latency, throughput, and stability metrics
 
 use gst::prelude::*;
-use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -88,7 +88,10 @@ impl CameraBenchmark {
         }
     }
 
-    pub async fn benchmark_camera(&self, url: &str) -> Result<BenchmarkResults, Box<dyn std::error::Error>> {
+    pub async fn benchmark_camera(
+        &self,
+        url: &str,
+    ) -> Result<BenchmarkResults, Box<dyn std::error::Error>> {
         gst::init()?;
 
         let start_time = Instant::now();
@@ -117,22 +120,19 @@ impl CameraBenchmark {
                 let first_frame = first_frame_time.clone();
                 let start = start_time.clone();
 
-                pad.add_probe(
-                    gst::PadProbeType::BUFFER,
-                    move |_, probe_info| {
-                        if let Some(gst::PadProbeData::Buffer(ref buffer)) = probe_info.data {
-                            frames.fetch_add(1, Ordering::Relaxed);
-                            bytes.fetch_add(buffer.size() as u64, Ordering::Relaxed);
+                pad.add_probe(gst::PadProbeType::BUFFER, move |_, probe_info| {
+                    if let Some(gst::PadProbeData::Buffer(ref buffer)) = probe_info.data {
+                        frames.fetch_add(1, Ordering::Relaxed);
+                        bytes.fetch_add(buffer.size() as u64, Ordering::Relaxed);
 
-                            // Record first frame time
-                            let mut first = first_frame.lock().unwrap();
-                            if first.is_none() {
-                                *first = Some(Instant::now());
-                            }
+                        // Record first frame time
+                        let mut first = first_frame.lock().unwrap();
+                        if first.is_none() {
+                            *first = Some(Instant::now());
                         }
-                        gst::PadProbeReturn::Ok
-                    },
-                );
+                    }
+                    gst::PadProbeReturn::Ok
+                });
             }
         }
 
@@ -159,7 +159,8 @@ impl CameraBenchmark {
         let mut last_bytes = 0u64;
         let mut last_sample_time = Instant::now();
 
-        while test_start.elapsed() < self.config.test_duration && !stop_flag.load(Ordering::Relaxed) {
+        while test_start.elapsed() < self.config.test_duration && !stop_flag.load(Ordering::Relaxed)
+        {
             // Check for bus messages
             if let Some(msg) = bus.timed_pop(gst::ClockTime::from_mseconds(100)) {
                 match msg.view() {
@@ -190,12 +191,12 @@ impl CameraBenchmark {
             if self.config.measure_throughput {
                 let current_bytes = bytes_received.load(Ordering::Relaxed);
                 let elapsed = last_sample_time.elapsed();
-                
+
                 if elapsed >= Duration::from_secs(1) {
                     let bytes_diff = current_bytes - last_bytes;
                     let bitrate = (bytes_diff * 8) / elapsed.as_secs().max(1);
                     bitrate_samples.push(bitrate);
-                    
+
                     last_bytes = current_bytes;
                     last_sample_time = Instant::now();
                 }
@@ -213,7 +214,7 @@ impl CameraBenchmark {
         final_results.url = url.to_string();
         final_results.test_duration = test_start.elapsed();
         final_results.connection_time = connection_time;
-        
+
         // First frame time
         if let Some(first_time) = *first_frame_time.lock().unwrap() {
             final_results.first_frame_time = first_time.duration_since(start_time);
@@ -230,17 +231,19 @@ impl CameraBenchmark {
             final_results.average_latency = sum / latency_samples.len() as u32;
             final_results.min_latency = *latency_samples.iter().min().unwrap();
             final_results.max_latency = *latency_samples.iter().max().unwrap();
-            
+
             // Calculate jitter (standard deviation)
             if latency_samples.len() > 1 {
                 let mean = final_results.average_latency.as_nanos() as f64;
-                let variance = latency_samples.iter()
+                let variance = latency_samples
+                    .iter()
                     .map(|&d| {
                         let diff = d.as_nanos() as f64 - mean;
                         diff * diff
                     })
-                    .sum::<f64>() / latency_samples.len() as f64;
-                
+                    .sum::<f64>()
+                    / latency_samples.len() as f64;
+
                 final_results.jitter = Duration::from_nanos(variance.sqrt() as u64);
             }
         }
@@ -261,22 +264,32 @@ impl CameraBenchmark {
 
     pub fn format_results(results: &BenchmarkResults) -> String {
         let mut output = String::new();
-        
+
         output.push_str(&format!("=== Benchmark Results for {} ===\n", results.url));
         output.push_str(&format!("Test Duration: {:?}\n", results.test_duration));
         output.push_str("\nConnection Metrics:\n");
-        output.push_str(&format!("  Connection Time: {:?}\n", results.connection_time));
-        output.push_str(&format!("  First Frame Time: {:?}\n", results.first_frame_time));
-        
+        output.push_str(&format!(
+            "  Connection Time: {:?}\n",
+            results.connection_time
+        ));
+        output.push_str(&format!(
+            "  First Frame Time: {:?}\n",
+            results.first_frame_time
+        ));
+
         output.push_str("\nLatency Metrics:\n");
-        output.push_str(&format!("  Average Latency: {:?}\n", results.average_latency));
+        output.push_str(&format!(
+            "  Average Latency: {:?}\n",
+            results.average_latency
+        ));
         output.push_str(&format!("  Min Latency: {:?}\n", results.min_latency));
         output.push_str(&format!("  Max Latency: {:?}\n", results.max_latency));
         output.push_str(&format!("  Jitter: {:?}\n", results.jitter));
-        
+
         output.push_str("\nThroughput Metrics:\n");
         output.push_str(&format!("  Frames Received: {}\n", results.frames_received));
-        output.push_str(&format!("  Frames Dropped: {} ({:.2}%)\n", 
+        output.push_str(&format!(
+            "  Frames Dropped: {} ({:.2}%)\n",
             results.frames_dropped,
             if results.frames_received > 0 {
                 (results.frames_dropped as f64 / results.frames_received as f64) * 100.0
@@ -284,25 +297,40 @@ impl CameraBenchmark {
                 0.0
             }
         ));
-        output.push_str(&format!("  Bytes Received: {} MB\n", results.bytes_received / (1024 * 1024)));
-        output.push_str(&format!("  Average Bitrate: {:.2} Mbps\n", results.average_bitrate as f64 / 1_000_000.0));
-        output.push_str(&format!("  Peak Bitrate: {:.2} Mbps\n", results.peak_bitrate as f64 / 1_000_000.0));
-        
+        output.push_str(&format!(
+            "  Bytes Received: {} MB\n",
+            results.bytes_received / (1024 * 1024)
+        ));
+        output.push_str(&format!(
+            "  Average Bitrate: {:.2} Mbps\n",
+            results.average_bitrate as f64 / 1_000_000.0
+        ));
+        output.push_str(&format!(
+            "  Peak Bitrate: {:.2} Mbps\n",
+            results.peak_bitrate as f64 / 1_000_000.0
+        ));
+
         output.push_str("\nReliability Metrics:\n");
-        output.push_str(&format!("  Reconnection Count: {}\n", results.reconnection_count));
+        output.push_str(&format!(
+            "  Reconnection Count: {}\n",
+            results.reconnection_count
+        ));
         output.push_str(&format!("  Error Count: {}\n", results.error_count));
-        
+
         output
     }
 }
 
 #[allow(dead_code)]
-pub async fn run_benchmark_suite(urls: Vec<String>, config: BenchmarkConfig) -> Vec<BenchmarkResults> {
+pub async fn run_benchmark_suite(
+    urls: Vec<String>,
+    config: BenchmarkConfig,
+) -> Vec<BenchmarkResults> {
     let mut all_results = Vec::new();
 
     for url in urls {
         println!("Benchmarking: {}", url);
-        
+
         let benchmark = CameraBenchmark::new(config.clone());
         match benchmark.benchmark_camera(&url).await {
             Ok(results) => {
@@ -341,12 +369,13 @@ mod tests {
         };
 
         let benchmark = CameraBenchmark::new(config);
-        let url = "rtsp://807e9439d5ca.entrypoint.cloud.wowza.com:1935/app-rC94792j/068b9c9a_stream2";
-        
+        let url =
+            "rtsp://807e9439d5ca.entrypoint.cloud.wowza.com:1935/app-rC94792j/068b9c9a_stream2";
+
         match benchmark.benchmark_camera(url).await {
             Ok(results) => {
                 println!("{}", CameraBenchmark::format_results(&results));
-                
+
                 assert!(results.connection_time > Duration::from_secs(0));
                 assert!(results.frames_received > 0);
             }
@@ -377,7 +406,7 @@ mod tests {
         };
 
         let formatted = CameraBenchmark::format_results(&results);
-        
+
         assert!(formatted.contains("Benchmark Results"));
         assert!(formatted.contains("10.00 Mbps"));
         assert!(formatted.contains("0.56%")); // Drop rate

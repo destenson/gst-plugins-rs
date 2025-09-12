@@ -61,10 +61,7 @@ impl OnvifDiscovery {
     pub fn new() -> Self {
         Self {
             // WS-Discovery multicast address
-            multicast_addr: SocketAddr::new(
-                IpAddr::V4(Ipv4Addr::new(239, 255, 255, 250)),
-                3702,
-            ),
+            multicast_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(239, 255, 255, 250)), 3702),
             timeout: Duration::from_secs(5),
         }
     }
@@ -114,13 +111,14 @@ impl OnvifDiscovery {
                     <wsd:Types>dn:NetworkVideoTransmitter</wsd:Types>
                 </wsd:Probe>
             </soap:Body>
-        </soap:Envelope>"#.to_string()
+        </soap:Envelope>"#
+            .to_string()
     }
 
     fn parse_probe_response(&self, _data: &[u8], addr: SocketAddr) -> Option<OnvifDevice> {
         // Simplified parsing - in production, use proper XML parser
         // For now, return a mock device for demonstration
-        
+
         // This would normally parse the SOAP response
         Some(OnvifDevice {
             name: format!("Camera at {}", addr.ip()),
@@ -132,29 +130,33 @@ impl OnvifDiscovery {
             ip_address: addr.ip(),
             onvif_port: 80, // Default ONVIF port
             rtsp_url: Some(format!("rtsp://{}:554/", addr.ip())),
-            profiles: vec![
-                OnvifProfile {
-                    name: "Profile_1".to_string(),
-                    token: "profile_1_h264".to_string(),
-                },
-            ],
+            profiles: vec![OnvifProfile {
+                name: "Profile_1".to_string(),
+                token: "profile_1_h264".to_string(),
+            }],
             capabilities: OnvifCapabilities::default(),
         })
     }
 
-    pub fn get_device_info(&self, device: &OnvifDevice) -> Result<OnvifDevice, Box<dyn std::error::Error>> {
+    pub fn get_device_info(
+        &self,
+        device: &OnvifDevice,
+    ) -> Result<OnvifDevice, Box<dyn std::error::Error>> {
         // Would send GetDeviceInformation SOAP request
         // For now, return the device as-is
         Ok(device.clone())
     }
 
-    pub fn get_rtsp_url(&self, device: &OnvifDevice, profile: &str) -> Result<String, Box<dyn std::error::Error>> {
+    pub fn get_rtsp_url(
+        &self,
+        device: &OnvifDevice,
+        profile: &str,
+    ) -> Result<String, Box<dyn std::error::Error>> {
         // Would send GetStreamUri SOAP request
         // For now, construct a generic RTSP URL
         Ok(format!(
             "rtsp://{}:554/onvif-media/media.amp?profile={}",
-            device.ip_address,
-            profile
+            device.ip_address, profile
         ))
     }
 }
@@ -241,7 +243,9 @@ impl OnvifSimulator {
                 hardware_id: Some("1122334455".to_string()),
                 ip_address: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 102)),
                 onvif_port: 8080, // Dahua often uses 8080 for ONVIF
-                rtsp_url: Some("rtsp://192.168.1.102:554/cam/realmonitor?channel=1&subtype=0".to_string()),
+                rtsp_url: Some(
+                    "rtsp://192.168.1.102:554/cam/realmonitor?channel=1&subtype=0".to_string(),
+                ),
                 profiles: vec![
                     OnvifProfile {
                         name: "Main".to_string(),
@@ -269,9 +273,7 @@ impl OnvifSimulator {
     }
 
     pub fn get_device_by_ip(&self, ip: &IpAddr) -> Option<OnvifDevice> {
-        self.devices.iter()
-            .find(|d| &d.ip_address == ip)
-            .cloned()
+        self.devices.iter().find(|d| &d.ip_address == ip).cloned()
     }
 }
 
@@ -297,20 +299,20 @@ mod tests {
     fn test_simulated_devices() {
         let simulator = OnvifSimulator::new();
         let devices = simulator.discover_devices();
-        
+
         assert_eq!(devices.len(), 3);
-        
+
         // Check Axis device
         let axis = &devices[0];
         assert_eq!(axis.manufacturer, "Axis");
         assert_eq!(axis.model, "M3045-V");
         assert_eq!(axis.profiles.len(), 2);
-        
+
         // Check Hikvision device
         let hik = &devices[1];
         assert_eq!(hik.manufacturer, "Hikvision");
         assert!(hik.capabilities.ptz);
-        
+
         // Check Dahua device
         let dahua = &devices[2];
         assert_eq!(dahua.manufacturer, "Dahua");
@@ -321,10 +323,10 @@ mod tests {
     fn test_get_device_by_ip() {
         let simulator = OnvifSimulator::new();
         let ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100));
-        
+
         let device = simulator.get_device_by_ip(&ip);
         assert!(device.is_some());
-        
+
         let device = device.unwrap();
         assert_eq!(device.manufacturer, "Axis");
     }

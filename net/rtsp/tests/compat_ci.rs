@@ -60,7 +60,11 @@ impl CITestEnvironment {
         Ok(())
     }
 
-    async fn start_mock_server(&mut self, camera_type: CameraType, port: u16) -> Result<(), Box<dyn std::error::Error>> {
+    async fn start_mock_server(
+        &mut self,
+        camera_type: CameraType,
+        port: u16,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         // Use GStreamer test-launch for mock RTSP servers
         let _pipeline = match camera_type {
             CameraType::Axis => {
@@ -91,8 +95,12 @@ impl CITestEnvironment {
 
         // Check if gst-rtsp-server is available
         if self.is_rtsp_server_available() {
-            println!("Starting mock {} server on port {}", camera_type.name(), port);
-            
+            println!(
+                "Starting mock {} server on port {}",
+                camera_type.name(),
+                port
+            );
+
             // This would normally start a real RTSP server process
             // For testing, we'll simulate it
             let mock_server = MockCameraServer {
@@ -105,7 +113,10 @@ impl CITestEnvironment {
 
             self.mock_servers.push(mock_server);
         } else {
-            println!("RTSP server not available, using simulated mode for {}", camera_type.name());
+            println!(
+                "RTSP server not available, using simulated mode for {}",
+                camera_type.name()
+            );
         }
 
         // Small delay to let server start
@@ -124,7 +135,6 @@ impl CITestEnvironment {
     }
 
     fn generate_test_config(&self) -> Result<(), Box<dyn std::error::Error>> {
-
         let mut cameras = Vec::new();
 
         for server in &self.mock_servers {
@@ -140,10 +150,7 @@ impl CITestEnvironment {
                 auth_type: server.camera_type.auth_type(),
                 features: server.camera_type.camera_features(),
                 known_quirks: vec!["CI mock server".to_string()],
-                test_categories: vec![
-                    "connectivity".to_string(),
-                    "stream_formats".to_string(),
-                ],
+                test_categories: vec!["connectivity".to_string(), "stream_formats".to_string()],
             });
         }
 
@@ -153,7 +160,9 @@ impl CITestEnvironment {
             vendor: "Wowza".to_string(),
             model: "Test Stream".to_string(),
             firmware: None,
-            url: "rtsp://807e9439d5ca.entrypoint.cloud.wowza.com:1935/app-rC94792j/068b9c9a_stream2".to_string(),
+            url:
+                "rtsp://807e9439d5ca.entrypoint.cloud.wowza.com:1935/app-rC94792j/068b9c9a_stream2"
+                    .to_string(),
             username: None,
             password: None,
             transport: "auto".to_string(),
@@ -225,14 +234,15 @@ impl CameraType {
     fn features(&self) -> Vec<String> {
         match self {
             CameraType::Axis => vec!["h264".to_string(), "h265".to_string(), "onvif".to_string()],
-            CameraType::Hikvision => vec!["h264".to_string(), "audio".to_string(), "ptz".to_string()],
+            CameraType::Hikvision => {
+                vec!["h264".to_string(), "audio".to_string(), "ptz".to_string()]
+            }
             CameraType::Dahua => vec!["h264".to_string(), "events".to_string()],
             CameraType::Generic => vec!["h264".to_string()],
         }
     }
 
     fn camera_features(&self) -> CameraFeaturesConfig {
-        
         match self {
             CameraType::Axis => CameraFeaturesConfig {
                 h264: true,
@@ -269,7 +279,7 @@ pub async fn run_ci_tests() -> Result<(), Box<dyn std::error::Error>> {
 
     // Run compatibility tests
     let config_path = env.get_config_path();
-    
+
     // Use the test suite
     use compat_suite::CompatibilityTestSuite;
 
@@ -294,13 +304,13 @@ mod tests {
         let mut env = CITestEnvironment::new();
         let result = env.setup().await;
         assert!(result.is_ok());
-        
+
         // Check that mock servers were created
         assert!(!env.mock_servers.is_empty());
-        
+
         // Check that config was generated
         assert!(std::path::Path::new(&env.test_config_path).exists());
-        
+
         // Clean up
         env.teardown().await;
         std::fs::remove_file(&env.test_config_path).ok();
@@ -312,7 +322,7 @@ mod tests {
         assert_eq!(axis.name(), "Axis");
         assert_eq!(axis.vendor(), "Axis");
         assert!(axis.features().contains(&"onvif".to_string()));
-        
+
         let hik = CameraType::Hikvision;
         assert!(hik.features().contains(&"ptz".to_string()));
     }
