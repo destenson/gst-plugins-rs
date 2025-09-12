@@ -223,8 +223,6 @@ pub enum NtpTimeSource {
     ClockTime,
 }
 
-
-
 /// Buffer queue entry for handling unlinked pads
 #[derive(Debug, Clone)]
 struct QueuedBuffer {
