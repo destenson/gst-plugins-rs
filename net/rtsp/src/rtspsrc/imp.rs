@@ -85,6 +85,10 @@ const DEFAULT_MULTICAST_IFACE: Option<String> = None;
 const DEFAULT_PORT_RANGE: Option<String> = None;
 const DEFAULT_UDP_BUFFER_SIZE: i32 = 524288; // 512KB default
 
+// Source behavior defaults (matching original rtspsrc)
+const DEFAULT_IS_LIVE: bool = true;
+const DEFAULT_CONNECTION_SPEED: u64 = 0; // 0 = unknown/unspecified
+
 // Buffer queue management constants
 const DEFAULT_MAX_BUFFERED_BUFFERS: usize = 100;
 const DEFAULT_MAX_BUFFERED_BYTES: usize = 10 * 1024 * 1024; // 10 MB
@@ -431,6 +435,10 @@ struct Settings {
     multicast_iface: Option<String>,
     port_range: Option<String>,
     udp_buffer_size: i32,
+    // Source behavior properties
+    is_live: bool,
+    user_agent: String,
+    connection_speed: u64,
     #[cfg(feature = "adaptive")]
     adaptive_learning: bool,
     #[cfg(feature = "adaptive")]
@@ -491,6 +499,10 @@ impl Default for Settings {
             multicast_iface: DEFAULT_MULTICAST_IFACE,
             port_range: DEFAULT_PORT_RANGE,
             udp_buffer_size: DEFAULT_UDP_BUFFER_SIZE,
+            // Source behavior properties
+            is_live: DEFAULT_IS_LIVE,
+            user_agent: DEFAULT_USER_AGENT.to_string(),
+            connection_speed: DEFAULT_CONNECTION_SPEED,
             #[cfg(feature = "adaptive")]
             adaptive_exploration_rate: 0.1,
             #[cfg(feature = "adaptive")]
@@ -1109,6 +1121,27 @@ impl ObjectImpl for RtspSrc {
                     .default_value(DEFAULT_UDP_BUFFER_SIZE)
                     .mutable_ready()
                     .build(),
+                // Source behavior properties (matching original rtspsrc)
+                glib::ParamSpecBoolean::builder("is-live")
+                    .nick("Is Live")
+                    .blurb("Whether to act as a live source")
+                    .default_value(DEFAULT_IS_LIVE)
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecString::builder("user-agent")
+                    .nick("User Agent")
+                    .blurb("The User-Agent string to send to the server")
+                    .default_value(Some(DEFAULT_USER_AGENT))
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecUInt64::builder("connection-speed")
+                    .nick("Connection Speed")
+                    .blurb("Network connection speed in kbps (0 = unknown)")
+                    .minimum(0)
+                    .maximum(u64::MAX)
+                    .default_value(DEFAULT_CONNECTION_SPEED)
+                    .mutable_ready()
+                    .build(),
             ]
         });
 
@@ -1342,6 +1375,22 @@ impl ObjectImpl for RtspSrc {
                 settings.udp_buffer_size = value.get::<i32>().expect("type checked upstream");
                 Ok(())
             }
+            // Source behavior properties
+            "is-live" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.is_live = value.get::<bool>().expect("type checked upstream");
+                Ok(())
+            }
+            "user-agent" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.user_agent = value.get::<String>().expect("type checked upstream");
+                Ok(())
+            }
+            "connection-speed" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.connection_speed = value.get::<u64>().expect("type checked upstream");
+                Ok(())
+            }
             name => unimplemented!("Property '{name}'"),
         };
 
@@ -1557,6 +1606,19 @@ impl ObjectImpl for RtspSrc {
             "udp-buffer-size" => {
                 let settings = self.settings.lock().unwrap();
                 settings.udp_buffer_size.to_value()
+            }
+            // Source behavior properties
+            "is-live" => {
+                let settings = self.settings.lock().unwrap();
+                settings.is_live.to_value()
+            }
+            "user-agent" => {
+                let settings = self.settings.lock().unwrap();
+                settings.user_agent.to_value()
+            }
+            "connection-speed" => {
+                let settings = self.settings.lock().unwrap();
+                settings.connection_speed.to_value()
             }
             name => unimplemented!("Property '{name}'"),
         }
