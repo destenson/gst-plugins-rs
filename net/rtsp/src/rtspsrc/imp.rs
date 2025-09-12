@@ -47,6 +47,7 @@ use gst::glib;
 use gst::prelude::*;
 use gst::subclass::prelude::*;
 use gst_net::gio;
+use gst_sdp;
 
 #[cfg(feature = "tracing")]
 use tracing::{event, Level};
@@ -1063,6 +1064,37 @@ impl RtspSrc {
             appsrc,
             rtsp_src: self.obj().clone(),
         }
+    }
+
+    /// Emit the on-sdp signal (placeholder)
+    /// This function will be called when an SDP message is received from the RTSP server.
+    /// Applications can connect to this signal to inspect or modify the SDP before stream setup.
+    #[allow(dead_code)]
+    fn emit_on_sdp(&self, sdp: &gst_sdp::SDPMessage) {
+        let obj = self.obj();
+        gst::debug!(CAT, obj = obj, "Emitting on-sdp signal");
+        obj.emit_by_name::<()>("on-sdp", &[sdp]);
+    }
+
+    /// Emit the select-stream signal (placeholder)
+    /// This function will be called for each stream found in the SDP.
+    /// Applications can connect to this signal to control which streams to activate.
+    /// Returns true if the stream should be selected, false otherwise.
+    #[allow(dead_code)]
+    fn emit_select_stream(&self, stream_id: u32, caps: &gst::Caps) -> bool {
+        let obj = self.obj();
+        gst::debug!(CAT, obj = obj, "Emitting select-stream signal for stream {}", stream_id);
+        obj.emit_by_name::<bool>("select-stream", &[&stream_id, caps])
+    }
+
+    /// Emit the new-manager signal (placeholder)
+    /// This function will be called when the RTP manager (rtpbin) is created.
+    /// Applications can connect to this signal to configure the RTP manager.
+    #[allow(dead_code)]
+    fn emit_new_manager(&self, manager: &gst::Element) {
+        let obj = self.obj();
+        gst::debug!(CAT, obj = obj, "Emitting new-manager signal");
+        obj.emit_by_name::<()>("new-manager", &[manager]);
     }
 }
 
@@ -2244,6 +2276,27 @@ impl ObjectImpl for RtspSrc {
         let obj = self.obj();
         obj.set_suppressed_flags(gst::ElementFlags::SINK | gst::ElementFlags::SOURCE);
         obj.set_element_flags(gst::ElementFlags::SOURCE);
+    }
+
+    fn signals() -> &'static [glib::subclass::Signal] {
+        static SIGNALS: LazyLock<Vec<glib::subclass::Signal>> = LazyLock::new(|| {
+            vec![
+                // on-sdp signal: emitted when SDP is received
+                glib::subclass::Signal::builder("on-sdp")
+                    .param_types([gst_sdp::SDPMessage::static_type()])
+                    .build(),
+                // select-stream signal: emitted for stream selection
+                glib::subclass::Signal::builder("select-stream")
+                    .param_types([u32::static_type(), gst::Caps::static_type()])
+                    .return_type::<bool>()
+                    .build(),
+                // new-manager signal: emitted when RTP manager is created
+                glib::subclass::Signal::builder("new-manager")
+                    .param_types([gst::Element::static_type()])
+                    .build(),
+            ]
+        });
+        SIGNALS.as_ref()
     }
 }
 
