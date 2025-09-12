@@ -1,3 +1,4 @@
+#![allow(unused)]
 // End-to-End Integration Test Suite
 // Comprehensive E2E testing orchestrator for the RTSP plugin
 
