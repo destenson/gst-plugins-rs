@@ -104,6 +104,11 @@ const DEFAULT_RTP_BLOCKSIZE: u32 = 0; // 0 = disabled, let server decide
 const DEFAULT_TCP_TIMESTAMP: bool = false;
 // SDES default is None - will be an Option<gst::Structure>
 
+// TLS/SSL security defaults (matching original rtspsrc)
+// Default TLS validation flags: validate all (0x7f = all flags set)
+const DEFAULT_TLS_VALIDATION_FLAGS: gio::TlsCertificateFlags =
+    gio::TlsCertificateFlags::VALIDATE_ALL;
+
 // Buffer queue management constants
 const DEFAULT_MAX_BUFFERED_BUFFERS: usize = 100;
 const DEFAULT_MAX_BUFFERED_BYTES: usize = 10 * 1024 * 1024; // 10 MB
@@ -250,6 +255,30 @@ impl Default for RtspVersion {
     fn default() -> Self {
         RtspVersion::V1_0
     }
+}
+
+// NAT traversal method enum (matching original rtspsrc)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, glib::Enum)]
+#[repr(u32)]
+#[enum_type(name = "GstRtspSrcNatMethod")]
+pub enum NatMethod {
+    #[enum_value(name = "None", nick = "none")]
+    None = 0,
+    #[default]
+    #[enum_value(name = "Send Dummy packets", nick = "dummy")]
+    Dummy = 1,
+}
+
+// Backchannel type enum (matching original rtspsrc)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, glib::Enum)]
+#[repr(u32)]
+#[enum_type(name = "GstRtspSrcBackchannelType")]
+pub enum BackchannelType {
+    #[default]
+    #[enum_value(name = "No backchannel", nick = "none")]
+    None = 0,
+    #[enum_value(name = "ONVIF audio backchannel", nick = "onvif")]
+    Onvif = 1,
 }
 
 /// Buffer queue entry for handling unlinked pads
@@ -452,7 +481,7 @@ impl BufferingAppSrc {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct Settings {
     location: Option<Url>,
     port_start: u16,
@@ -504,6 +533,23 @@ struct Settings {
     rtp_blocksize: u32,
     tcp_timestamp: bool,
     sdes: Option<gst::Structure>,
+    // TLS/SSL security properties
+    // Note: tls_database and tls_interaction are stored separately in the element
+    // because they're not Send+Sync and can't be in Settings which gets cloned
+    tls_validation_flags: gio::TlsCertificateFlags,
+    // Proxy and HTTP tunneling properties
+    proxy: Option<String>,
+    proxy_id: Option<String>,
+    proxy_pw: Option<String>,
+    extra_http_request_headers: Option<gst::Structure>,
+    // NAT traversal properties
+    nat_method: NatMethod,
+    ignore_x_server_reply: bool,
+    force_non_compliant_url: bool,
+    // ONVIF backchannel properties
+    backchannel: BackchannelType,
+    onvif_mode: bool,
+    onvif_rate_control: bool,
     #[cfg(feature = "adaptive")]
     adaptive_learning: bool,
     #[cfg(feature = "adaptive")]
@@ -518,6 +564,84 @@ struct Settings {
     adaptive_confidence_threshold: f32,
     #[cfg(feature = "adaptive")]
     adaptive_change_detection: bool,
+}
+
+impl Clone for Settings {
+    fn clone(&self) -> Self {
+        Settings {
+            location: self.location.clone(),
+            port_start: self.port_start,
+            protocols: self.protocols.clone(),
+            timeout: self.timeout,
+            receive_mtu: self.receive_mtu,
+            retry_strategy: self.retry_strategy.clone(),
+            max_reconnection_attempts: self.max_reconnection_attempts,
+            reconnection_timeout: self.reconnection_timeout,
+            initial_retry_delay: self.initial_retry_delay,
+            linear_retry_step: self.linear_retry_step,
+            connection_racing: self.connection_racing.clone(),
+            max_parallel_connections: self.max_parallel_connections,
+            racing_delay_ms: self.racing_delay_ms,
+            racing_timeout: self.racing_timeout,
+            seek_format: self.seek_format,
+            latency_ms: self.latency_ms,
+            drop_on_latency: self.drop_on_latency,
+            probation: self.probation,
+            buffer_mode: self.buffer_mode,
+            do_rtcp: self.do_rtcp,
+            do_retransmission: self.do_retransmission,
+            max_rtcp_rtp_time_diff: self.max_rtcp_rtp_time_diff,
+            do_rtsp_keep_alive: self.do_rtsp_keep_alive,
+            tcp_timeout: self.tcp_timeout,
+            teardown_timeout: self.teardown_timeout,
+            udp_reconnect: self.udp_reconnect,
+            multicast_iface: self.multicast_iface.clone(),
+            port_range: self.port_range.clone(),
+            udp_buffer_size: self.udp_buffer_size,
+            is_live: self.is_live,
+            user_agent: self.user_agent.clone(),
+            connection_speed: self.connection_speed,
+            ntp_sync: self.ntp_sync,
+            rfc7273_sync: self.rfc7273_sync,
+            ntp_time_source: self.ntp_time_source,
+            max_ts_offset: self.max_ts_offset,
+            max_ts_offset_adjustment: self.max_ts_offset_adjustment,
+            add_reference_timestamp_meta: self.add_reference_timestamp_meta,
+            default_rtsp_version: self.default_rtsp_version,
+            rtp_blocksize: self.rtp_blocksize,
+            tcp_timestamp: self.tcp_timestamp,
+            sdes: self.sdes.clone(),
+            // Clone the TLS validation flags (database/interaction stored separately)
+            tls_validation_flags: self.tls_validation_flags,
+            // Clone proxy and HTTP tunneling properties
+            proxy: self.proxy.clone(),
+            proxy_id: self.proxy_id.clone(),
+            proxy_pw: self.proxy_pw.clone(),
+            extra_http_request_headers: self.extra_http_request_headers.clone(),
+            // Clone NAT traversal properties
+            nat_method: self.nat_method,
+            ignore_x_server_reply: self.ignore_x_server_reply,
+            force_non_compliant_url: self.force_non_compliant_url,
+            // Clone ONVIF backchannel properties
+            backchannel: self.backchannel,
+            onvif_mode: self.onvif_mode,
+            onvif_rate_control: self.onvif_rate_control,
+            #[cfg(feature = "adaptive")]
+            adaptive_learning: self.adaptive_learning,
+            #[cfg(feature = "adaptive")]
+            adaptive_persistence: self.adaptive_persistence,
+            #[cfg(feature = "adaptive")]
+            adaptive_cache_ttl: self.adaptive_cache_ttl,
+            #[cfg(feature = "adaptive")]
+            adaptive_discovery_time: self.adaptive_discovery_time,
+            #[cfg(feature = "adaptive")]
+            adaptive_exploration_rate: self.adaptive_exploration_rate,
+            #[cfg(feature = "adaptive")]
+            adaptive_confidence_threshold: self.adaptive_confidence_threshold,
+            #[cfg(feature = "adaptive")]
+            adaptive_change_detection: self.adaptive_change_detection,
+        }
+    }
 }
 
 impl Default for Settings {
@@ -580,6 +704,21 @@ impl Default for Settings {
             rtp_blocksize: DEFAULT_RTP_BLOCKSIZE,
             tcp_timestamp: DEFAULT_TCP_TIMESTAMP,
             sdes: None,
+            // TLS/SSL security properties
+            tls_validation_flags: DEFAULT_TLS_VALIDATION_FLAGS,
+            // Proxy and HTTP tunneling properties
+            proxy: None,
+            proxy_id: None,
+            proxy_pw: None,
+            extra_http_request_headers: None,
+            // NAT traversal properties
+            nat_method: NatMethod::default(), // Dummy
+            ignore_x_server_reply: false,
+            force_non_compliant_url: false,
+            // ONVIF backchannel properties
+            backchannel: BackchannelType::default(), // None
+            onvif_mode: false,
+            onvif_rate_control: true,
             #[cfg(feature = "adaptive")]
             adaptive_exploration_rate: 0.1,
             #[cfg(feature = "adaptive")]
@@ -609,6 +748,9 @@ pub struct RtspSrc {
     task_handle: Mutex<Option<JoinHandle<()>>>,
     command_queue: Mutex<Option<mpsc::Sender<Commands>>>,
     buffer_queue: Arc<Mutex<BufferQueue>>,
+    // TODO: tls_database and tls_interaction properties cannot be properly stored
+    // because gio::TlsDatabase and gio::TlsInteraction are not Send+Sync.
+    // These properties will need to be implemented after removing Tokio.
     #[cfg(feature = "telemetry")]
     metrics: super::telemetry::RtspMetrics,
 }
@@ -1293,6 +1435,82 @@ impl ObjectImpl for RtspSrc {
                     .blurb("The SDES items of this session")
                     .mutable_ready()
                     .build(),
+                // TLS/SSL security properties
+                glib::ParamSpecObject::builder::<gio::TlsDatabase>("tls-database")
+                    .nick("TLS database")
+                    .blurb("TLS database with anchor certificate authorities used to validate the server certificate")
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecObject::builder::<gio::TlsInteraction>("tls-interaction")
+                    .nick("TLS interaction")
+                    .blurb("A GTlsInteraction object to prompt the user for password or certificate")
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecFlags::builder::<gio::TlsCertificateFlags>("tls-validation-flags")
+                    .nick("TLS validation flags")
+                    .blurb("TLS certificate validation flags used to validate the server certificate")
+                    .default_value(DEFAULT_TLS_VALIDATION_FLAGS)
+                    .mutable_ready()
+                    .build(),
+                // Proxy and HTTP tunneling properties
+                glib::ParamSpecString::builder("proxy")
+                    .nick("Proxy")
+                    .blurb("Proxy settings for HTTP tunneling. Format: [http://][user:passwd@]host[:port]")
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecString::builder("proxy-id")
+                    .nick("Proxy ID")
+                    .blurb("HTTP proxy URI user id for authentication")
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecString::builder("proxy-pw")
+                    .nick("Proxy password")
+                    .blurb("HTTP proxy URI user password for authentication")
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecBoxed::builder::<gst::Structure>("extra-http-request-headers")
+                    .nick("Extra HTTP request headers")
+                    .blurb("Extra headers to append to HTTP requests when in tunneled mode")
+                    .mutable_ready()
+                    .build(),
+                // NAT traversal properties
+                glib::ParamSpecEnum::builder::<NatMethod>("nat-method")
+                    .nick("NAT method")
+                    .blurb("Method to use for traversing firewalls and NAT")
+                    .default_value(NatMethod::default())
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecBoolean::builder("ignore-x-server-reply")
+                    .nick("Ignore x-server-reply")
+                    .blurb("Whether to ignore the x-server-ip-address server header reply")
+                    .default_value(false)
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecBoolean::builder("force-non-compliant-url")
+                    .nick("Force non-compliant URL")
+                    .blurb("Revert to old non-compliant method of constructing URLs")
+                    .default_value(false)
+                    .mutable_ready()
+                    .build(),
+                // ONVIF backchannel properties
+                glib::ParamSpecEnum::builder::<BackchannelType>("backchannel")
+                    .nick("Backchannel")
+                    .blurb("The type of backchannel to setup. Default is 'none'.")
+                    .default_value(BackchannelType::default())
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecBoolean::builder("onvif-mode")
+                    .nick("ONVIF mode")
+                    .blurb("Act as an ONVIF client")
+                    .default_value(false)
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecBoolean::builder("onvif-rate-control")
+                    .nick("ONVIF rate control")
+                    .blurb("When in onvif-mode, whether to set Rate-Control to yes or no")
+                    .default_value(true)
+                    .mutable_ready()
+                    .build(),
             ]
         });
 
@@ -1599,6 +1817,96 @@ impl ObjectImpl for RtspSrc {
                     .expect("type checked upstream");
                 Ok(())
             }
+            "tls-database" => {
+                // TODO: Cannot store TlsDatabase due to Send+Sync requirements
+                // Will be implemented after removing Tokio
+                gst::warning!(CAT, imp = self, "tls-database property not yet implemented");
+                Ok(())
+            }
+            "tls-interaction" => {
+                // TODO: Cannot store TlsInteraction due to Send+Sync requirements
+                // Will be implemented after removing Tokio
+                gst::warning!(
+                    CAT,
+                    imp = self,
+                    "tls-interaction property not yet implemented"
+                );
+                Ok(())
+            }
+            "tls-validation-flags" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.tls_validation_flags = value
+                    .get::<gio::TlsCertificateFlags>()
+                    .expect("type checked upstream");
+                Ok(())
+            }
+            // Proxy and HTTP tunneling properties
+            "proxy" => {
+                let mut settings = self.settings.lock().unwrap();
+                let proxy = value
+                    .get::<Option<String>>()
+                    .expect("type checked upstream");
+                // TODO: Add proxy URL validation once implemented
+                settings.proxy = proxy;
+                Ok(())
+            }
+            "proxy-id" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.proxy_id = value
+                    .get::<Option<String>>()
+                    .expect("type checked upstream");
+                Ok(())
+            }
+            "proxy-pw" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.proxy_pw = value
+                    .get::<Option<String>>()
+                    .expect("type checked upstream");
+                Ok(())
+            }
+            "extra-http-request-headers" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.extra_http_request_headers = value
+                    .get::<Option<gst::Structure>>()
+                    .expect("type checked upstream");
+                Ok(())
+            }
+            // NAT traversal properties
+            "nat-method" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.nat_method = value.get::<NatMethod>().expect("type checked upstream");
+                Ok(())
+            }
+            "ignore-x-server-reply" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.ignore_x_server_reply =
+                    value.get::<bool>().expect("type checked upstream");
+                Ok(())
+            }
+            "force-non-compliant-url" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.force_non_compliant_url =
+                    value.get::<bool>().expect("type checked upstream");
+                Ok(())
+            }
+            // ONVIF backchannel properties
+            "backchannel" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.backchannel = value
+                    .get::<BackchannelType>()
+                    .expect("type checked upstream");
+                Ok(())
+            }
+            "onvif-mode" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.onvif_mode = value.get::<bool>().expect("type checked upstream");
+                Ok(())
+            }
+            "onvif-rate-control" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.onvif_rate_control = value.get::<bool>().expect("type checked upstream");
+                Ok(())
+            }
             name => unimplemented!("Property '{name}'"),
         };
 
@@ -1868,6 +2176,63 @@ impl ObjectImpl for RtspSrc {
             "sdes" => {
                 let settings = self.settings.lock().unwrap();
                 settings.sdes.to_value()
+            }
+            "tls-database" => {
+                // TODO: Cannot store TlsDatabase due to Send+Sync requirements
+                // Always returns None for now
+                None::<gio::TlsDatabase>.to_value()
+            }
+            "tls-interaction" => {
+                // TODO: Cannot store TlsInteraction due to Send+Sync requirements
+                // Always returns None for now
+                None::<gio::TlsInteraction>.to_value()
+            }
+            "tls-validation-flags" => {
+                let settings = self.settings.lock().unwrap();
+                settings.tls_validation_flags.to_value()
+            }
+            // Proxy and HTTP tunneling properties
+            "proxy" => {
+                let settings = self.settings.lock().unwrap();
+                settings.proxy.to_value()
+            }
+            "proxy-id" => {
+                let settings = self.settings.lock().unwrap();
+                settings.proxy_id.to_value()
+            }
+            "proxy-pw" => {
+                let settings = self.settings.lock().unwrap();
+                settings.proxy_pw.to_value()
+            }
+            "extra-http-request-headers" => {
+                let settings = self.settings.lock().unwrap();
+                settings.extra_http_request_headers.to_value()
+            }
+            // NAT traversal properties
+            "nat-method" => {
+                let settings = self.settings.lock().unwrap();
+                settings.nat_method.to_value()
+            }
+            "ignore-x-server-reply" => {
+                let settings = self.settings.lock().unwrap();
+                settings.ignore_x_server_reply.to_value()
+            }
+            "force-non-compliant-url" => {
+                let settings = self.settings.lock().unwrap();
+                settings.force_non_compliant_url.to_value()
+            }
+            // ONVIF backchannel properties
+            "backchannel" => {
+                let settings = self.settings.lock().unwrap();
+                settings.backchannel.to_value()
+            }
+            "onvif-mode" => {
+                let settings = self.settings.lock().unwrap();
+                settings.onvif_mode.to_value()
+            }
+            "onvif-rate-control" => {
+                let settings = self.settings.lock().unwrap();
+                settings.onvif_rate_control.to_value()
             }
             name => unimplemented!("Property '{name}'"),
         }
@@ -2273,7 +2638,7 @@ impl RtspSrc {
 
         // Set properties for v1_16 compatibility
         #[cfg(feature = "v1_20")]
-        appsrc.set_property_as_str("leaky-type", "downstream"); // 2 = downstream
+        appsrc.set_property_from_str("leaky-type", "downstream"); // 2 = downstream
         #[cfg(feature = "v1_20")]
         appsrc.set_property("max-time", 2_000_000_000u64); // 2 seconds in nanoseconds
         let obj = self.obj();
