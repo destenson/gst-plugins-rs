@@ -8,10 +8,13 @@ mod e2e_inspection_tests;
 mod e2e_pipeline_tests;
 #[path = "e2e_plugin_tests.rs"]
 mod e2e_plugin_tests;
+#[path = "e2e_visual_tests.rs"]
+mod e2e_visual_tests;
 
 use e2e_inspection_tests::*;
 use e2e_pipeline_tests::*;
 use e2e_plugin_tests::*;
+use e2e_visual_tests::*;
 
 use std::time::Duration;
 

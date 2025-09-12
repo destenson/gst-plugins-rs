@@ -1,4 +1,3 @@
-
 use gst::prelude::*;
 
 fn init() {
@@ -942,4 +941,116 @@ fn test_rtspsrc_rtp_properties() {
     let sdes = elem.property::<Option<gst::Structure>>("sdes").unwrap();
     assert_eq!(sdes.get::<&str>("cname").unwrap(), "test@localhost");
     assert_eq!(sdes.get::<&str>("location").unwrap(), "Test Lab");
+}
+
+#[test]
+fn test_rtspsrc_tls_properties() {
+    init();
+
+    let elem = gst::ElementFactory::make("rtspsrc2")
+        .build()
+        .expect("Failed to create rtspsrc2 element");
+
+    // Test default values
+    // TODO: tls-database and tls-interaction not yet implemented due to thread-safety issues
+    // They will always return None for now
+    assert_eq!(
+        elem.property::<Option<gst_net::gio::TlsDatabase>>("tls-database"),
+        None
+    );
+    assert_eq!(
+        elem.property::<Option<gst_net::gio::TlsInteraction>>("tls-interaction"),
+        None
+    );
+
+    // Default should be VALIDATE_ALL (0x7f)
+    let default_flags = elem.property::<gst_net::gio::TlsCertificateFlags>("tls-validation-flags");
+    assert_eq!(
+        default_flags,
+        gst_net::gio::TlsCertificateFlags::VALIDATE_ALL
+    );
+
+    // Test that properties can be changed in NULL state
+    assert_eq!(elem.current_state(), gst::State::Null);
+
+    // Test setting different validation flags
+    elem.set_property(
+        "tls-validation-flags",
+        gst_net::gio::TlsCertificateFlags::empty(),
+    );
+    assert_eq!(
+        elem.property::<gst_net::gio::TlsCertificateFlags>("tls-validation-flags"),
+        gst_net::gio::TlsCertificateFlags::empty()
+    );
+
+    // Test setting specific flags
+    let custom_flags = gst_net::gio::TlsCertificateFlags::UNKNOWN_CA
+        | gst_net::gio::TlsCertificateFlags::BAD_IDENTITY;
+    elem.set_property("tls-validation-flags", custom_flags);
+    assert_eq!(
+        elem.property::<gst_net::gio::TlsCertificateFlags>("tls-validation-flags"),
+        custom_flags
+    );
+
+    // Test setting back to default
+    elem.set_property(
+        "tls-validation-flags",
+        gst_net::gio::TlsCertificateFlags::VALIDATE_ALL,
+    );
+    assert_eq!(
+        elem.property::<gst_net::gio::TlsCertificateFlags>("tls-validation-flags"),
+        gst_net::gio::TlsCertificateFlags::VALIDATE_ALL
+    );
+}
+
+#[test]
+fn test_tls_validation_flags() {
+    init();
+
+    let elem = gst::ElementFactory::make("rtspsrc2")
+        .build()
+        .expect("Failed to create rtspsrc2 element");
+
+    // Test individual flags
+    let test_cases = vec![
+        (gst_net::gio::TlsCertificateFlags::empty(), "no-flags"),
+        (gst_net::gio::TlsCertificateFlags::UNKNOWN_CA, "unknown-ca"),
+        (
+            gst_net::gio::TlsCertificateFlags::BAD_IDENTITY,
+            "bad-identity",
+        ),
+        (
+            gst_net::gio::TlsCertificateFlags::NOT_ACTIVATED,
+            "not-activated",
+        ),
+        (gst_net::gio::TlsCertificateFlags::EXPIRED, "expired"),
+        (gst_net::gio::TlsCertificateFlags::REVOKED, "revoked"),
+        (gst_net::gio::TlsCertificateFlags::INSECURE, "insecure"),
+        (
+            gst_net::gio::TlsCertificateFlags::GENERIC_ERROR,
+            "generic-error",
+        ),
+        (
+            gst_net::gio::TlsCertificateFlags::VALIDATE_ALL,
+            "validate-all",
+        ),
+    ];
+
+    for (flag, _name) in test_cases {
+        elem.set_property("tls-validation-flags", flag);
+        assert_eq!(
+            elem.property::<gst_net::gio::TlsCertificateFlags>("tls-validation-flags"),
+            flag
+        );
+    }
+
+    // Test combinations of flags
+    let combined = gst_net::gio::TlsCertificateFlags::EXPIRED
+        | gst_net::gio::TlsCertificateFlags::REVOKED
+        | gst_net::gio::TlsCertificateFlags::UNKNOWN_CA;
+    elem.set_property("tls-validation-flags", combined);
+    assert_eq!(
+        elem.property::<gst_net::gio::TlsCertificateFlags>("tls-validation-flags"),
+        combined
+    );
 }

@@ -1,3 +1,4 @@
+#![allow(unused)]
 // Performance Benchmark Tests for Camera Compatibility
 // Measures latency, throughput, and stability metrics
 
