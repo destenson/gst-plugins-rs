@@ -1291,6 +1291,97 @@ impl RtspSrc {
 
         false
     }
+
+    /// Handle push-backchannel-buffer action signal
+    fn handle_push_backchannel_buffer(
+        &self,
+        stream_id: u32,
+        buffer: &gst::Buffer,
+    ) -> gst::FlowReturn {
+        let obj = self.obj();
+        
+        gst::debug!(
+            CAT,
+            obj = obj,
+            "push-backchannel-buffer action called with stream_id: {}, buffer size: {}",
+            stream_id,
+            buffer.size()
+        );
+
+        // TODO: Implement actual backchannel buffer transmission
+        // This is a placeholder implementation
+        // Actual implementation would send the buffer through the backchannel
+        
+        // Return NOT_SUPPORTED since backchannel isn't implemented yet
+        gst::FlowReturn::NotSupported
+    }
+
+    /// Handle push-backchannel-sample action signal
+    fn handle_push_backchannel_sample(
+        &self,
+        stream_id: u32,
+        sample: &gst::Sample,
+    ) -> gst::FlowReturn {
+        let obj = self.obj();
+        
+        gst::debug!(
+            CAT,
+            obj = obj,
+            "push-backchannel-sample action called with stream_id: {}",
+            stream_id
+        );
+
+        // TODO: Implement actual backchannel sample transmission
+        // This is a placeholder implementation
+        // Actual implementation would send the sample through the backchannel
+        
+        // Return NOT_SUPPORTED since backchannel isn't implemented yet
+        gst::FlowReturn::NotSupported
+    }
+
+    /// Handle set-mikey-parameter action signal
+    fn handle_set_mikey_parameter(
+        &self,
+        stream_id: u32,
+        caps: &gst::Caps,
+        promise: &gst::Promise,
+    ) -> bool {
+        let obj = self.obj();
+        
+        gst::debug!(
+            CAT,
+            obj = obj,
+            "set-mikey-parameter action called with stream_id: {}, caps: {:?}",
+            stream_id,
+            caps
+        );
+
+        // TODO: Implement actual MIKEY parameter setting
+        // This is a placeholder implementation
+        // Actual implementation would set SRTP keys via MIKEY protocol
+        
+        // Return false since MIKEY isn't implemented yet
+        false
+    }
+
+    /// Handle remove-key action signal
+    fn handle_remove_key(&self, stream_id: u32) -> bool {
+        let obj = self.obj();
+        
+        gst::debug!(
+            CAT,
+            obj = obj,
+            "remove-key action called with stream_id: {}",
+            stream_id
+        );
+
+        // TODO: Implement actual key removal
+        // This is a placeholder implementation
+        // Actual implementation would remove encryption keys for the stream
+        
+        // Return false since key management isn't implemented yet
+        false
+    }
 }
 
 impl ObjectImpl for RtspSrc {
@@ -2618,6 +2709,87 @@ impl ObjectImpl for RtspSrc {
                             )
                             .to_value(),
                         )
+                    })
+                    .build(),
+                // push-backchannel-buffer action: send audio buffer through backchannel
+                // Returns GstFlowReturn indicating success/failure
+                glib::subclass::Signal::builder("push-backchannel-buffer")
+                    .action()
+                    .param_types([
+                        u32::static_type(),          // stream index
+                        gst::Buffer::static_type(),  // buffer with media data
+                    ])
+                    .return_type::<gst::FlowReturn>()
+                    .class_handler(|args| {
+                        let obj = args[0].get::<super::RtspSrc>().expect("signal arg");
+                        let imp = obj.imp();
+                        let stream_id = args[1].get::<u32>().expect("stream_id arg");
+                        let buffer = args[2].get::<gst::Buffer>().expect("buffer arg");
+
+                        Some(
+                            imp.handle_push_backchannel_buffer(stream_id, &buffer)
+                                .to_value(),
+                        )
+                    })
+                    .build(),
+                // push-backchannel-sample action: send audio sample through backchannel
+                // Returns GstFlowReturn indicating success/failure
+                glib::subclass::Signal::builder("push-backchannel-sample")
+                    .action()
+                    .param_types([
+                        u32::static_type(),          // stream index
+                        gst::Sample::static_type(),  // sample with media data and caps
+                    ])
+                    .return_type::<gst::FlowReturn>()
+                    .class_handler(|args| {
+                        let obj = args[0].get::<super::RtspSrc>().expect("signal arg");
+                        let imp = obj.imp();
+                        let stream_id = args[1].get::<u32>().expect("stream_id arg");
+                        let sample = args[2].get::<gst::Sample>().expect("sample arg");
+
+                        Some(
+                            imp.handle_push_backchannel_sample(stream_id, &sample)
+                                .to_value(),
+                        )
+                    })
+                    .build(),
+                // set-mikey-parameter action: set SRTP key via MIKEY protocol
+                // Returns true if request accepted, false otherwise
+                glib::subclass::Signal::builder("set-mikey-parameter")
+                    .action()
+                    .param_types([
+                        u32::static_type(),          // stream index
+                        gst::Caps::static_type(),    // MIKEY capabilities
+                        gst::Promise::static_type(), // promise for async result
+                    ])
+                    .return_type::<bool>()
+                    .class_handler(|args| {
+                        let obj = args[0].get::<super::RtspSrc>().expect("signal arg");
+                        let imp = obj.imp();
+                        let stream_id = args[1].get::<u32>().expect("stream_id arg");
+                        let caps = args[2].get::<gst::Caps>().expect("caps arg");
+                        let promise = args[3].get::<gst::Promise>().expect("promise arg");
+
+                        Some(
+                            imp.handle_set_mikey_parameter(stream_id, &caps, &promise)
+                                .to_value(),
+                        )
+                    })
+                    .build(),
+                // remove-key action: remove encryption key for stream
+                // Returns true if key removed, false otherwise
+                glib::subclass::Signal::builder("remove-key")
+                    .action()
+                    .param_types([
+                        u32::static_type(), // stream index
+                    ])
+                    .return_type::<bool>()
+                    .class_handler(|args| {
+                        let obj = args[0].get::<super::RtspSrc>().expect("signal arg");
+                        let imp = obj.imp();
+                        let stream_id = args[1].get::<u32>().expect("stream_id arg");
+
+                        Some(imp.handle_remove_key(stream_id).to_value())
                     })
                     .build(),
             ]
