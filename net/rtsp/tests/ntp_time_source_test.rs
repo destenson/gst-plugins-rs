@@ -24,10 +24,12 @@ fn test_ntp_time_source_enum_property() {
         .iter()
         .find(|p| p.name() == "ntp-time-source")
         .expect("ntp-time-source property not found");
-    
+
     // Verify it's an enum type
-    assert!(ntp_time_source_prop.value_type().is_a(gst::glib::Type::ENUM));
-    
+    assert!(ntp_time_source_prop
+        .value_type()
+        .is_a(gst::glib::Type::ENUM));
+
     // The test would need to be updated to handle enum values instead of strings
     // GStreamer's enum properties work differently than string properties
 }
