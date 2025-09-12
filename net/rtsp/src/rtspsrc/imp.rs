@@ -208,59 +208,22 @@ impl Default for SeekFormat {
 }
 
 // NTP time source enum (matching original rtspsrc)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, glib::Enum)]
+#[repr(u32)]
+#[enum_type(name = "GstRtspSrcNtpTimeSource")]
 pub enum NtpTimeSource {
-    Ntp,         // NTP time based on realtime clock
-    Unix,        // UNIX time based on realtime clock
-    RunningTime, // Running time based on pipeline clock
-    ClockTime,   // Pipeline clock time
+    #[default]
+    #[enum_value(name = "NTP time based on realtime clock", nick = "ntp")]
+    Ntp,
+    #[enum_value(name = "UNIX time based on realtime clock", nick = "unix")]
+    Unix,
+    #[enum_value(name = "Running time based on pipeline clock", nick = "running-time")]
+    RunningTime,
+    #[enum_value(name = "Pipeline clock time", nick = "clock-time")]
+    ClockTime,
 }
 
-impl Default for NtpTimeSource {
-    fn default() -> Self {
-        NtpTimeSource::Ntp
-    }
-}
 
-impl NtpTimeSource {
-    fn as_str(&self) -> &'static str {
-        match self {
-            NtpTimeSource::Ntp => "ntp",
-            NtpTimeSource::Unix => "unix",
-            NtpTimeSource::RunningTime => "running-time",
-            NtpTimeSource::ClockTime => "clock-time",
-        }
-    }
-
-    fn from_str(s: &str) -> Result<Self, String> {
-        match s {
-            "ntp" => Ok(NtpTimeSource::Ntp),
-            "unix" => Ok(NtpTimeSource::Unix),
-            "running-time" => Ok(NtpTimeSource::RunningTime),
-            "clock-time" => Ok(NtpTimeSource::ClockTime),
-            _ => Err(format!("Invalid NTP time source: {}", s)),
-        }
-    }
-
-    fn as_int(&self) -> u32 {
-        match self {
-            NtpTimeSource::Ntp => 0,
-            NtpTimeSource::Unix => 1,
-            NtpTimeSource::RunningTime => 2,
-            NtpTimeSource::ClockTime => 3,
-        }
-    }
-
-    fn from_int(i: u32) -> Result<Self, String> {
-        match i {
-            0 => Ok(NtpTimeSource::Ntp),
-            1 => Ok(NtpTimeSource::Unix),
-            2 => Ok(NtpTimeSource::RunningTime),
-            3 => Ok(NtpTimeSource::ClockTime),
-            _ => Err(format!("Invalid NTP time source value: {}", i)),
-        }
-    }
-}
 
 /// Buffer queue entry for handling unlinked pads
 #[derive(Debug, Clone)]
@@ -1231,10 +1194,10 @@ impl ObjectImpl for RtspSrc {
                     .default_value(DEFAULT_RFC7273_SYNC)
                     .mutable_ready()
                     .build(),
-                glib::ParamSpecString::builder("ntp-time-source")
+                glib::ParamSpecEnum::builder::<NtpTimeSource>("ntp-time-source")
                     .nick("NTP Time Source")
                     .blurb("NTP time source for RTCP packets")
-                    .default_value(Some(NtpTimeSource::default().as_str()))
+                    .default_value(NtpTimeSource::default())
                     .mutable_ready()
                     .build(),
                 glib::ParamSpecInt64::builder("max-ts-offset")
@@ -1520,18 +1483,10 @@ impl ObjectImpl for RtspSrc {
                 Ok(())
             }
             "ntp-time-source" => {
-                let source_str = value.get::<&str>().expect("type checked upstream");
-                match NtpTimeSource::from_str(source_str) {
-                    Ok(source) => {
-                        let mut settings = self.settings.lock().unwrap();
-                        settings.ntp_time_source = source;
-                        Ok(())
-                    }
-                    Err(err) => Err(glib::Error::new(
-                        gst::CoreError::Failed,
-                        &format!("Invalid NTP time source: {}", err),
-                    )),
-                }
+                let mut settings = self.settings.lock().unwrap();
+                settings.ntp_time_source =
+                    value.get::<NtpTimeSource>().expect("type checked upstream");
+                Ok(())
             }
             "max-ts-offset" => {
                 let mut settings = self.settings.lock().unwrap();
@@ -1790,7 +1745,7 @@ impl ObjectImpl for RtspSrc {
             }
             "ntp-time-source" => {
                 let settings = self.settings.lock().unwrap();
-                settings.ntp_time_source.as_str().to_value()
+                settings.ntp_time_source.to_value()
             }
             "max-ts-offset" => {
                 let settings = self.settings.lock().unwrap();
