@@ -1167,6 +1167,131 @@ impl RtspSrc {
         );
         obj.emit_by_name::<Option<gst::Caps>>("request-rtp-key", &[&stream_id])
     }
+
+    /// Handle get-parameter action signal
+    /// Sends a GET_PARAMETER RTSP request for a single parameter
+    /// Returns true if request could be sent, false otherwise
+    fn handle_get_parameter(
+        &self,
+        parameter: &str,
+        content_type: Option<&str>,
+        _promise: &gst::Promise,
+    ) -> bool {
+        let obj = self.obj();
+
+        // Validate parameter name
+        if parameter.is_empty() {
+            gst::warning!(
+                CAT,
+                obj = obj,
+                "get-parameter: parameter name cannot be empty"
+            );
+            return false;
+        }
+
+        gst::debug!(
+            CAT,
+            obj = obj,
+            "get-parameter action called with parameter: {}, content_type: {:?}",
+            parameter,
+            content_type
+        );
+
+        // TODO: Implement actual GET_PARAMETER request logic
+        // This is a placeholder implementation that returns false
+        // Actual implementation will send RTSP GET_PARAMETER request
+        // and fulfill promise with results
+
+        false
+    }
+
+    /// Handle get-parameters action signal
+    /// Sends a GET_PARAMETER RTSP request for multiple parameters
+    /// Returns true if request could be sent, false otherwise
+    fn handle_get_parameters(
+        &self,
+        parameters: Vec<String>,
+        content_type: Option<&str>,
+        _promise: &gst::Promise,
+    ) -> bool {
+        let obj = self.obj();
+
+        // Validate parameters array
+        if parameters.is_empty() {
+            gst::warning!(
+                CAT,
+                obj = obj,
+                "get-parameters: parameters array cannot be empty"
+            );
+            return false;
+        }
+
+        // Validate each parameter name
+        for param in &parameters {
+            if param.is_empty() {
+                gst::warning!(
+                    CAT,
+                    obj = obj,
+                    "get-parameters: parameter name cannot be empty"
+                );
+                return false;
+            }
+        }
+
+        gst::debug!(
+            CAT,
+            obj = obj,
+            "get-parameters action called with parameters: {:?}, content_type: {:?}",
+            parameters,
+            content_type
+        );
+
+        // TODO: Implement actual GET_PARAMETER request logic for multiple parameters
+        // This is a placeholder implementation that returns false
+        // Actual implementation will send RTSP GET_PARAMETER request
+        // and fulfill promise with results
+
+        false
+    }
+
+    /// Handle set-parameter action signal
+    /// Sends a SET_PARAMETER RTSP request
+    /// Returns true if request could be sent, false otherwise
+    fn handle_set_parameter(
+        &self,
+        parameter: &str,
+        value: &str,
+        content_type: Option<&str>,
+        _promise: &gst::Promise,
+    ) -> bool {
+        let obj = self.obj();
+
+        // Validate parameter name
+        if parameter.is_empty() {
+            gst::warning!(
+                CAT,
+                obj = obj,
+                "set-parameter: parameter name cannot be empty"
+            );
+            return false;
+        }
+
+        gst::debug!(
+            CAT,
+            obj = obj,
+            "set-parameter action called with parameter: {}, value: {}, content_type: {:?}",
+            parameter,
+            value,
+            content_type
+        );
+
+        // TODO: Implement actual SET_PARAMETER request logic
+        // This is a placeholder implementation that returns false
+        // Actual implementation will send RTSP SET_PARAMETER request
+        // and fulfill promise with results
+
+        false
+    }
 }
 
 impl ObjectImpl for RtspSrc {
@@ -2415,6 +2540,86 @@ impl ObjectImpl for RtspSrc {
                 glib::subclass::Signal::builder("request-rtp-key")
                     .param_types([u32::static_type()])
                     .return_type::<Option<gst::Caps>>()
+                    .build(),
+                // get-parameter action: send GET_PARAMETER RTSP request
+                // Returns true if request sent, false otherwise
+                glib::subclass::Signal::builder("get-parameter")
+                    .action()
+                    .param_types([
+                        String::static_type(),           // parameter name
+                        Option::<String>::static_type(), // content type
+                        gst::Promise::static_type(),     // promise for async result
+                    ])
+                    .return_type::<bool>()
+                    .class_handler(|args| {
+                        let obj = args[0].get::<super::RtspSrc>().expect("signal arg");
+                        let imp = obj.imp();
+                        let parameter = args[1].get::<String>().expect("parameter arg");
+                        let content_type = args[2].get::<Option<String>>().ok().flatten();
+                        let promise = args[3].get::<gst::Promise>().expect("promise arg");
+
+                        Some(
+                            imp.handle_get_parameter(&parameter, content_type.as_deref(), &promise)
+                                .to_value(),
+                        )
+                    })
+                    .build(),
+                // get-parameters action: send GET_PARAMETER RTSP request for multiple parameters
+                // Returns true if request sent, false otherwise
+                glib::subclass::Signal::builder("get-parameters")
+                    .action()
+                    .param_types([
+                        Vec::<String>::static_type(),    // parameter names array
+                        Option::<String>::static_type(), // content type
+                        gst::Promise::static_type(),     // promise for async result
+                    ])
+                    .return_type::<bool>()
+                    .class_handler(|args| {
+                        let obj = args[0].get::<super::RtspSrc>().expect("signal arg");
+                        let imp = obj.imp();
+                        let parameters = args[1].get::<Vec<String>>().expect("parameters arg");
+                        let content_type = args[2].get::<Option<String>>().ok().flatten();
+                        let promise = args[3].get::<gst::Promise>().expect("promise arg");
+
+                        Some(
+                            imp.handle_get_parameters(
+                                parameters,
+                                content_type.as_deref(),
+                                &promise,
+                            )
+                            .to_value(),
+                        )
+                    })
+                    .build(),
+                // set-parameter action: send SET_PARAMETER RTSP request
+                // Returns true if request sent, false otherwise
+                glib::subclass::Signal::builder("set-parameter")
+                    .action()
+                    .param_types([
+                        String::static_type(),           // parameter name
+                        String::static_type(),           // parameter value
+                        Option::<String>::static_type(), // content type
+                        gst::Promise::static_type(),     // promise for async result
+                    ])
+                    .return_type::<bool>()
+                    .class_handler(|args| {
+                        let obj = args[0].get::<super::RtspSrc>().expect("signal arg");
+                        let imp = obj.imp();
+                        let parameter = args[1].get::<String>().expect("parameter arg");
+                        let value = args[2].get::<String>().expect("value arg");
+                        let content_type = args[3].get::<Option<String>>().ok().flatten();
+                        let promise = args[4].get::<gst::Promise>().expect("promise arg");
+
+                        Some(
+                            imp.handle_set_parameter(
+                                &parameter,
+                                &value,
+                                content_type.as_deref(),
+                                &promise,
+                            )
+                            .to_value(),
+                        )
+                    })
                     .build(),
             ]
         });
