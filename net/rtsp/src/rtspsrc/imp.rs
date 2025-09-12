@@ -99,6 +99,11 @@ const DEFAULT_ADD_REFERENCE_TIMESTAMP_META: bool = false;
 // RTSP version default (matching original rtspsrc)
 const DEFAULT_RTSP_VERSION: RtspVersion = RtspVersion::V1_0;
 
+// RTP-specific defaults (matching original rtspsrc)
+const DEFAULT_RTP_BLOCKSIZE: u32 = 0; // 0 = disabled, let server decide
+const DEFAULT_TCP_TIMESTAMP: bool = false;
+// SDES default is None - will be an Option<gst::Structure>
+
 // Buffer queue management constants
 const DEFAULT_MAX_BUFFERED_BUFFERS: usize = 100;
 const DEFAULT_MAX_BUFFERED_BYTES: usize = 10 * 1024 * 1024; // 10 MB
@@ -495,6 +500,10 @@ struct Settings {
     add_reference_timestamp_meta: bool,
     // RTSP version negotiation
     default_rtsp_version: RtspVersion,
+    // RTP-specific properties
+    rtp_blocksize: u32,
+    tcp_timestamp: bool,
+    sdes: Option<gst::Structure>,
     #[cfg(feature = "adaptive")]
     adaptive_learning: bool,
     #[cfg(feature = "adaptive")]
@@ -567,6 +576,10 @@ impl Default for Settings {
             max_ts_offset_adjustment: DEFAULT_MAX_TS_OFFSET_ADJUSTMENT,
             add_reference_timestamp_meta: DEFAULT_ADD_REFERENCE_TIMESTAMP_META,
             default_rtsp_version: DEFAULT_RTSP_VERSION,
+            // RTP-specific properties
+            rtp_blocksize: DEFAULT_RTP_BLOCKSIZE,
+            tcp_timestamp: DEFAULT_TCP_TIMESTAMP,
+            sdes: None,
             #[cfg(feature = "adaptive")]
             adaptive_exploration_rate: 0.1,
             #[cfg(feature = "adaptive")]
@@ -1261,6 +1274,25 @@ impl ObjectImpl for RtspSrc {
                     .default_value(DEFAULT_RTSP_VERSION)
                     .mutable_ready()
                     .build(),
+                // RTP-specific properties
+                glib::ParamSpecUInt::builder("rtp-blocksize")
+                    .nick("RTP block size")
+                    .blurb("RTP package size to suggest to server (0 = disabled)")
+                    .maximum(65536)
+                    .default_value(DEFAULT_RTP_BLOCKSIZE)
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecBoolean::builder("tcp-timestamp")
+                    .nick("TCP Timestamp")
+                    .blurb("Timestamp RTP packets with receive times in TCP/HTTP mode")
+                    .default_value(DEFAULT_TCP_TIMESTAMP)
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecBoxed::builder::<gst::Structure>("sdes")
+                    .nick("SDES")
+                    .blurb("The SDES items of this session")
+                    .mutable_ready()
+                    .build(),
             ]
         });
 
@@ -1550,6 +1582,23 @@ impl ObjectImpl for RtspSrc {
                     value.get::<RtspVersion>().expect("type checked upstream");
                 Ok(())
             }
+            "rtp-blocksize" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.rtp_blocksize = value.get::<u32>().expect("type checked upstream");
+                Ok(())
+            }
+            "tcp-timestamp" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.tcp_timestamp = value.get::<bool>().expect("type checked upstream");
+                Ok(())
+            }
+            "sdes" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.sdes = value
+                    .get::<Option<gst::Structure>>()
+                    .expect("type checked upstream");
+                Ok(())
+            }
             name => unimplemented!("Property '{name}'"),
         };
 
@@ -1807,6 +1856,18 @@ impl ObjectImpl for RtspSrc {
             "default-rtsp-version" => {
                 let settings = self.settings.lock().unwrap();
                 settings.default_rtsp_version.to_value()
+            }
+            "rtp-blocksize" => {
+                let settings = self.settings.lock().unwrap();
+                settings.rtp_blocksize.to_value()
+            }
+            "tcp-timestamp" => {
+                let settings = self.settings.lock().unwrap();
+                settings.tcp_timestamp.to_value()
+            }
+            "sdes" => {
+                let settings = self.settings.lock().unwrap();
+                settings.sdes.to_value()
             }
             name => unimplemented!("Property '{name}'"),
         }
