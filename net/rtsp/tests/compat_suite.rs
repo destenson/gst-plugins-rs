@@ -1,3 +1,4 @@
+#![allow(unused)]
 // Comprehensive Camera Compatibility Test Suite
 // Main test orchestration for camera compatibility testing
 

@@ -74,6 +74,12 @@ const DEFAULT_DO_RTCP: bool = true;
 const DEFAULT_DO_RETRANSMISSION: bool = true;
 const DEFAULT_MAX_RTCP_RTP_TIME_DIFF: i32 = -1;
 
+// Keep-alive and timeout defaults (matching original rtspsrc)
+const DEFAULT_DO_RTSP_KEEP_ALIVE: bool = true;
+const DEFAULT_TCP_TIMEOUT: u64 = 20000000; // 20 seconds in microseconds
+const DEFAULT_TEARDOWN_TIMEOUT: u64 = 100000000; // 100ms in nanoseconds
+const DEFAULT_UDP_RECONNECT: bool = true;
+
 // Buffer queue management constants
 const DEFAULT_MAX_BUFFERED_BUFFERS: usize = 100;
 const DEFAULT_MAX_BUFFERED_BYTES: usize = 10 * 1024 * 1024; // 10 MB
@@ -411,6 +417,11 @@ struct Settings {
     do_rtcp: bool,
     do_retransmission: bool,
     max_rtcp_rtp_time_diff: i32,
+    // Keep-alive and timeout properties
+    do_rtsp_keep_alive: bool,
+    tcp_timeout: u64,
+    teardown_timeout: u64,
+    udp_reconnect: bool,
     #[cfg(feature = "adaptive")]
     adaptive_learning: bool,
     #[cfg(feature = "adaptive")]
@@ -462,6 +473,11 @@ impl Default for Settings {
             do_rtcp: DEFAULT_DO_RTCP,
             do_retransmission: DEFAULT_DO_RETRANSMISSION,
             max_rtcp_rtp_time_diff: DEFAULT_MAX_RTCP_RTP_TIME_DIFF,
+            // Keep-alive and timeout properties
+            do_rtsp_keep_alive: DEFAULT_DO_RTSP_KEEP_ALIVE,
+            tcp_timeout: DEFAULT_TCP_TIMEOUT,
+            teardown_timeout: DEFAULT_TEARDOWN_TIMEOUT,
+            udp_reconnect: DEFAULT_UDP_RECONNECT,
             #[cfg(feature = "adaptive")]
             adaptive_exploration_rate: 0.1,
             #[cfg(feature = "adaptive")]
@@ -978,6 +994,35 @@ impl ObjectImpl for RtspSrc {
                     .default_value(DEFAULT_MAX_RTCP_RTP_TIME_DIFF)
                     .mutable_ready()
                     .build(),
+                // Keep-alive and timeout properties (matching original rtspsrc)
+                glib::ParamSpecBoolean::builder("do-rtsp-keep-alive")
+                    .nick("Send RTSP keep-alive packets")
+                    .blurb("Send RTSP keep alive packets, disable for old incompatible server.")
+                    .default_value(DEFAULT_DO_RTSP_KEEP_ALIVE)
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecUInt64::builder("tcp-timeout")
+                    .nick("TCP Timeout")
+                    .blurb("Fail after timeout microseconds on TCP connections (0 = disabled)")
+                    .minimum(0)
+                    .maximum(u64::MAX)
+                    .default_value(DEFAULT_TCP_TIMEOUT)
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecUInt64::builder("teardown-timeout")
+                    .nick("Teardown Timeout")
+                    .blurb("When transitioning PAUSED-READY, allow up to timeout (in nanoseconds) delay in order to send teardown (0 = disabled)")
+                    .minimum(0)
+                    .maximum(u64::MAX)
+                    .default_value(DEFAULT_TEARDOWN_TIMEOUT)
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecBoolean::builder("udp-reconnect")
+                    .nick("Reconnect to server")
+                    .blurb("Reconnect to the server if RTSP connection is closed when doing UDP")
+                    .default_value(DEFAULT_UDP_RECONNECT)
+                    .mutable_ready()
+                    .build(),
             ]
         });
 
@@ -1170,6 +1215,27 @@ impl ObjectImpl for RtspSrc {
                     value.get::<i32>().expect("type checked upstream");
                 Ok(())
             }
+            // Keep-alive and timeout properties
+            "do-rtsp-keep-alive" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.do_rtsp_keep_alive = value.get::<bool>().expect("type checked upstream");
+                Ok(())
+            }
+            "tcp-timeout" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.tcp_timeout = value.get::<u64>().expect("type checked upstream");
+                Ok(())
+            }
+            "teardown-timeout" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.teardown_timeout = value.get::<u64>().expect("type checked upstream");
+                Ok(())
+            }
+            "udp-reconnect" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.udp_reconnect = value.get::<bool>().expect("type checked upstream");
+                Ok(())
+            }
             name => unimplemented!("Property '{name}'"),
         };
 
@@ -1355,6 +1421,23 @@ impl ObjectImpl for RtspSrc {
             "max-rtcp-rtp-time-diff" => {
                 let settings = self.settings.lock().unwrap();
                 settings.max_rtcp_rtp_time_diff.to_value()
+            }
+            // Keep-alive and timeout properties
+            "do-rtsp-keep-alive" => {
+                let settings = self.settings.lock().unwrap();
+                settings.do_rtsp_keep_alive.to_value()
+            }
+            "tcp-timeout" => {
+                let settings = self.settings.lock().unwrap();
+                settings.tcp_timeout.to_value()
+            }
+            "teardown-timeout" => {
+                let settings = self.settings.lock().unwrap();
+                settings.teardown_timeout.to_value()
+            }
+            "udp-reconnect" => {
+                let settings = self.settings.lock().unwrap();
+                settings.udp_reconnect.to_value()
             }
             name => unimplemented!("Property '{name}'"),
         }

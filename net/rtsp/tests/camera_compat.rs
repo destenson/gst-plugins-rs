@@ -1,3 +1,4 @@
+#![allow(unused)]
 // Camera Compatibility Testing Framework
 // Tests rtspsrc2 against various real and simulated IP cameras
 
