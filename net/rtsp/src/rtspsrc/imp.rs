@@ -80,6 +80,11 @@ const DEFAULT_TCP_TIMEOUT: u64 = 20000000; // 20 seconds in microseconds
 const DEFAULT_TEARDOWN_TIMEOUT: u64 = 100000000; // 100ms in nanoseconds
 const DEFAULT_UDP_RECONNECT: bool = true;
 
+// Network interface defaults (matching original rtspsrc)
+const DEFAULT_MULTICAST_IFACE: Option<String> = None;
+const DEFAULT_PORT_RANGE: Option<String> = None;
+const DEFAULT_UDP_BUFFER_SIZE: i32 = 524288; // 512KB default
+
 // Buffer queue management constants
 const DEFAULT_MAX_BUFFERED_BUFFERS: usize = 100;
 const DEFAULT_MAX_BUFFERED_BYTES: usize = 10 * 1024 * 1024; // 10 MB
@@ -422,6 +427,10 @@ struct Settings {
     tcp_timeout: u64,
     teardown_timeout: u64,
     udp_reconnect: bool,
+    // Network interface properties
+    multicast_iface: Option<String>,
+    port_range: Option<String>,
+    udp_buffer_size: i32,
     #[cfg(feature = "adaptive")]
     adaptive_learning: bool,
     #[cfg(feature = "adaptive")]
@@ -478,6 +487,10 @@ impl Default for Settings {
             tcp_timeout: DEFAULT_TCP_TIMEOUT,
             teardown_timeout: DEFAULT_TEARDOWN_TIMEOUT,
             udp_reconnect: DEFAULT_UDP_RECONNECT,
+            // Network interface properties
+            multicast_iface: DEFAULT_MULTICAST_IFACE,
+            port_range: DEFAULT_PORT_RANGE,
+            udp_buffer_size: DEFAULT_UDP_BUFFER_SIZE,
             #[cfg(feature = "adaptive")]
             adaptive_exploration_rate: 0.1,
             #[cfg(feature = "adaptive")]
@@ -580,6 +593,61 @@ fn parse_protocols_str(s: &str) -> Result<Vec<RtspProtocol>, glib::Error> {
         }
     }
     Ok(acc)
+}
+
+/// Validates port range format (e.g., "3000-3005")
+/// Returns Ok(()) if valid or None, Err if invalid format
+fn validate_port_range(range: Option<&str>) -> Result<(), glib::Error> {
+    if let Some(range_str) = range {
+        if range_str.is_empty() {
+            return Ok(()); // Empty string is treated as None
+        }
+
+        let parts: Vec<&str> = range_str.split('-').collect();
+        if parts.len() != 2 {
+            return Err(glib::Error::new(
+                gst::CoreError::Failed,
+                &format!(
+                    "Invalid port range format '{}', expected 'start-end'",
+                    range_str
+                ),
+            ));
+        }
+
+        let start = parts[0].parse::<u16>().map_err(|_| {
+            glib::Error::new(
+                gst::CoreError::Failed,
+                &format!("Invalid start port in range '{}'", range_str),
+            )
+        })?;
+
+        let end = parts[1].parse::<u16>().map_err(|_| {
+            glib::Error::new(
+                gst::CoreError::Failed,
+                &format!("Invalid end port in range '{}'", range_str),
+            )
+        })?;
+
+        if start > end {
+            return Err(glib::Error::new(
+                gst::CoreError::Failed,
+                &format!("Invalid port range '{}', start must be <= end", range_str),
+            ));
+        }
+
+        // Check for even number of ports (RTP + RTCP pairs)
+        let port_count = (end - start + 1) as usize;
+        if port_count % 2 != 0 {
+            return Err(glib::Error::new(
+                gst::CoreError::Failed,
+                &format!(
+                    "Port range '{}' must contain an even number of ports for RTP/RTCP pairs",
+                    range_str
+                ),
+            ));
+        }
+    }
+    Ok(())
 }
 
 impl RtspSrc {
@@ -1022,6 +1090,25 @@ impl ObjectImpl for RtspSrc {
                     .default_value(DEFAULT_UDP_RECONNECT)
                     .mutable_ready()
                     .build(),
+                // Network interface properties (matching original rtspsrc)
+                glib::ParamSpecString::builder("multicast-iface")
+                    .nick("Multicast Interface")
+                    .blurb("The network interface on which to join the multicast group")
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecString::builder("port-range")
+                    .nick("Port range")
+                    .blurb("Client port range that can be used to receive RTP and RTCP data, eg. 3000-3005 (NULL = no restrictions)")
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecInt::builder("udp-buffer-size")
+                    .nick("UDP Buffer Size")
+                    .blurb("Size of the kernel UDP receive buffer in bytes, 0=default")
+                    .minimum(0)
+                    .maximum(i32::MAX)
+                    .default_value(DEFAULT_UDP_BUFFER_SIZE)
+                    .mutable_ready()
+                    .build(),
             ]
         });
 
@@ -1235,6 +1322,26 @@ impl ObjectImpl for RtspSrc {
                 settings.udp_reconnect = value.get::<bool>().expect("type checked upstream");
                 Ok(())
             }
+            // Network interface properties
+            "multicast-iface" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.multicast_iface = value
+                    .get::<Option<String>>()
+                    .expect("type checked upstream");
+                Ok(())
+            }
+            "port-range" => {
+                let range = value.get::<Option<&str>>().expect("type checked upstream");
+                validate_port_range(range).map(|_| {
+                    let mut settings = self.settings.lock().unwrap();
+                    settings.port_range = range.map(String::from);
+                })
+            }
+            "udp-buffer-size" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.udp_buffer_size = value.get::<i32>().expect("type checked upstream");
+                Ok(())
+            }
             name => unimplemented!("Property '{name}'"),
         };
 
@@ -1437,6 +1544,19 @@ impl ObjectImpl for RtspSrc {
             "udp-reconnect" => {
                 let settings = self.settings.lock().unwrap();
                 settings.udp_reconnect.to_value()
+            }
+            // Network interface properties
+            "multicast-iface" => {
+                let settings = self.settings.lock().unwrap();
+                settings.multicast_iface.to_value()
+            }
+            "port-range" => {
+                let settings = self.settings.lock().unwrap();
+                settings.port_range.to_value()
+            }
+            "udp-buffer-size" => {
+                let settings = self.settings.lock().unwrap();
+                settings.udp_buffer_size.to_value()
             }
             name => unimplemented!("Property '{name}'"),
         }
