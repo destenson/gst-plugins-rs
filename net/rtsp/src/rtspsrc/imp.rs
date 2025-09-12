@@ -96,6 +96,9 @@ const DEFAULT_MAX_TS_OFFSET: i64 = 3000000000; // 3 seconds in nanoseconds
 const DEFAULT_MAX_TS_OFFSET_ADJUSTMENT: u64 = 0; // 0 = no limit
 const DEFAULT_ADD_REFERENCE_TIMESTAMP_META: bool = false;
 
+// RTSP version default (matching original rtspsrc)
+const DEFAULT_RTSP_VERSION: RtspVersion = RtspVersion::V1_0;
+
 // Buffer queue management constants
 const DEFAULT_MAX_BUFFERED_BUFFERS: usize = 100;
 const DEFAULT_MAX_BUFFERED_BYTES: usize = 10 * 1024 * 1024; // 10 MB
@@ -221,6 +224,27 @@ pub enum NtpTimeSource {
     RunningTime,
     #[enum_value(name = "Pipeline clock time", nick = "clock-time")]
     ClockTime,
+}
+
+// RTSP version enum (matching original GStreamer GST_RTSP_VERSION_* values)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, glib::Enum)]
+#[repr(u32)]
+#[enum_type(name = "GstRtspSrcRtspVersion")]
+pub enum RtspVersion {
+    #[enum_value(name = "GST_RTSP_VERSION_INVALID", nick = "invalid")]
+    Invalid = 0,
+    #[enum_value(name = "GST_RTSP_VERSION_1_0", nick = "1-0")]
+    V1_0 = 16,
+    #[enum_value(name = "GST_RTSP_VERSION_1_1", nick = "1-1")]
+    V1_1 = 17,
+    #[enum_value(name = "GST_RTSP_VERSION_2_0", nick = "2-0")]
+    V2_0 = 32,
+}
+
+impl Default for RtspVersion {
+    fn default() -> Self {
+        RtspVersion::V1_0
+    }
 }
 
 /// Buffer queue entry for handling unlinked pads
@@ -469,6 +493,8 @@ struct Settings {
     max_ts_offset: i64,
     max_ts_offset_adjustment: u64,
     add_reference_timestamp_meta: bool,
+    // RTSP version negotiation
+    default_rtsp_version: RtspVersion,
     #[cfg(feature = "adaptive")]
     adaptive_learning: bool,
     #[cfg(feature = "adaptive")]
@@ -540,6 +566,7 @@ impl Default for Settings {
             max_ts_offset: DEFAULT_MAX_TS_OFFSET,
             max_ts_offset_adjustment: DEFAULT_MAX_TS_OFFSET_ADJUSTMENT,
             add_reference_timestamp_meta: DEFAULT_ADD_REFERENCE_TIMESTAMP_META,
+            default_rtsp_version: DEFAULT_RTSP_VERSION,
             #[cfg(feature = "adaptive")]
             adaptive_exploration_rate: 0.1,
             #[cfg(feature = "adaptive")]
@@ -733,9 +760,15 @@ impl RtspSrc {
         }?;
 
         let protocols: &[RtspProtocol] = match uri.scheme() {
+            "rtsp" => &settings.protocols,
             "rtspu" => &[RtspProtocol::UdpMulticast, RtspProtocol::Udp],
             "rtspt" => &[RtspProtocol::Tcp],
-            "rtsp" => &settings.protocols,
+            "rtsph" => &[RtspProtocol::Tcp], // RTSP over HTTPS (HTTP tunneling)
+            "rtsp-sdp" => &settings.protocols, // SDP-only session
+            "rtsps" => &settings.protocols,  // RTSP over TLS/SSL
+            "rtspsu" => &[RtspProtocol::UdpMulticast, RtspProtocol::Udp], // RTSP over TLS/SSL with UDP
+            "rtspst" => &[RtspProtocol::Tcp], // RTSP over TLS/SSL with TCP
+            "rtspsh" => &[RtspProtocol::Tcp], // RTSP over TLS/SSL with HTTPS tunneling
             scheme => {
                 return Err(glib::Error::new(
                     gst::URIError::UnsupportedProtocol,
@@ -1220,6 +1253,13 @@ impl ObjectImpl for RtspSrc {
                     .default_value(DEFAULT_ADD_REFERENCE_TIMESTAMP_META)
                     .mutable_ready()
                     .build(),
+                // RTSP version negotiation property
+                glib::ParamSpecEnum::builder::<RtspVersion>("default-rtsp-version")
+                    .nick("Default RTSP Version")
+                    .blurb("The RTSP version that should be tried first when negotiating version.")
+                    .default_value(DEFAULT_RTSP_VERSION)
+                    .mutable_ready()
+                    .build(),
             ]
         });
 
@@ -1503,6 +1543,12 @@ impl ObjectImpl for RtspSrc {
                     value.get::<bool>().expect("type checked upstream");
                 Ok(())
             }
+            "default-rtsp-version" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.default_rtsp_version =
+                    value.get::<RtspVersion>().expect("type checked upstream");
+                Ok(())
+            }
             name => unimplemented!("Property '{name}'"),
         };
 
@@ -1757,6 +1803,10 @@ impl ObjectImpl for RtspSrc {
                 let settings = self.settings.lock().unwrap();
                 settings.add_reference_timestamp_meta.to_value()
             }
+            "default-rtsp-version" => {
+                let settings = self.settings.lock().unwrap();
+                settings.default_rtsp_version.to_value()
+            }
             name => unimplemented!("Property '{name}'"),
         }
     }
@@ -1896,7 +1946,9 @@ impl URIHandlerImpl for RtspSrc {
     const URI_TYPE: gst::URIType = gst::URIType::Src;
 
     fn protocols() -> &'static [&'static str] {
-        &["rtsp", "rtspu", "rtspt"]
+        &[
+            "rtsp", "rtspu", "rtspt", "rtsph", "rtsp-sdp", "rtsps", "rtspsu", "rtspst", "rtspsh",
+        ]
     }
 
     fn uri(&self) -> Option<String> {
