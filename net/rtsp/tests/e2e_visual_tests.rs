@@ -178,10 +178,11 @@ impl E2EVisualTest {
         }
 
         // Execute with timeout
-        let output = timeout(
-            timeout_duration,
-            tokio::task::spawn_blocking(move || cmd.output()),
-        )
+        let output = timeout(timeout_duration, async move {
+            tokio::task::spawn_blocking(move || cmd.output())
+                .await
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+        })
         .await??;
 
         let execution_time = start_time.elapsed();

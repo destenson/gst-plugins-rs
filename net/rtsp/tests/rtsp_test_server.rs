@@ -1,3 +1,4 @@
+#![allow(unused)]
 // GStreamer-based RTSP test server for realistic testing
 //
 // Copyright (C) 2025 GStreamer developers
