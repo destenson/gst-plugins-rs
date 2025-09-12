@@ -13,7 +13,7 @@ mod mock_server;
 
 use gst::prelude::*;
 use serial_test::serial;
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -36,7 +36,7 @@ fn test_connect_to_mock_server() {
 
     let (server_ready_tx, server_ready_rx) = mpsc::channel();
     let (server_shutdown_tx, server_shutdown_rx) = mpsc::channel();
-    
+
     // Start mock server in a thread
     let server_handle = thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -44,9 +44,9 @@ fn test_connect_to_mock_server() {
             let server = MockRtspServer::new().await;
             let url = server.url();
             let handle = server.start().await;
-            
+
             server_ready_tx.send(url).unwrap();
-            
+
             // Wait for shutdown signal
             server_shutdown_rx.recv().unwrap();
             handle.shutdown().await;
@@ -68,20 +68,20 @@ fn test_connect_to_mock_server() {
 
     // Clean up
     element.set_state(gst::State::Null).unwrap();
-    
+
     // Shutdown server
     server_shutdown_tx.send(()).unwrap();
     server_handle.join().unwrap();
 }
 
-#[test] 
+#[test]
 #[serial]
 fn test_options_describe_flow() {
     init();
 
     let (server_ready_tx, server_ready_rx) = mpsc::channel();
     let (server_shutdown_tx, server_shutdown_rx) = mpsc::channel();
-    
+
     // Start mock server in a thread
     let server_handle = thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -89,9 +89,9 @@ fn test_options_describe_flow() {
             let server = MockRtspServer::new().await;
             let url = server.url();
             let handle = server.start().await;
-            
+
             server_ready_tx.send(url).unwrap();
-            
+
             // Wait for shutdown signal
             server_shutdown_rx.recv().unwrap();
             handle.shutdown().await;
@@ -103,7 +103,7 @@ fn test_options_describe_flow() {
 
     // Create a simple pipeline
     let pipeline = gst::Pipeline::new();
-    
+
     let src = gst::ElementFactory::make("rtspsrc2")
         .property("location", &url)
         .property("protocols", "tcp")
@@ -139,14 +139,14 @@ fn test_options_describe_flow() {
 
     // Clean up
     pipeline.set_state(gst::State::Null).unwrap();
-    
+
     // Shutdown server
     server_shutdown_tx.send(()).unwrap();
     server_handle.join().unwrap();
 }
 
 #[test]
-#[serial] 
+#[serial]
 fn test_buffer_queue_functionality() {
     init();
 
@@ -158,22 +158,28 @@ fn test_buffer_queue_functionality() {
 
     // Test that the element can be created and has the correct properties
     assert_eq!(element.factory().unwrap().name(), "rtspsrc2");
-    
+
     // Test that we can set state transitions which involve buffer queue clearing
     let result = element.set_state(gst::State::Ready);
     assert!(result.is_ok(), "Should be able to set state to READY");
-    
+
     let result = element.set_state(gst::State::Null);
-    assert!(result.is_ok(), "Should be able to set state to NULL (triggers buffer queue clear)");
-    
-    gst::info!(gst::CAT_DEFAULT, "Buffer queue functionality test passed - state transitions work correctly");
+    assert!(
+        result.is_ok(),
+        "Should be able to set state to NULL (triggers buffer queue clear)"
+    );
+
+    gst::info!(
+        gst::CAT_DEFAULT,
+        "Buffer queue functionality test passed - state transitions work correctly"
+    );
 }
 
 // TODO: Additional tests to be converted from tokio to thread-based approach
 // These tests cover:
-// - Custom SDP handling 
+// - Custom SDP handling
 // - TCP transport
-// - UDP transport  
+// - UDP transport
 // - Multicast transport
 // - Teardown on stop
 // - Server disconnect handling

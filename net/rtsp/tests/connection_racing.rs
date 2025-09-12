@@ -81,7 +81,7 @@ async fn test_racing_first_wins() {
     // Start multiple listeners on different ports
     let listener1 = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port1 = listener1.local_addr().unwrap().port();
-    
+
     let listener2 = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let _port2 = listener2.local_addr().unwrap().port();
 
@@ -117,16 +117,16 @@ async fn test_racing_first_wins() {
 
     // Try to connect - should use first connection
     let _result = element.set_state(gst::State::Paused);
-    
+
     // Give some time for connection
     sleep(Duration::from_millis(300)).await;
-    
+
     // Should only see one connection (the first one)
     let attempts = attempt_count.load(Ordering::SeqCst);
     assert_eq!(attempts, 1, "Expected only 1 connection for first-wins");
 
     element.set_state(gst::State::Null).unwrap();
-    
+
     handle1.abort();
     handle2.abort();
 }
@@ -143,7 +143,7 @@ async fn test_racing_last_wins() {
     // Start multiple listeners
     let listener1 = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port1 = listener1.local_addr().unwrap().port();
-    
+
     let listener2 = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let _port2 = listener2.local_addr().unwrap().port();
 
@@ -186,16 +186,19 @@ async fn test_racing_last_wins() {
 
     // Try to connect - should try both and use the last one
     let _result = element.set_state(gst::State::Paused);
-    
+
     // Give time for both connections
     sleep(Duration::from_millis(600)).await;
-    
+
     // Should see both connection attempts for last-wins
     let attempts = attempt_count.load(Ordering::SeqCst);
-    assert!(attempts >= 1, "Expected at least 1 connection attempt for last-wins");
+    assert!(
+        attempts >= 1,
+        "Expected at least 1 connection attempt for last-wins"
+    );
 
     element.set_state(gst::State::Null).unwrap();
-    
+
     handle1.abort();
     handle2.abort();
 }
@@ -206,7 +209,7 @@ async fn test_racing_with_all_failures() {
     init();
 
     // No listeners - all connections will fail
-    
+
     // Create element with first-wins racing
     let element = gst::ElementFactory::make("rtspsrc2")
         .property("location", "rtsp://127.0.0.1:65535/test") // Invalid port
@@ -220,17 +223,23 @@ async fn test_racing_with_all_failures() {
         .expect("Failed to create rtspsrc2 element");
 
     let start_time = Instant::now();
-    
+
     // Try to connect - all should fail
     let result = element.set_state(gst::State::Paused);
-    
+
     // Should fail relatively quickly with racing
-    assert!(start_time.elapsed() < Duration::from_secs(2), 
-            "Racing should fail quickly when all connections fail");
-    
+    assert!(
+        start_time.elapsed() < Duration::from_secs(2),
+        "Racing should fail quickly when all connections fail"
+    );
+
     // State change should not succeed
     let (_res, state, _pending) = element.state(gst::ClockTime::from_mseconds(500));
-    assert_eq!(state, gst::State::Null, "Should remain in NULL state when connection fails");
+    assert_eq!(
+        state,
+        gst::State::Null,
+        "Should remain in NULL state when connection fails"
+    );
 
     element.set_state(gst::State::Null).unwrap();
 }
@@ -255,7 +264,10 @@ fn test_racing_property_defaults() {
     assert_eq!(delay, 250, "Default racing delay should be 250ms");
 
     let timeout: u64 = element.property("racing-timeout");
-    assert_eq!(timeout, 5_000_000_000, "Default racing timeout should be 5 seconds");
+    assert_eq!(
+        timeout, 5_000_000_000,
+        "Default racing timeout should be 5 seconds"
+    );
 }
 
 #[tokio::test]
@@ -270,17 +282,17 @@ async fn test_racing_cleanup() {
     // Start a listener that tracks connections
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
-    
+
     let connection_count_clone = connection_count.clone();
     let active_connections_clone = active_connections.clone();
-    
+
     let handle = tokio::spawn(async move {
         loop {
             if let Ok((stream, _)) = listener.accept().await {
                 connection_count_clone.fetch_add(1, Ordering::SeqCst);
                 let active = active_connections_clone.clone();
                 active.fetch_add(1, Ordering::SeqCst);
-                
+
                 // Track when connection is dropped
                 tokio::spawn(async move {
                     sleep(Duration::from_secs(10)).await;
@@ -304,14 +316,20 @@ async fn test_racing_cleanup() {
     // Connect
     let _result = element.set_state(gst::State::Paused);
     sleep(Duration::from_millis(500)).await;
-    
+
     // Should have attempted multiple connections
     let total_attempts = connection_count.load(Ordering::SeqCst);
-    assert!(total_attempts >= 1, "Should have at least one connection attempt");
-    
+    assert!(
+        total_attempts >= 1,
+        "Should have at least one connection attempt"
+    );
+
     // But only one should remain active
     let active = active_connections.load(Ordering::SeqCst);
-    assert_eq!(active, 1, "Only one connection should remain active after first-wins");
+    assert_eq!(
+        active, 1,
+        "Only one connection should remain active after first-wins"
+    );
 
     // Clean up
     element.set_state(gst::State::Null).unwrap();

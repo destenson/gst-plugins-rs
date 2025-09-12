@@ -93,7 +93,7 @@ impl CompatibilityTestSuite {
         // Load from config file if specified
         if let Some(config_path) = &self.config_file {
             println!("Loading cameras from config: {}", config_path);
-            
+
             let config = if config_path.ends_with(".toml") {
                 CameraConfigFile::load_from_toml(config_path)?
             } else if config_path.ends_with(".json") {
@@ -110,13 +110,13 @@ impl CompatibilityTestSuite {
         // Discover cameras via ONVIF if enabled
         if self.use_discovery {
             println!("Discovering ONVIF cameras...");
-            
+
             // Use simulator for testing
             let simulator = OnvifSimulator::new();
             let devices = simulator.discover_devices();
-            
+
             println!("Found {} ONVIF devices", devices.len());
-            
+
             for device in devices {
                 self.tester.add_camera(self.convert_onvif_device(device));
             }
@@ -170,9 +170,9 @@ impl CompatibilityTestSuite {
             vendor: device.manufacturer,
             model: device.model,
             firmware: device.firmware,
-            url: device.rtsp_url.unwrap_or_else(|| {
-                format!("rtsp://{}:554/", device.ip_address)
-            }),
+            url: device
+                .rtsp_url
+                .unwrap_or_else(|| format!("rtsp://{}:554/", device.ip_address)),
             username: Some("admin".to_string()),
             password: Some("admin".to_string()),
             transport: TransportMode::Auto,
@@ -190,7 +190,10 @@ impl CompatibilityTestSuite {
         }
     }
 
-    fn save_report(&self, results: &[CompatibilityTestResult]) -> Result<(), Box<dyn std::error::Error>> {
+    fn save_report(
+        &self,
+        results: &[CompatibilityTestResult],
+    ) -> Result<(), Box<dyn std::error::Error>> {
         // Create output directory
         std::fs::create_dir_all(&self.output_dir)?;
 
@@ -199,15 +202,15 @@ impl CompatibilityTestSuite {
 
         // Save report with timestamp
         let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
-        let report_path = Path::new(&self.output_dir)
-            .join(format!("compatibility_report_{}.md", timestamp));
+        let report_path =
+            Path::new(&self.output_dir).join(format!("compatibility_report_{}.md", timestamp));
 
         std::fs::write(&report_path, report)?;
         println!("\nReport saved to: {}", report_path.display());
 
         // Also save as JSON for programmatic access
-        let json_path = Path::new(&self.output_dir)
-            .join(format!("compatibility_results_{}.json", timestamp));
+        let json_path =
+            Path::new(&self.output_dir).join(format!("compatibility_results_{}.json", timestamp));
 
         let json_results = serde_json::to_string_pretty(results)?;
         std::fs::write(&json_path, json_results)?;
@@ -220,27 +223,43 @@ impl CompatibilityTestSuite {
         println!("\n=== Test Summary ===\n");
 
         let total = results.len();
-        let passed = results.iter()
+        let passed = results
+            .iter()
             .filter(|r| matches!(r.connectivity, TestStatus::Pass))
             .count();
-        let failed = results.iter()
+        let failed = results
+            .iter()
             .filter(|r| matches!(r.connectivity, TestStatus::Fail(_)))
             .count();
-        let skipped = results.iter()
+        let skipped = results
+            .iter()
             .filter(|r| matches!(r.connectivity, TestStatus::Skip(_)))
             .count();
 
         println!("Total cameras tested: {}", total);
-        println!("  Passed: {} ({:.1}%)", passed, (passed as f64 / total as f64) * 100.0);
-        println!("  Failed: {} ({:.1}%)", failed, (failed as f64 / total as f64) * 100.0);
-        println!("  Skipped: {} ({:.1}%)", skipped, (skipped as f64 / total as f64) * 100.0);
+        println!(
+            "  Passed: {} ({:.1}%)",
+            passed,
+            (passed as f64 / total as f64) * 100.0
+        );
+        println!(
+            "  Failed: {} ({:.1}%)",
+            failed,
+            (failed as f64 / total as f64) * 100.0
+        );
+        println!(
+            "  Skipped: {} ({:.1}%)",
+            skipped,
+            (skipped as f64 / total as f64) * 100.0
+        );
 
         // Group by vendor
         let mut vendor_stats: HashMap<String, (usize, usize, usize)> = HashMap::new();
         for result in results {
-            let entry = vendor_stats.entry(result.camera.vendor.clone())
+            let entry = vendor_stats
+                .entry(result.camera.vendor.clone())
                 .or_insert((0, 0, 0));
-            
+
             match result.connectivity {
                 TestStatus::Pass => entry.0 += 1,
                 TestStatus::Fail(_) => entry.1 += 1,
@@ -251,33 +270,41 @@ impl CompatibilityTestSuite {
 
         println!("\nBy Vendor:");
         for (vendor, (pass, fail, skip)) in vendor_stats {
-            println!("  {}: {} passed, {} failed, {} skipped", vendor, pass, fail, skip);
+            println!(
+                "  {}: {} passed, {} failed, {} skipped",
+                vendor, pass, fail, skip
+            );
         }
 
         // Performance summary for successful tests
-        let successful: Vec<_> = results.iter()
+        let successful: Vec<_> = results
+            .iter()
             .filter(|r| matches!(r.connectivity, TestStatus::Pass))
             .collect();
 
         if !successful.is_empty() {
             println!("\nPerformance Summary:");
-            
-            let avg_connection_time: Duration = successful.iter()
+
+            let avg_connection_time: Duration = successful
+                .iter()
                 .map(|r| r.performance.connection_time)
-                .sum::<Duration>() / successful.len() as u32;
-            
+                .sum::<Duration>()
+                / successful.len() as u32;
+
             println!("  Average connection time: {:?}", avg_connection_time);
-            
-            let min_connection = successful.iter()
+
+            let min_connection = successful
+                .iter()
                 .map(|r| r.performance.connection_time)
                 .min()
                 .unwrap_or_default();
-            
-            let max_connection = successful.iter()
+
+            let max_connection = successful
+                .iter()
                 .map(|r| r.performance.connection_time)
                 .max()
                 .unwrap_or_default();
-            
+
             println!("  Min connection time: {:?}", min_connection);
             println!("  Max connection time: {:?}", max_connection);
         }
@@ -288,16 +315,13 @@ impl CompatibilityTestSuite {
 pub async fn test_basic_connectivity(camera: &CameraTestConfig) -> TestStatus {
     gst::init().ok();
 
-    let pipeline_str = format!(
-        "rtspsrc2 location={} latency=100 ! fakesink",
-        camera.url
-    );
+    let pipeline_str = format!("rtspsrc2 location={} latency=100 ! fakesink", camera.url);
 
     match gst::parse::launch(&pipeline_str) {
         Ok(pipeline) => {
             let pipeline = pipeline.downcast::<gst::Pipeline>().unwrap();
             pipeline.set_state(gst::State::Playing).ok();
-            
+
             let (res, _, _) = pipeline.state(Some(gst::ClockTime::from_seconds(10)));
             pipeline.set_state(gst::State::Null).ok();
 
@@ -347,7 +371,7 @@ mod tests {
         // Generate example configuration file
         let config = create_example_config();
         config.save_to_toml("camera_test_config.toml").unwrap();
-        
+
         println!("Example configuration saved to camera_test_config.toml");
     }
 }

@@ -34,7 +34,7 @@ use tokio::time;
 
 use rtsp_types::headers::{
     CSeq, NptRange, NptTime, Public, Range, RtpInfos, RtpLowerTransport, RtpProfile, RtpTransport,
-    RtpTransportParameters, Session, SmpteRange, SmpteTime, SmpteType, Transport, TransportMode, 
+    RtpTransportParameters, Session, SmpteRange, SmpteTime, SmpteType, Transport, TransportMode,
     Transports, UtcRange, UtcTime, ACCEPT, CONTENT_BASE, CONTENT_LOCATION, USER_AGENT,
 };
 use rtsp_types::{Message, Method, Request, Response, StatusCode, Version};
@@ -82,7 +82,7 @@ const BUFFER_QUEUE_CLEANUP_THRESHOLD: f32 = 0.8; // Start cleanup at 80% capacit
 // Buffer mode enum (matching original rtspsrc)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BufferMode {
-    None,   // Only use RTP timestamps  
+    None,   // Only use RTP timestamps
     Slave,  // Slave receiver to sender clock
     Buffer, // Do low/high watermark buffering
     Auto,   // Choose mode depending on stream live
@@ -99,7 +99,7 @@ impl BufferMode {
     fn as_str(&self) -> &'static str {
         match self {
             BufferMode::None => "none",
-            BufferMode::Slave => "slave", 
+            BufferMode::Slave => "slave",
             BufferMode::Buffer => "buffer",
             BufferMode::Auto => "auto",
             BufferMode::Synced => "synced",
@@ -139,7 +139,6 @@ impl BufferMode {
     }
 }
 
-
 const MAX_MESSAGE_SIZE: usize = 1024 * 1024;
 const MAX_BIND_PORT_RETRY: u16 = 100;
 const UDP_PACKET_MAX_SIZE: u32 = 65535 - 8;
@@ -175,9 +174,9 @@ impl fmt::Display for RtspProtocol {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SeekFormat {
-    Npt,    // Normal Play Time (default)
-    Smpte,  // SMPTE time code
-    Clock,  // Absolute UTC time
+    Npt,   // Normal Play Time (default)
+    Smpte, // SMPTE time code
+    Clock, // Absolute UTC time
 }
 
 impl Default for SeekFormat {
@@ -213,23 +212,40 @@ impl BufferQueue {
         }
     }
 
-    fn push(&mut self, buffer: gst::Buffer, appsrc: gst_app::AppSrc, timestamp: gst::ClockTime) -> bool {
+    fn push(
+        &mut self,
+        buffer: gst::Buffer,
+        appsrc: gst_app::AppSrc,
+        timestamp: gst::ClockTime,
+    ) -> bool {
         let buffer_size = buffer.size();
-        
+
         // Check if we're over capacity and need to drop buffers
-        while (self.buffers.len() >= self.max_buffers || 
-               self.total_bytes + buffer_size > self.max_bytes) &&
-              !self.buffers.is_empty() {
+        while (self.buffers.len() >= self.max_buffers
+            || self.total_bytes + buffer_size > self.max_bytes)
+            && !self.buffers.is_empty()
+        {
             if let Some(dropped_buffer) = self.buffers.pop_front() {
-                self.total_bytes = self.total_bytes.saturating_sub(dropped_buffer.buffer.size());
-                gst::warning!(CAT, "Dropping buffer due to queue overflow - current: {} buffers, {} bytes", 
-                            self.buffers.len(), self.total_bytes);
+                self.total_bytes = self
+                    .total_bytes
+                    .saturating_sub(dropped_buffer.buffer.size());
+                gst::warning!(
+                    CAT,
+                    "Dropping buffer due to queue overflow - current: {} buffers, {} bytes",
+                    self.buffers.len(),
+                    self.total_bytes
+                );
             }
         }
 
         // If we still can't fit the new buffer, reject it
         if buffer_size > self.max_bytes {
-            gst::error!(CAT, "Buffer size {} exceeds max queue capacity {}", buffer_size, self.max_bytes);
+            gst::error!(
+                CAT,
+                "Buffer size {} exceeds max queue capacity {}",
+                buffer_size,
+                self.max_bytes
+            );
             return false;
         }
 
@@ -239,30 +255,43 @@ impl BufferQueue {
             timestamp,
         });
         self.total_bytes += buffer_size;
-        
-        gst::debug!(CAT, "Queued buffer - queue size: {} buffers, {} bytes", 
-                  self.buffers.len(), self.total_bytes);
-        
+
+        gst::debug!(
+            CAT,
+            "Queued buffer - queue size: {} buffers, {} bytes",
+            self.buffers.len(),
+            self.total_bytes
+        );
+
         true
     }
 
     fn flush_to_appsrc(&mut self, target_appsrc: &gst_app::AppSrc) -> usize {
         let mut flushed_count = 0;
         let mut remaining_buffers = VecDeque::new();
-        
+
         while let Some(queued) = self.buffers.pop_front() {
             self.total_bytes = self.total_bytes.saturating_sub(queued.buffer.size());
-            
+
             if queued.appsrc.name() == target_appsrc.name() {
                 // Try to push the buffer
                 let buffer_size = queued.buffer.size();
                 match target_appsrc.push_buffer(queued.buffer.clone()) {
                     Ok(_) => {
-                        gst::debug!(CAT, "Successfully flushed queued buffer to {}", target_appsrc.name());
+                        gst::debug!(
+                            CAT,
+                            "Successfully flushed queued buffer to {}",
+                            target_appsrc.name()
+                        );
                         flushed_count += 1;
                     }
                     Err(err) => {
-                        gst::warning!(CAT, "Failed to flush queued buffer to {}: {}", target_appsrc.name(), err);
+                        gst::warning!(
+                            CAT,
+                            "Failed to flush queued buffer to {}: {}",
+                            target_appsrc.name(),
+                            err
+                        );
                         // Put it back if it failed
                         self.total_bytes += buffer_size;
                         remaining_buffers.push_back(queued);
@@ -275,27 +304,37 @@ impl BufferQueue {
                 remaining_buffers.push_back(queued);
             }
         }
-        
+
         self.buffers = remaining_buffers;
-        
+
         if flushed_count > 0 {
-            gst::info!(CAT, "Flushed {} queued buffers to {} - remaining: {} buffers, {} bytes", 
-                     flushed_count, target_appsrc.name(), self.buffers.len(), self.total_bytes);
+            gst::info!(
+                CAT,
+                "Flushed {} queued buffers to {} - remaining: {} buffers, {} bytes",
+                flushed_count,
+                target_appsrc.name(),
+                self.buffers.len(),
+                self.total_bytes
+            );
         }
-        
+
         flushed_count
     }
 
     fn clear(&mut self) {
         let cleared_count = self.buffers.len();
         let cleared_bytes = self.total_bytes;
-        
+
         self.buffers.clear();
         self.total_bytes = 0;
-        
+
         if cleared_count > 0 {
-            gst::info!(CAT, "Cleared {} queued buffers ({} bytes) from buffer queue", 
-                     cleared_count, cleared_bytes);
+            gst::info!(
+                CAT,
+                "Cleared {} queued buffers ({} bytes) from buffer queue",
+                cleared_count,
+                cleared_bytes
+            );
         }
     }
 
@@ -310,7 +349,7 @@ impl BufferQueue {
     fn is_over_threshold(&self) -> bool {
         let buffer_threshold = (self.max_buffers as f32 * BUFFER_QUEUE_CLEANUP_THRESHOLD) as usize;
         let bytes_threshold = (self.max_bytes as f32 * BUFFER_QUEUE_CLEANUP_THRESHOLD) as usize;
-        
+
         self.buffers.len() >= buffer_threshold || self.total_bytes >= bytes_threshold
     }
 }
@@ -437,7 +476,10 @@ impl Default for Settings {
 enum Commands {
     Play,
     //Pause,
-    Seek { position: gst::ClockTime, flags: gst::SeekFlags },
+    Seek {
+        position: gst::ClockTime,
+        flags: gst::SeekFlags,
+    },
     Teardown(Option<oneshot::Sender<()>>),
     Data(rtsp_types::Data<Body>),
     Reconnect,
@@ -606,9 +648,15 @@ impl RtspSrc {
     }
 
     /// Try to push buffer to AppSrc, queuing it if the pad is not linked
-    fn push_buffer_with_queue(&self, appsrc: &gst_app::AppSrc, buffer: gst::Buffer) -> Result<gst::FlowSuccess, gst::FlowError> {
-        let timestamp = appsrc.current_running_time().unwrap_or(gst::ClockTime::ZERO);
-        
+    fn push_buffer_with_queue(
+        &self,
+        appsrc: &gst_app::AppSrc,
+        buffer: gst::Buffer,
+    ) -> Result<gst::FlowSuccess, gst::FlowError> {
+        let timestamp = appsrc
+            .current_running_time()
+            .unwrap_or(gst::ClockTime::ZERO);
+
         match appsrc.push_buffer(buffer.clone()) {
             Ok(success) => {
                 gst::trace!(CAT, "Successfully pushed buffer to {}", appsrc.name());
@@ -618,23 +666,40 @@ impl RtspSrc {
                 // Queue the buffer for later flushing when pad gets linked
                 let mut buffer_queue = self.buffer_queue.lock().unwrap();
                 if buffer_queue.push(buffer, appsrc.clone(), timestamp) {
-                    gst::debug!(CAT, "Queued buffer for {} (pad not linked yet)", appsrc.name());
-                    
+                    gst::debug!(
+                        CAT,
+                        "Queued buffer for {} (pad not linked yet)",
+                        appsrc.name()
+                    );
+
                     // Warn if queue is getting full
                     if buffer_queue.is_over_threshold() {
-                        gst::warning!(CAT, "Buffer queue is {}% full - {} buffers, {} bytes", 
-                                    (buffer_queue.len() as f32 / buffer_queue.max_buffers as f32 * 100.0) as u32,
-                                    buffer_queue.len(), buffer_queue.total_bytes());
+                        gst::warning!(
+                            CAT,
+                            "Buffer queue is {}% full - {} buffers, {} bytes",
+                            (buffer_queue.len() as f32 / buffer_queue.max_buffers as f32 * 100.0)
+                                as u32,
+                            buffer_queue.len(),
+                            buffer_queue.total_bytes()
+                        );
                     }
-                    
+
                     Ok(gst::FlowSuccess::Ok)
                 } else {
-                    gst::error!(CAT, "Failed to queue buffer for {} - queue full or buffer too large", appsrc.name());
+                    gst::error!(
+                        CAT,
+                        "Failed to queue buffer for {} - queue full or buffer too large",
+                        appsrc.name()
+                    );
                     Err(gst::FlowError::Error)
                 }
             }
             Err(gst::FlowError::Flushing) => {
-                gst::debug!(CAT, "AppSrc {} is flushing - dropping buffer", appsrc.name());
+                gst::debug!(
+                    CAT,
+                    "AppSrc {} is flushing - dropping buffer",
+                    appsrc.name()
+                );
                 Ok(gst::FlowSuccess::Ok)
             }
             Err(err) => {
@@ -648,9 +713,14 @@ impl RtspSrc {
     fn flush_queued_buffers(&self, appsrc: &gst_app::AppSrc) {
         let mut buffer_queue = self.buffer_queue.lock().unwrap();
         let flushed_count = buffer_queue.flush_to_appsrc(appsrc);
-        
+
         if flushed_count > 0 {
-            gst::info!(CAT, "Flushed {} queued buffers to {} after pad link", flushed_count, appsrc.name());
+            gst::info!(
+                CAT,
+                "Flushed {} queued buffers to {} after pad link",
+                flushed_count,
+                appsrc.name()
+            );
         }
     }
 
@@ -951,12 +1021,14 @@ impl ObjectImpl for RtspSrc {
             "retry-strategy" => {
                 let mut settings = self.settings.lock().unwrap();
                 let strategy = value.get::<Option<&str>>().expect("type checked upstream");
-                settings.retry_strategy = super::retry::RetryStrategy::from_string(strategy.unwrap_or("auto"));
+                settings.retry_strategy =
+                    super::retry::RetryStrategy::from_string(strategy.unwrap_or("auto"));
                 Ok(())
             }
             "max-reconnection-attempts" => {
                 let mut settings = self.settings.lock().unwrap();
-                settings.max_reconnection_attempts = value.get::<i32>().expect("type checked upstream");
+                settings.max_reconnection_attempts =
+                    value.get::<i32>().expect("type checked upstream");
                 Ok(())
             }
             "reconnection-timeout" => {
@@ -980,12 +1052,16 @@ impl ObjectImpl for RtspSrc {
             "connection-racing" => {
                 let mut settings = self.settings.lock().unwrap();
                 let strategy = value.get::<Option<&str>>().expect("type checked upstream");
-                settings.connection_racing = super::connection_racer::ConnectionRacingStrategy::from_string(strategy.unwrap_or("none"));
+                settings.connection_racing =
+                    super::connection_racer::ConnectionRacingStrategy::from_string(
+                        strategy.unwrap_or("none"),
+                    );
                 Ok(())
             }
             "max-parallel-connections" => {
                 let mut settings = self.settings.lock().unwrap();
-                settings.max_parallel_connections = value.get::<u32>().expect("type checked upstream");
+                settings.max_parallel_connections =
+                    value.get::<u32>().expect("type checked upstream");
                 Ok(())
             }
             "racing-delay-ms" => {
@@ -1031,7 +1107,8 @@ impl ObjectImpl for RtspSrc {
             #[cfg(feature = "adaptive")]
             "adaptive-confidence-threshold" => {
                 let mut settings = self.settings.lock().unwrap();
-                settings.adaptive_confidence_threshold = value.get().expect("type checked upstream");
+                settings.adaptive_confidence_threshold =
+                    value.get().expect("type checked upstream");
                 Ok(())
             }
             #[cfg(feature = "adaptive")]
@@ -1065,7 +1142,10 @@ impl ObjectImpl for RtspSrc {
                             settings.buffer_mode = mode;
                             Ok(())
                         }
-                        Err(e) => Err(gst::glib::Error::new(gst::CoreError::Failed, &format!("Invalid buffer mode '{}': {}", mode_str, e))),
+                        Err(e) => Err(gst::glib::Error::new(
+                            gst::CoreError::Failed,
+                            &format!("Invalid buffer mode '{}': {}", mode_str, e),
+                        )),
                     }
                 } else {
                     // Use default if None
@@ -1086,7 +1166,8 @@ impl ObjectImpl for RtspSrc {
             }
             "max-rtcp-rtp-time-diff" => {
                 let mut settings = self.settings.lock().unwrap();
-                settings.max_rtcp_rtp_time_diff = value.get::<i32>().expect("type checked upstream");
+                settings.max_rtcp_rtp_time_diff =
+                    value.get::<i32>().expect("type checked upstream");
                 Ok(())
             }
             name => unimplemented!("Property '{name}'"),
@@ -1324,23 +1405,20 @@ impl ElementImpl for RtspSrc {
         match event.view() {
             gst::EventView::Seek(seek) => {
                 let (_rate, flags, _start_type, start, _stop_type, _stop) = seek.get();
-                
+
                 gst::debug!(CAT, "Received seek event to position: {:?}", start);
-                
+
                 let cmd_queue = self.cmd_queue();
                 let position = if let gst::GenericFormattedValue::Time(Some(time)) = start {
                     time
                 } else {
                     gst::ClockTime::ZERO
                 };
-                
+
                 RUNTIME.spawn(async move {
-                    let _ = cmd_queue.send(Commands::Seek { 
-                        position,
-                        flags
-                    }).await;
+                    let _ = cmd_queue.send(Commands::Seek { position, flags }).await;
                 });
-                
+
                 true
             }
             _ => self.parent_send_event(event),
@@ -1466,13 +1544,10 @@ impl RtspSrc {
 
         let join_handle = RUNTIME.spawn(async move {
             gst::info!(CAT, "Connecting to {url} ..");
-            
             #[cfg(feature = "telemetry")]
             let _connection_span = super::telemetry::SpanHelper::connection_span(url.as_str());
-            
             #[cfg(feature = "telemetry")]
             task_src.metrics.record_connection_attempt();
-            
             let hostname_port =
                 format!("{}:{}", url.host_str().unwrap(), url.port().unwrap_or(554));
 
@@ -1513,7 +1588,7 @@ impl RtspSrc {
                                     "Connection to '{}' failed (attempt {attempt}): {err:#?}. Retrying in {} ms...",
                                     url, delay.as_millis()
                                 );
-                                
+
                                 // Post a message about the retry attempt
                                 let msg = gst::message::Element::builder(
                                     gst::Structure::builder("rtsp-connection-retry")
@@ -1525,7 +1600,7 @@ impl RtspSrc {
                                 .src(&*task_src.obj())
                                 .build();
                                 let _ = task_src.obj().post_message(msg);
-                                
+
                                 tokio::time::sleep(delay).await;
                             } else {
                                 return Err(format!("Failed to connect to RTSP server '{}' after {} attempts: {err:#?}", url, retry_calc.current_attempt()));
@@ -1559,7 +1634,7 @@ impl RtspSrc {
             let _ = s.set_nodelay(true);
 
             gst::info!(CAT, "Connected!");
-            
+
             #[cfg(feature = "telemetry")]
             {
                 let connection_time = std::time::Instant::now().duration_since(std::time::Instant::now()).as_millis() as u64;
@@ -1669,10 +1744,10 @@ impl RtspSrc {
         let builder = gst_app::AppSrc::builder()
             .name(format!("rtp_appsrc_{rtpsession_n}"))
             .format(gst::Format::Time);
-        
+
         #[cfg(feature = "v1_18")]
         let builder = builder.handle_segment_change(true);
-        
+
         let appsrc = builder
             .caps(caps)
             .stream_type(gst_app::AppStreamType::Stream)
@@ -1680,7 +1755,7 @@ impl RtspSrc {
             .callbacks(callbacks)
             .is_live(true)
             .build();
-        
+
         // Set properties for v1_16 compatibility
         #[cfg(feature = "v1_20")]
         appsrc.set_property_as_str("leaky-type", "downstream"); // 2 = downstream
@@ -1711,10 +1786,10 @@ impl RtspSrc {
         let builder = gst_app::AppSrc::builder()
             .name(format!("rtcp_appsrc_{rtpsession_n}"))
             .format(gst::Format::Time);
-        
+
         #[cfg(feature = "v1_18")]
         let builder = builder.handle_segment_change(true);
-        
+
         let appsrc = builder
             .caps(&RTCP_CAPS)
             .stream_type(gst_app::AppStreamType::Stream)
@@ -1814,8 +1889,8 @@ impl RtspSrc {
                 .await?
         };
         let manager = RtspManager::new_with_settings(
-            std::env::var("USE_RTP2").is_ok_and(|s| s == "1"), 
-            Some(&settings)
+            std::env::var("USE_RTP2").is_ok_and(|s| s == "1"),
+            Some(&settings),
         );
 
         let obj = self.obj();
@@ -1884,7 +1959,7 @@ impl RtspSrc {
 
                     let rtp_appsrc = self.make_rtp_appsrc(rtpsession_n, &p.caps, &manager)?;
                     p.rtp_appsrc = Some(rtp_appsrc.clone());
-                    
+
                     // Configure probation on the RTP session
                     manager.configure_session(rtpsession_n as u32, settings.probation)?;
                     // Spawn RTP udp receive task
@@ -1908,7 +1983,15 @@ impl RtspSrc {
                         self.make_rtcp_appsink(rtpsession_n, &manager, on_rtcp)?;
                         let buffer_queue = self.buffer_queue.clone();
                         state.handles.push(RUNTIME.spawn(async move {
-                            udp_rtcp_task(&rtcp_socket, rtcp_appsrc, rtcp_dest, true, rx, Some(buffer_queue)).await
+                            udp_rtcp_task(
+                                &rtcp_socket,
+                                rtcp_appsrc,
+                                rtcp_dest,
+                                true,
+                                rx,
+                                Some(buffer_queue),
+                            )
+                            .await
                         }));
                     }
                 }
@@ -1943,7 +2026,7 @@ impl RtspSrc {
                     // Spawn RTP udp receive task
                     let rtp_appsrc = self.make_rtp_appsrc(rtpsession_n, &p.caps, &manager)?;
                     p.rtp_appsrc = Some(rtp_appsrc.clone());
-                    
+
                     // Configure probation on the RTP session
                     manager.configure_session(rtpsession_n as u32, settings.probation)?;
                     let buffer_queue = self.buffer_queue.clone();
@@ -1965,8 +2048,15 @@ impl RtspSrc {
                         self.make_rtcp_appsink(rtpsession_n, &manager, on_rtcp)?;
                         let buffer_queue = self.buffer_queue.clone();
                         state.handles.push(RUNTIME.spawn(async move {
-                            udp_rtcp_task(&rtcp_socket, rtcp_appsrc, rtcp_sender_addr, false, rx, Some(buffer_queue))
-                                .await
+                            udp_rtcp_task(
+                                &rtcp_socket,
+                                rtcp_appsrc,
+                                rtcp_sender_addr,
+                                false,
+                                rx,
+                                Some(buffer_queue),
+                            )
+                            .await
                         }));
                     }
                 }
@@ -1975,7 +2065,7 @@ impl RtspSrc {
                 } => {
                     let rtp_appsrc = self.make_rtp_appsrc(rtpsession_n, &p.caps, &manager)?;
                     p.rtp_appsrc = Some(rtp_appsrc.clone());
-                    
+
                     // Configure probation on the RTP session
                     manager.configure_session(rtpsession_n as u32, settings.probation)?;
                     tcp_interleave_appsrcs.insert(*rtp_channel, rtp_appsrc);
@@ -2035,25 +2125,35 @@ impl RtspSrc {
                             ["pt: {pt}, ssrc: {ssrc}"]
                         );
                     } else {
-                        gst::info!(CAT, "Successfully set ghostpad {} target - signaling no_more_pads", ghostpad.name());
-                        
+                        gst::info!(
+                            CAT,
+                            "Successfully set ghostpad {} target - signaling no_more_pads",
+                            ghostpad.name()
+                        );
+
                         // Flush any queued buffers for this stream now that the pad is linked
                         if let Ok(rtsp_src) = obj.clone().downcast::<super::RtspSrc>() {
                             // Try to find the corresponding AppSrc for this stream
-                            // AppSrcs are named like "rtp_appsrc_{stream_id}" 
+                            // AppSrcs are named like "rtp_appsrc_{stream_id}"
                             if let Ok(stream_id_num) = stream_id.parse::<u32>() {
                                 let appsrc_name = format!("rtp_appsrc_{}", stream_id_num);
                                 if let Ok(bin) = obj.clone().downcast::<gst::Bin>() {
                                     if let Some(appsrc_elem) = bin.by_name(&appsrc_name) {
-                                        if let Ok(appsrc) = appsrc_elem.downcast::<gst_app::AppSrc>() {
-                                            gst::debug!(CAT, "Flushing queued buffers for {} after pad link", appsrc_name);
+                                        if let Ok(appsrc) =
+                                            appsrc_elem.downcast::<gst_app::AppSrc>()
+                                        {
+                                            gst::debug!(
+                                                CAT,
+                                                "Flushing queued buffers for {} after pad link",
+                                                appsrc_name
+                                            );
                                             rtsp_src.imp().flush_queued_buffers(&appsrc);
                                         }
                                     }
                                 }
                             }
                         }
-                        
+
                         // Signal that pads are ready now that ghost pad has a target
                         obj.no_more_pads();
                     }
@@ -2067,7 +2167,7 @@ impl RtspSrc {
         let mut expected_response: Option<(Method, u32)> = None;
         let mut keepalive_interval = tokio::time::interval(Duration::from_secs(30)); // Will be updated after session
         keepalive_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        
+
         loop {
             tokio::select! {
                 msg = state.stream.next() => match msg {
@@ -2105,10 +2205,10 @@ impl RtspSrc {
                     }
                     Some(Ok(rtsp_types::Message::Response(rsp))) => {
                         gst::debug!(CAT, "<-- {rsp:#?}");
-                        
+
                         // Reset session activity on any response
                         state.session_manager.reset_activity();
-                        
+
                         // Check if this is a keep-alive response (GET_PARAMETER or OPTIONS)
                         if let Some((expected, cseq)) = &expected_response {
                             if *expected == Method::GetParameter {
@@ -2119,7 +2219,7 @@ impl RtspSrc {
                                 continue;
                             }
                         }
-                        
+
                         let Some((expected, cseq)) = &expected_response else {
                             continue;
                         };
@@ -2166,16 +2266,16 @@ impl RtspSrc {
                             return Err(RtspError::InvalidMessage("Can't SEEK, no SETUP").into());
                         };
                         gst::info!(CAT, "Processing seek to position {:?} with flags {:?}", position, flags);
-                        
+
                         // Get seek format from settings
                         let seek_format = self.settings.lock().unwrap().seek_format;
-                        
+
                         // Send PLAY request with Range header for seek
                         let cseq = state.play_with_range(s, Some(position), seek_format).await.inspect_err(|_err| {
                             self.post_cancelled("request", "SEEK request cancelled");
                         })?;
                         expected_response = Some((Method::Play, cseq));
-                        
+
                         // Handle flush if needed
                         if flags.contains(gst::SeekFlags::FLUSH) {
                             // Flush all appsrcs
@@ -2186,13 +2286,13 @@ impl RtspSrc {
                                 }
                             }
                         }
-                        
+
                         // Send new segment event
                         let segment = gst::FormattedSegment::<gst::ClockTime>::new();
                         let mut segment = segment.clone();
                         segment.set_start(position);
                         segment.set_position(position);
-                        
+
                         for params in &state.setup_params {
                             if let Some(ref appsrc) = params.rtp_appsrc {
                                 let _ = appsrc.send_event(gst::event::Segment::new(&segment));
@@ -2238,7 +2338,7 @@ impl RtspSrc {
                                 }
                             }
                         }
-                        
+
                         // Check for session timeout
                         if state.session_manager.is_timed_out() {
                             gst::error!(CAT, "Session timed out, terminating");
@@ -2279,19 +2379,19 @@ impl RtspManager {
         } else {
             let e = gst::ElementFactory::make_with_name("rtpbin", None)
                 .unwrap_or_else(|_| panic!("rtpbin not found"));
-                
+
             // Apply jitterbuffer settings to rtpbin (similar to original rtspsrc)
             if let Some(settings) = jitter_settings {
                 e.set_property("latency", settings.latency_ms);
                 e.set_property("drop-on-latency", settings.drop_on_latency);
-                
+
                 // Apply buffer mode (similar to original rtspsrc set_manager_buffer_mode)
                 Self::apply_buffer_mode(&e, settings.buffer_mode);
-                
+
                 // Apply RTCP settings (similar to original rtspsrc rtpbin configuration)
                 Self::apply_rtcp_settings(&e, settings);
             }
-            
+
             (e.clone(), e)
         };
         if !rtp2 {
@@ -2364,7 +2464,10 @@ impl RtspManager {
         // Configure probation on the RTP session (similar to original rtspsrc)
         if !self.using_rtp2 {
             // Use get-internal-session signal to get the rtpsession object
-            if let Some(session) = self.recv.emit_by_name::<Option<glib::Object>>("get-internal-session", &[&session_id]) {
+            if let Some(session) = self
+                .recv
+                .emit_by_name::<Option<glib::Object>>("get-internal-session", &[&session_id])
+            {
                 session.set_property("probation", probation);
                 gst::debug!(CAT, "Set probation={} on session {}", probation, session_id);
             } else {
@@ -2379,8 +2482,13 @@ impl RtspManager {
         // Check if rtpbin supports buffer-mode property
         if let Some(_property) = rtpbin.find_property("buffer-mode") {
             let mode_int = buffer_mode.as_int();
-            gst::debug!(CAT, "Setting buffer-mode={} ({}) on rtpbin", mode_int, buffer_mode.as_str());
-            
+            gst::debug!(
+                CAT,
+                "Setting buffer-mode={} ({}) on rtpbin",
+                mode_int,
+                buffer_mode.as_str()
+            );
+
             if buffer_mode != BufferMode::Auto {
                 // Direct mode setting (non-auto modes)
                 rtpbin.set_property_from_str("buffer-mode", buffer_mode.as_str());
@@ -2397,25 +2505,41 @@ impl RtspManager {
 
     fn apply_rtcp_settings(rtpbin: &gst::Element, settings: &Settings) {
         // Apply RTCP settings to rtpbin (similar to original rtspsrc)
-        
+
         // Apply max-rtcp-rtp-time-diff (similar to original rtspsrc line 4623-4626)
         if let Some(_property) = rtpbin.find_property("max-rtcp-rtp-time-diff") {
-            gst::debug!(CAT, "Setting max-rtcp-rtp-time-diff={} on rtpbin", settings.max_rtcp_rtp_time_diff);
+            gst::debug!(
+                CAT,
+                "Setting max-rtcp-rtp-time-diff={} on rtpbin",
+                settings.max_rtcp_rtp_time_diff
+            );
             rtpbin.set_property("max-rtcp-rtp-time-diff", settings.max_rtcp_rtp_time_diff);
         } else {
-            gst::warning!(CAT, "rtpbin does not support max-rtcp-rtp-time-diff property");
+            gst::warning!(
+                CAT,
+                "rtpbin does not support max-rtcp-rtp-time-diff property"
+            );
         }
 
         // Apply do-retransmission (similar to original rtspsrc line 4531)
         if let Some(_property) = rtpbin.find_property("do-retransmission") {
-            gst::debug!(CAT, "Setting do-retransmission={} on rtpbin", settings.do_retransmission);
+            gst::debug!(
+                CAT,
+                "Setting do-retransmission={} on rtpbin",
+                settings.do_retransmission
+            );
             rtpbin.set_property("do-retransmission", settings.do_retransmission);
         } else {
             gst::warning!(CAT, "rtpbin does not support do-retransmission property");
         }
 
-        gst::debug!(CAT, "Applied RTCP settings: do-rtcp={}, do-retransmission={}, max-rtcp-rtp-time-diff={}", 
-                   settings.do_rtcp, settings.do_retransmission, settings.max_rtcp_rtp_time_diff);
+        gst::debug!(
+            CAT,
+            "Applied RTCP settings: do-rtcp={}, do-retransmission={}, max-rtcp-rtp-time-diff={}",
+            settings.do_rtcp,
+            settings.do_retransmission,
+            settings.max_rtcp_rtp_time_diff
+        );
     }
 }
 
@@ -2434,7 +2558,6 @@ struct RtspTaskState {
     setup_params: Vec<RtspSetupParams>,
     handles: Vec<JoinHandle<()>>,
     session_manager: super::session_manager::SessionManager,
-    
 }
 
 struct RtspSetupParams {
@@ -2841,13 +2964,15 @@ impl RtspTaskState {
                 .ok_or(RtspError::InvalidMessage("No session in SETUP response"))?;
             // Manually strip timeout field: https://github.com/sdroege/rtsp-types/issues/24
             session.replace(Session(new_session.0.clone(), None));
-            
+
             // Also parse the raw Session header to get timeout value
-            if let Some(session_header) = rsp.headers()
+            if let Some(session_header) = rsp
+                .headers()
                 .find(|(name, _)| name == &rtsp_types::headers::SESSION)
                 .map(|(_, value)| value.as_str())
             {
-                self.session_manager.parse_session_with_timeout(session_header);
+                self.session_manager
+                    .parse_session_with_timeout(session_header);
             } else {
                 self.session_manager.set_session(new_session);
             }
@@ -2938,7 +3063,11 @@ impl RtspTaskState {
                     // Convert GStreamer ClockTime to seconds for NPT
                     let seconds = position.nseconds() / 1_000_000_000;
                     let nanos = (position.nseconds() % 1_000_000_000) as u32;
-                    let fraction = if nanos > 0 { Some(nanos / 1_000_000) } else { None };
+                    let fraction = if nanos > 0 {
+                        Some(nanos / 1_000_000)
+                    } else {
+                        None
+                    };
                     Range::Npt(NptRange::From(NptTime::Seconds(seconds, fraction)))
                 } else {
                     Range::Npt(NptRange::From(NptTime::Now))
@@ -2952,21 +3081,27 @@ impl RtspTaskState {
                     let frames = total_frames % 30;
                     let minutes = seconds / 60;
                     let hours = minutes / 60;
-                    
-                    Range::Smpte(SmpteRange::From(SmpteType::Smpte30Drop, SmpteTime {
-                        hours: (hours % 24) as u8,
-                        minutes: (minutes % 60) as u8,
-                        seconds: (seconds % 60) as u8,
-                        frames: Some((frames as u8, None)),
-                    }))
+
+                    Range::Smpte(SmpteRange::From(
+                        SmpteType::Smpte30Drop,
+                        SmpteTime {
+                            hours: (hours % 24) as u8,
+                            minutes: (minutes % 60) as u8,
+                            seconds: (seconds % 60) as u8,
+                            frames: Some((frames as u8, None)),
+                        },
+                    ))
                 } else {
                     // Start from beginning for SMPTE
-                    Range::Smpte(SmpteRange::From(SmpteType::Smpte30Drop, SmpteTime {
-                        hours: 0,
-                        minutes: 0,
-                        seconds: 0,
-                        frames: Some((0, None)),
-                    }))
+                    Range::Smpte(SmpteRange::From(
+                        SmpteType::Smpte30Drop,
+                        SmpteTime {
+                            hours: 0,
+                            minutes: 0,
+                            seconds: 0,
+                            frames: Some((0, None)),
+                        },
+                    ))
                 }
             }
             SeekFormat::Clock => {
@@ -2978,18 +3113,18 @@ impl RtspTaskState {
                     let target_time = now + std::time::Duration::from_nanos(position.nseconds());
                     let total_secs = target_time.as_secs();
                     let nanos = target_time.subsec_nanos();
-                    
+
                     // Convert to date and time format
                     let days = total_secs / 86400;
                     let remaining_secs = total_secs % 86400;
                     let hours = remaining_secs / 3600;
                     let minutes = (remaining_secs % 3600) / 60;
                     let seconds = remaining_secs % 60;
-                    
+
                     // Convert days to YYYYMMDD (simplified - assumes starting from 1970-01-01)
                     let date = 19700101 + (days as u32);
                     let time = (hours as u32) * 10000 + (minutes as u32) * 100 + (seconds as u32);
-                    
+
                     Range::Utc(UtcRange::From(UtcTime {
                         date,
                         time,
@@ -3002,18 +3137,18 @@ impl RtspTaskState {
                         .unwrap();
                     let total_secs = now.as_secs();
                     let nanos = now.subsec_nanos();
-                    
+
                     // Convert to date and time format
                     let days = total_secs / 86400;
                     let remaining_secs = total_secs % 86400;
                     let hours = remaining_secs / 3600;
                     let minutes = (remaining_secs % 3600) / 60;
                     let seconds = remaining_secs % 60;
-                    
+
                     // Convert days to YYYYMMDD (simplified - assumes starting from 1970-01-01)
                     let date = 19700101 + (days as u32);
                     let time = (hours as u32) * 10000 + (minutes as u32) * 100 + (seconds as u32);
-                    
+
                     Range::Utc(UtcRange::From(UtcTime {
                         date,
                         time,
@@ -3024,13 +3159,18 @@ impl RtspTaskState {
         }
     }
 
-    async fn play_with_range(&mut self, session: &Session, seek_position: Option<gst::ClockTime>, seek_format: SeekFormat) -> Result<u32, RtspError> {
+    async fn play_with_range(
+        &mut self,
+        session: &Session,
+        seek_position: Option<gst::ClockTime>,
+        seek_format: SeekFormat,
+    ) -> Result<u32, RtspError> {
         self.cseq += 1;
         let request_uri = self.aggregate_control.as_ref().unwrap_or(&self.url).clone();
-        
+
         // Create Range header based on seek position and format
         let range_header = Self::create_range_header(seek_position, seek_format);
-        
+
         let req = Request::builder(Method::Play, self.version)
             .typed_header::<CSeq>(&self.cseq.into())
             .typed_header::<Range>(&range_header)
@@ -3051,7 +3191,7 @@ impl RtspTaskState {
         session: &Session,
     ) -> Result<(), RtspError> {
         Self::check_response(rsp, cseq, Method::Play, Some(session))?;
-        
+
         // Handle Range header in response for seek operations
         if let Some(range) = rsp.typed_header::<Range>()? {
             let (start_time, _end_time) = match range {
@@ -3064,7 +3204,7 @@ impl RtspTaskState {
                                     s * 1_000_000_000 + frac.unwrap_or(0) as u64 * 1_000_000
                                 }
                                 NptTime::Hms(h, m, s, frac) => {
-                                    (h * 3600 + m as u64 * 60 + s as u64) * 1_000_000_000 
+                                    (h * 3600 + m as u64 * 60 + s as u64) * 1_000_000_000
                                         + frac.unwrap_or(0) as u64 * 1_000_000
                                 }
                             };
@@ -3077,7 +3217,7 @@ impl RtspTaskState {
                                     s * 1_000_000_000 + frac.unwrap_or(0) as u64 * 1_000_000
                                 }
                                 NptTime::Hms(h, m, s, frac) => {
-                                    (h * 3600 + m as u64 * 60 + s as u64) * 1_000_000_000 
+                                    (h * 3600 + m as u64 * 60 + s as u64) * 1_000_000_000
                                         + frac.unwrap_or(0) as u64 * 1_000_000
                                 }
                             };
@@ -3087,12 +3227,14 @@ impl RtspTaskState {
                                     s * 1_000_000_000 + frac.unwrap_or(0) as u64 * 1_000_000
                                 }
                                 NptTime::Hms(h, m, s, frac) => {
-                                    (h * 3600 + m as u64 * 60 + s as u64) * 1_000_000_000 
+                                    (h * 3600 + m as u64 * 60 + s as u64) * 1_000_000_000
                                         + frac.unwrap_or(0) as u64 * 1_000_000
                                 }
                             };
-                            (Some(gst::ClockTime::from_nseconds(start_ns)), 
-                             Some(gst::ClockTime::from_nseconds(end_ns)))
+                            (
+                                Some(gst::ClockTime::from_nseconds(start_ns)),
+                                Some(gst::ClockTime::from_nseconds(end_ns)),
+                            )
                         }
                         NptRange::Empty => (None, None),
                         NptRange::To(_) => (None, None), // Not commonly used for seeking
@@ -3103,28 +3245,30 @@ impl RtspTaskState {
                     match smpte_range {
                         SmpteRange::From(_smpte_type, time) => {
                             let frames_val = time.frames.map(|(f, _)| f as u32).unwrap_or(0);
-                            let total_frames = time.hours as u32 * 108000 
-                                + time.minutes as u32 * 1800 
-                                + time.seconds as u32 * 30 
+                            let total_frames = time.hours as u32 * 108000
+                                + time.minutes as u32 * 1800
+                                + time.seconds as u32 * 30
                                 + frames_val;
                             let ns = (total_frames as u64 * 1_000_000_000) / 30;
                             (Some(gst::ClockTime::from_nseconds(ns)), None)
                         }
                         SmpteRange::FromTo(_smpte_type, start, end) => {
                             let start_frames_val = start.frames.map(|(f, _)| f as u32).unwrap_or(0);
-                            let start_frames = start.hours as u32 * 108000 
-                                + start.minutes as u32 * 1800 
-                                + start.seconds as u32 * 30 
+                            let start_frames = start.hours as u32 * 108000
+                                + start.minutes as u32 * 1800
+                                + start.seconds as u32 * 30
                                 + start_frames_val;
                             let end_frames_val = end.frames.map(|(f, _)| f as u32).unwrap_or(0);
-                            let end_frames = end.hours as u32 * 108000 
-                                + end.minutes as u32 * 1800 
-                                + end.seconds as u32 * 30 
+                            let end_frames = end.hours as u32 * 108000
+                                + end.minutes as u32 * 1800
+                                + end.seconds as u32 * 30
                                 + end_frames_val;
                             let start_ns = (start_frames as u64 * 1_000_000_000) / 30;
                             let end_ns = (end_frames as u64 * 1_000_000_000) / 30;
-                            (Some(gst::ClockTime::from_nseconds(start_ns)), 
-                             Some(gst::ClockTime::from_nseconds(end_ns)))
+                            (
+                                Some(gst::ClockTime::from_nseconds(start_ns)),
+                                Some(gst::ClockTime::from_nseconds(end_ns)),
+                            )
                         }
                         SmpteRange::Empty(_) => (None, None),
                         SmpteRange::To(_, _) => (None, None), // Not commonly used for seeking
@@ -3140,7 +3284,8 @@ impl RtspTaskState {
                             let minutes = ((time.time % 10000) / 100) as u64;
                             let seconds = (time.time % 100) as u64;
                             let total_seconds = hours * 3600 + minutes * 60 + seconds;
-                            let ns = total_seconds * 1_000_000_000 + time.nanoseconds.unwrap_or(0) as u64;
+                            let ns = total_seconds * 1_000_000_000
+                                + time.nanoseconds.unwrap_or(0) as u64;
                             (Some(gst::ClockTime::from_nseconds(ns)), None)
                         }
                         UtcRange::FromTo(start, end) => {
@@ -3148,18 +3293,24 @@ impl RtspTaskState {
                             let start_hours = (start.time / 10000) as u64;
                             let start_minutes = ((start.time % 10000) / 100) as u64;
                             let start_seconds = (start.time % 100) as u64;
-                            let start_total_seconds = start_hours * 3600 + start_minutes * 60 + start_seconds;
-                            let start_ns = start_total_seconds * 1_000_000_000 + start.nanoseconds.unwrap_or(0) as u64;
-                            
+                            let start_total_seconds =
+                                start_hours * 3600 + start_minutes * 60 + start_seconds;
+                            let start_ns = start_total_seconds * 1_000_000_000
+                                + start.nanoseconds.unwrap_or(0) as u64;
+
                             // Convert end time
                             let end_hours = (end.time / 10000) as u64;
                             let end_minutes = ((end.time % 10000) / 100) as u64;
                             let end_seconds = (end.time % 100) as u64;
-                            let end_total_seconds = end_hours * 3600 + end_minutes * 60 + end_seconds;
-                            let end_ns = end_total_seconds * 1_000_000_000 + end.nanoseconds.unwrap_or(0) as u64;
-                            
-                            (Some(gst::ClockTime::from_nseconds(start_ns)), 
-                             Some(gst::ClockTime::from_nseconds(end_ns)))
+                            let end_total_seconds =
+                                end_hours * 3600 + end_minutes * 60 + end_seconds;
+                            let end_ns = end_total_seconds * 1_000_000_000
+                                + end.nanoseconds.unwrap_or(0) as u64;
+
+                            (
+                                Some(gst::ClockTime::from_nseconds(start_ns)),
+                                Some(gst::ClockTime::from_nseconds(end_ns)),
+                            )
                         }
                         UtcRange::Empty => (None, None),
                         UtcRange::To(_) => (None, None), // Not commonly used for seeking
@@ -3171,17 +3322,17 @@ impl RtspTaskState {
                     (None, None)
                 }
             };
-            
+
             // Log the actual range from server
             gst::info!(CAT, "Server responded with Range: start={:?}", start_time);
-            
+
             // Update segment if we got a valid start time
             if let Some(start) = start_time {
                 let segment = gst::FormattedSegment::<gst::ClockTime>::new();
                 let mut segment = segment.clone();
                 segment.set_start(start);
                 segment.set_position(start);
-                
+
                 // Send updated segment to all appsrcs
                 for params in &self.setup_params {
                     if let Some(ref appsrc) = params.rtp_appsrc {
@@ -3190,7 +3341,7 @@ impl RtspTaskState {
                 }
             }
         }
-        
+
         if let Some(RtpInfos::V1(rtpinfos)) = rsp.typed_header::<RtpInfos>()? {
             for rtpinfo in rtpinfos {
                 for params in self.setup_params.iter_mut() {
@@ -3281,19 +3432,19 @@ impl RtspTaskState {
         session: Option<&Session>,
     ) -> Result<Vec<(String, String)>, RtspError> {
         Self::check_response(rsp, cseq, Method::GetParameter, session)?;
-        
+
         let mut parameters = Vec::new();
         if !rsp.body().is_empty() {
             let body_str = std::str::from_utf8(rsp.body())
                 .map_err(|e| RtspError::Fatal(format!("Invalid UTF-8 in response: {}", e)))?;
-            
+
             for line in body_str.lines() {
                 if let Some((key, value)) = line.split_once(':') {
                     parameters.push((key.trim().to_string(), value.trim().to_string()));
                 }
             }
         }
-        
+
         Ok(parameters)
     }
 
@@ -3529,11 +3680,13 @@ async fn udp_rtp_task(
                 bufref.set_dts(t);
                 gst_net::NetAddressMeta::add(bufref, &gio_addr);
                 gst::trace!(CAT, "received RTP packet from {addr:?}");
-                
+
                 // Use buffer queue system if available, otherwise drop buffers
                 let push_result = if let Some(ref buffer_queue_mutex) = buffer_queue {
                     // Implement buffer queue logic directly since we can't call push_buffer_with_queue
-                    let timestamp = appsrc.current_running_time().unwrap_or(gst::ClockTime::ZERO);
+                    let timestamp = appsrc
+                        .current_running_time()
+                        .unwrap_or(gst::ClockTime::ZERO);
                     match appsrc.push_buffer(buffer.clone()) {
                         Ok(success) => Ok(success),
                         Err(gst::FlowError::NotLinked) => {
@@ -3556,7 +3709,7 @@ async fn udp_rtp_task(
                 } else {
                     appsrc.push_buffer(buffer)
                 };
-                
+
                 match push_result {
                     Ok(_) => {
                         gst::trace!(CAT, "Successfully handled UDP RTP buffer");
@@ -3663,7 +3816,7 @@ async fn udp_rtcp_task(
                     } else {
                         appsrc.push_buffer(buffer)
                     };
-                    
+
                     match push_result {
                         Ok(_) => {
                             gst::trace!(CAT, "Successfully handled UDP RTCP buffer");

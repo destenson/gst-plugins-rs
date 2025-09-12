@@ -36,9 +36,7 @@ impl GstPluginE2ETest {
         println!("=== Testing GStreamer Environment ===");
 
         // Check GStreamer version
-        let output = Command::new("gst-launch-1.0")
-            .arg("--version")
-            .output()?;
+        let output = Command::new("gst-launch-1.0").arg("--version").output()?;
 
         if !output.status.success() {
             return Err("gst-launch-1.0 not found or not working".into());
@@ -80,7 +78,7 @@ impl GstPluginE2ETest {
 
         // Set plugin path if specified
         let mut cmd = Command::new("gst-inspect-1.0");
-        
+
         if let Some(path) = &self.plugin_path {
             cmd.env("GST_PLUGIN_PATH", path);
         }
@@ -90,12 +88,12 @@ impl GstPluginE2ETest {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            
+
             // Try to get more information about available plugins
             let plugin_list = Command::new("gst-inspect-1.0")
                 .arg("--print-all")
                 .output()?;
-            
+
             let available_plugins = String::from_utf8_lossy(&plugin_list.stdout);
             if available_plugins.contains("rtspsrc2") {
                 println!("rtspsrc2 found in plugin list but inspection failed");
@@ -108,7 +106,7 @@ impl GstPluginE2ETest {
 
         let inspection = String::from_utf8_lossy(&output.stdout);
         println!("✓ Plugin loaded successfully");
-        
+
         // Validate essential properties are present
         if !inspection.contains("location") {
             return Err("Essential property 'location' not found in plugin".into());
@@ -127,7 +125,7 @@ impl GstPluginE2ETest {
         println!("=== Testing Basic Pipeline Creation ===");
 
         let pipeline = "rtspsrc2 location=rtsp://invalid-url ! fakesink";
-        
+
         let mut cmd = Command::new("gst-launch-1.0");
         cmd.args(&["--quiet", "--timeout=5"])
             .args(pipeline.split_whitespace())
@@ -140,12 +138,15 @@ impl GstPluginE2ETest {
 
         // This should fail quickly due to invalid URL, but pipeline should be created
         let output = timeout(Duration::from_secs(10), async {
-            tokio::task::spawn_blocking(move || cmd.output()).await.unwrap()
-        }).await?;
+            tokio::task::spawn_blocking(move || cmd.output())
+                .await
+                .unwrap()
+        })
+        .await?;
 
         // We expect this to fail due to invalid URL, but not due to pipeline creation issues
         let stderr = String::from_utf8_lossy(&output.stderr);
-        
+
         if stderr.contains("no element \"rtspsrc2\"") {
             return Err("rtspsrc2 element not found in pipeline".into());
         }
@@ -162,12 +163,13 @@ impl GstPluginE2ETest {
     pub async fn test_public_stream_pipeline(&self) -> Result<(), Box<dyn std::error::Error>> {
         println!("=== Testing Pipeline with Public Stream ===");
 
-        let test_url = "rtsp://807e9439d5ca.entrypoint.cloud.wowza.com:1935/app-rC94792j/068b9c9a_stream2";
+        let test_url =
+            "rtsp://807e9439d5ca.entrypoint.cloud.wowza.com:1935/app-rC94792j/068b9c9a_stream2";
         let pipeline = format!(
             "rtspsrc2 location={} ! rtph264depay ! h264parse ! fakesink sync=false",
             test_url
         );
-        
+
         let mut cmd = Command::new("gst-launch-1.0");
         cmd.args(&["--quiet", "--timeout=10"])
             .args(pipeline.split_whitespace())
@@ -179,8 +181,11 @@ impl GstPluginE2ETest {
         }
 
         let output = timeout(self.test_timeout, async {
-            tokio::task::spawn_blocking(move || cmd.output()).await.unwrap()
-        }).await?;
+            tokio::task::spawn_blocking(move || cmd.output())
+                .await
+                .unwrap()
+        })
+        .await?;
 
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -211,7 +216,7 @@ impl GstPluginE2ETest {
         println!("=== Testing Property Setting ===");
 
         let pipeline = "rtspsrc2 location=rtsp://test.local latency=2000 ! fakesink";
-        
+
         let mut cmd = Command::new("gst-launch-1.0");
         cmd.args(&["--quiet", "--timeout=3"])
             .args(pipeline.split_whitespace())
@@ -223,8 +228,11 @@ impl GstPluginE2ETest {
         }
 
         let output = timeout(Duration::from_secs(5), async {
-            tokio::task::spawn_blocking(move || cmd.output()).await.unwrap()
-        }).await?;
+            tokio::task::spawn_blocking(move || cmd.output())
+                .await
+                .unwrap()
+        })
+        .await?;
 
         let stderr = String::from_utf8_lossy(&output.stderr);
 
@@ -310,7 +318,7 @@ impl GstPluginE2ETest {
         }
 
         let info = String::from_utf8_lossy(&output.stdout);
-        
+
         // Validate plugin metadata
         if info.contains("rtspsrc2") {
             println!("✓ Plugin information contains rtspsrc2");
@@ -364,7 +372,7 @@ pub fn find_gst_plugin_path() -> Option<String> {
     // Try to find the compiled plugin
     let possible_paths = vec![
         "target/debug",
-        "target/release", 
+        "target/release",
         "../../../target/debug",
         "../../../target/release",
     ];
@@ -404,7 +412,11 @@ mod tests {
         }
 
         let result = tester.test_gst_environment();
-        assert!(result.is_ok(), "GStreamer environment test failed: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "GStreamer environment test failed: {:?}",
+            result
+        );
     }
 
     #[tokio::test]

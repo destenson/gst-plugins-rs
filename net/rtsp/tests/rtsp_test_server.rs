@@ -11,8 +11,8 @@
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -67,7 +67,9 @@ impl GstRtspTestServer {
     /// Create a new VOD test server
     pub fn new_vod(file: &Path) -> Result<Self, Box<dyn std::error::Error>> {
         Self::with_config(ServerConfig {
-            server_type: ServerType::Vod { file_path: file.to_path_buf() },
+            server_type: ServerType::Vod {
+                file_path: file.to_path_buf(),
+            },
             enable_seeking: true,
             ..Default::default()
         })
@@ -88,7 +90,7 @@ impl GstRtspTestServer {
     pub fn with_config(config: ServerConfig) -> Result<Self, Box<dyn std::error::Error>> {
         let port = Self::find_available_port(config.port_range)?;
         let is_running = Arc::new(AtomicBool::new(false));
-        
+
         let mut server = Self {
             process: None,
             port,
@@ -126,16 +128,19 @@ impl GstRtspTestServer {
     }
 
     /// Launch the actual GStreamer RTSP server process
-    fn launch_gst_server(&self, config: &ServerConfig) -> Result<Child, Box<dyn std::error::Error>> {
+    fn launch_gst_server(
+        &self,
+        config: &ServerConfig,
+    ) -> Result<Child, Box<dyn std::error::Error>> {
         let pipeline = self.build_pipeline(config)?;
-        
+
         // First try to use existing test scripts if available
         let script_paths = if cfg!(windows) {
             vec!["net/rtsp/scripts/run-tests.bat", "scripts/run-tests.bat"]
         } else {
             vec!["net/rtsp/scripts/run-tests.sh", "scripts/run-tests.sh"]
         };
-        
+
         for script_path in &script_paths {
             if std::path::Path::new(script_path).exists() {
                 // Use the existing script infrastructure
@@ -143,9 +148,13 @@ impl GstRtspTestServer {
                     ServerType::Vod { .. } => "vod",
                     _ => "live",
                 };
-                
+
                 if let Ok(child) = Command::new(if cfg!(windows) { "cmd" } else { "bash" })
-                    .args(if cfg!(windows) { vec!["/C", script_path, mode] } else { vec![script_path, mode] })
+                    .args(if cfg!(windows) {
+                        vec!["/C", script_path, mode]
+                    } else {
+                        vec![script_path, mode]
+                    })
                     .env("SERVER_PORT", self.port.to_string())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
@@ -155,7 +164,7 @@ impl GstRtspTestServer {
                 }
             }
         }
-        
+
         // Try direct server launch methods
         let test_launch_paths = [
             "gst-rtsp-server-1.0",
@@ -179,10 +188,10 @@ impl GstRtspTestServer {
                 return Ok(child);
             }
         }
-        
+
         // Try using gst-launch-1.0 with rtspsink as fallback
         let rtsp_url = format!("rtsp://127.0.0.1:{}/{}", self.port, self.mount_point);
-        
+
         if let Ok(child) = Command::new("gst-launch-1.0")
             .arg("-e")
             .args(pipeline.split_whitespace())
@@ -205,29 +214,35 @@ impl GstRtspTestServer {
             ServerType::Live => {
                 // Simple live test pattern
                 "( videotestsrc is-live=true ! video/x-raw,width=640,height=480,framerate=30/1 ! \
-                 x264enc tune=zerolatency ! rtph264pay name=pay0 pt=96 )".to_string()
+                 x264enc tune=zerolatency ! rtph264pay name=pay0 pt=96 )"
+                    .to_string()
             }
             ServerType::Vod { file_path } => {
                 // VOD from file with seeking support
-                format!("( filesrc location={} ! decodebin ! x264enc ! rtph264pay name=pay0 pt=96 )",
-                        file_path.display())
+                format!(
+                    "( filesrc location={} ! decodebin ! x264enc ! rtph264pay name=pay0 pt=96 )",
+                    file_path.display()
+                )
             }
             ServerType::Audio => {
                 // Audio only stream
                 "( audiotestsrc is-live=true ! audio/x-raw,rate=48000,channels=2 ! \
-                 opusenc ! rtpopuspay name=pay0 pt=97 )".to_string()
+                 opusenc ! rtpopuspay name=pay0 pt=97 )"
+                    .to_string()
             }
             ServerType::AudioVideo => {
                 // Combined audio and video
                 "( videotestsrc is-live=true ! video/x-raw,width=640,height=480,framerate=30/1 ! \
                  x264enc tune=zerolatency ! rtph264pay name=pay0 pt=96 \
                  audiotestsrc is-live=true ! audio/x-raw,rate=48000,channels=2 ! \
-                 opusenc ! rtpopuspay name=pay1 pt=97 )".to_string()
+                 opusenc ! rtpopuspay name=pay1 pt=97 )"
+                    .to_string()
             }
             ServerType::Authenticated { .. } => {
                 // Same as live but server will add auth
                 "( videotestsrc is-live=true ! video/x-raw,width=640,height=480,framerate=30/1 ! \
-                 x264enc tune=zerolatency ! rtph264pay name=pay0 pt=96 )".to_string()
+                 x264enc tune=zerolatency ! rtph264pay name=pay0 pt=96 )"
+                    .to_string()
             }
         };
 
@@ -264,7 +279,7 @@ impl GstRtspTestServer {
     /// Stop the server
     pub fn stop(&mut self) {
         self.is_running.store(false, Ordering::SeqCst);
-        
+
         if let Some(mut process) = self.process.take() {
             // Try graceful shutdown first
             let _ = process.kill();
@@ -294,11 +309,17 @@ pub mod helpers {
         let result = Command::new("gst-launch-1.0")
             .args(&[
                 "-e",
-                "videotestsrc", "num-buffers=150", "!",
-                "video/x-raw,width=320,height=240,framerate=30/1", "!",
-                "x264enc", "!",
-                "mp4mux", "!",
-                "filesink", &format!("location={}", test_file.display()),
+                "videotestsrc",
+                "num-buffers=150",
+                "!",
+                "video/x-raw,width=320,height=240,framerate=30/1",
+                "!",
+                "x264enc",
+                "!",
+                "mp4mux",
+                "!",
+                "filesink",
+                &format!("location={}", test_file.display()),
             ])
             .output();
 

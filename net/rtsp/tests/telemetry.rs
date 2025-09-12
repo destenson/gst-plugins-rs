@@ -17,14 +17,15 @@ mod telemetry_tests {
         INIT.call_once(|| {
             gst::init().unwrap();
             gstrsrtsp::plugin_register_static().expect("Failed to register rtsp plugin");
-            
+
             // Initialize tracing subscriber for tests
             let subscriber = FmtSubscriber::builder()
-                .with_env_filter(EnvFilter::from_default_env()
-                    .add_directive("rtspsrc2=trace".parse().unwrap()))
+                .with_env_filter(
+                    EnvFilter::from_default_env().add_directive("rtspsrc2=trace".parse().unwrap()),
+                )
                 .with_test_writer()
                 .finish();
-            
+
             let _ = tracing::subscriber::set_global_default(subscriber);
         });
     }
@@ -101,7 +102,7 @@ mod telemetry_tests {
 
         // Get metrics
         let connection_attempts = element.property::<u64>("metrics-connection-attempts");
-        
+
         // Gather prometheus metrics
         let encoder = TextEncoder::new();
         let metric_families = prometheus::gather();
@@ -111,9 +112,11 @@ mod telemetry_tests {
 
         // Check that RTSP metrics are registered
         if output.contains("rtsp_") {
-            assert!(output.contains("rtsp_connection_attempts_total") || 
-                   output.contains("rtsp_connection_successes_total"),
-                   "Prometheus metrics should be registered");
+            assert!(
+                output.contains("rtsp_connection_attempts_total")
+                    || output.contains("rtsp_connection_successes_total"),
+                "Prometheus metrics should be registered"
+            );
         }
     }
 
@@ -131,7 +134,7 @@ mod telemetry_tests {
         assert_eq!(element.property::<u64>("metrics-packets-received"), 0);
     }
 
-    #[test] 
+    #[test]
     fn test_concurrent_metrics_updates() {
         init();
 
@@ -141,7 +144,7 @@ mod telemetry_tests {
             .unwrap();
 
         let element_clone = element.clone();
-        
+
         // Spawn multiple threads that try to read metrics
         let handles: Vec<_> = (0..10)
             .map(|_| {

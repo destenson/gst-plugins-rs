@@ -132,14 +132,17 @@ fn test_adaptive_properties_integration() {
     assert!(rtspsrc.property::<bool>("adaptive-learning"));
     assert!(rtspsrc.property::<bool>("adaptive-persistence"));
     assert_eq!(rtspsrc.property::<u64>("adaptive-cache-ttl"), 86400);
-    assert_eq!(rtspsrc.property::<u64>("adaptive-discovery-time"), 10_000_000_000);
-    
+    assert_eq!(
+        rtspsrc.property::<u64>("adaptive-discovery-time"),
+        10_000_000_000
+    );
+
     let exploration_rate: f32 = rtspsrc.property("adaptive-exploration-rate");
     assert!((exploration_rate - 0.15).abs() < 0.001);
-    
+
     let confidence_threshold: f32 = rtspsrc.property("adaptive-confidence-threshold");
     assert!((confidence_threshold - 0.9).abs() < 0.001);
-    
+
     assert!(rtspsrc.property::<bool>("adaptive-change-detection"));
 }
 
@@ -174,7 +177,7 @@ fn test_different_retry_strategies() {
         "exponential",
         "exponential-jitter",
         "auto",
-        "adaptive"
+        "adaptive",
     ];
 
     for strategy in strategies {
@@ -194,7 +197,7 @@ fn test_different_retry_strategies() {
 #[bench]
 fn bench_adaptive_vs_auto(b: &mut test::Bencher) {
     init();
-    
+
     b.iter(|| {
         #[cfg(feature = "adaptive")]
         let adaptive_src = gst::ElementFactory::make("rtspsrc2")
@@ -202,13 +205,13 @@ fn bench_adaptive_vs_auto(b: &mut test::Bencher) {
             .property_from_str("retry-strategy", "adaptive")
             .build()
             .unwrap();
-            
+
         let auto_src = gst::ElementFactory::make("rtspsrc2")
             .property("location", "rtsp://bench.test.local:554/stream")
             .property_from_str("retry-strategy", "auto")
             .build()
             .unwrap();
-            
+
         // In a real benchmark, we would measure connection recovery times
     });
 }

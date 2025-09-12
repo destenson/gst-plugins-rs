@@ -7,30 +7,30 @@
 mod camera_compat;
 #[path = "camera_config.rs"]
 mod camera_config;
-#[path = "onvif_discovery.rs"]
-mod onvif_discovery;
-#[path = "compat_suite.rs"]
-mod compat_suite;
 #[path = "compat_benchmarks.rs"]
 mod compat_benchmarks;
 #[path = "compat_ci.rs"]
 mod compat_ci;
+#[path = "compat_suite.rs"]
+mod compat_suite;
+#[path = "onvif_discovery.rs"]
+mod onvif_discovery;
 
 use camera_compat::*;
 use camera_config::*;
-use onvif_discovery::*;
-use compat_suite::*;
 use compat_benchmarks::*;
 use compat_ci::*;
+use compat_suite::*;
+use onvif_discovery::*;
 
 #[tokio::test]
 async fn test_camera_compatibility_framework() {
     // Basic framework test
     gst::init().unwrap();
-    
+
     let mut tester = CameraCompatibilityTester::new();
     tester.load_builtin_cameras();
-    
+
     // Should have loaded some test cameras
     assert!(tester.configs.len() > 0);
 }
@@ -39,14 +39,14 @@ async fn test_camera_compatibility_framework() {
 async fn test_config_loading() {
     // Test configuration file loading
     let config = create_example_config();
-    
+
     // Save and load test
     let path = "test_config_validation.toml";
     config.save_to_toml(path).unwrap();
-    
+
     let loaded = CameraConfigFile::load_from_toml(path).unwrap();
     assert_eq!(loaded.cameras.len(), config.cameras.len());
-    
+
     // Cleanup
     std::fs::remove_file(path).ok();
 }
@@ -56,10 +56,10 @@ async fn test_onvif_simulator() {
     // Test ONVIF device simulator
     let simulator = OnvifSimulator::new();
     let devices = simulator.discover_devices();
-    
+
     // Should have simulated devices
     assert_eq!(devices.len(), 3);
-    
+
     // Check device properties
     for device in devices {
         assert!(!device.name.is_empty());
@@ -72,13 +72,14 @@ async fn test_onvif_simulator() {
 async fn test_public_stream_connectivity() {
     // Test with actual public stream
     gst::init().unwrap();
-    
+
     let config = CameraTestConfig {
         name: "Wowza Public Test".to_string(),
         vendor: "Wowza".to_string(),
         model: "Test Server".to_string(),
         firmware: None,
-        url: "rtsp://807e9439d5ca.entrypoint.cloud.wowza.com:1935/app-rC94792j/068b9c9a_stream2".to_string(),
+        url: "rtsp://807e9439d5ca.entrypoint.cloud.wowza.com:1935/app-rC94792j/068b9c9a_stream2"
+            .to_string(),
         username: None,
         password: None,
         transport: TransportMode::Auto,
@@ -89,10 +90,10 @@ async fn test_public_stream_connectivity() {
         },
         known_quirks: vec![],
     };
-    
+
     let tester = CameraCompatibilityTester::new();
     let result = tester.test_camera(&config).await;
-    
+
     // Check that test ran
     assert!(result.test_duration > std::time::Duration::from_secs(0));
 }
@@ -106,7 +107,7 @@ async fn test_benchmark_framework() {
         measure_throughput: true,
         ..Default::default()
     };
-    
+
     let benchmark = CameraBenchmark::new(config);
     assert!(benchmark.config.measure_latency);
 }
@@ -117,10 +118,10 @@ async fn test_ci_environment() {
     let mut env = CITestEnvironment::new();
     let result = env.setup().await;
     assert!(result.is_ok());
-    
+
     // Should have generated config
     assert!(std::path::Path::new(env.get_config_path()).exists());
-    
+
     // Cleanup
     env.teardown().await;
     std::fs::remove_file(env.get_config_path()).ok();
@@ -133,7 +134,7 @@ async fn test_full_compatibility_suite() {
     let mut suite = CompatibilityTestSuite::new()
         .with_discovery(true)
         .with_categories(vec![TestCategory::All]);
-    
+
     let result = suite.run().await;
     assert!(result.is_ok());
 }
@@ -143,7 +144,7 @@ async fn test_full_compatibility_suite() {
 async fn test_real_camera_discovery() {
     // Test real ONVIF discovery
     let discovery = OnvifDiscovery::new();
-    
+
     match discovery.discover_devices() {
         Ok(devices) => {
             println!("Found {} real ONVIF devices", devices.len());
@@ -161,18 +162,19 @@ async fn test_real_camera_discovery() {
 #[ignore] // Only run for benchmarking
 async fn test_performance_benchmark() {
     gst::init().unwrap();
-    
+
     let urls = vec![
-        "rtsp://807e9439d5ca.entrypoint.cloud.wowza.com:1935/app-rC94792j/068b9c9a_stream2".to_string(),
+        "rtsp://807e9439d5ca.entrypoint.cloud.wowza.com:1935/app-rC94792j/068b9c9a_stream2"
+            .to_string(),
     ];
-    
+
     let config = BenchmarkConfig {
         test_duration: std::time::Duration::from_secs(10),
         ..Default::default()
     };
-    
+
     let results = run_benchmark_suite(urls, config).await;
-    
+
     for result in results {
         println!("{}", CameraBenchmark::format_results(&result));
     }
@@ -182,19 +184,19 @@ async fn test_performance_benchmark() {
 #[tokio::test]
 async fn test_framework_integration() {
     gst::init().unwrap();
-    
+
     // 1. Create configuration
     let config = create_example_config();
     let config_path = "integration_test_config.toml";
     config.save_to_toml(config_path).unwrap();
-    
+
     // 2. Set up test environment
     let mut env = CITestEnvironment::new();
     env.setup().await.unwrap();
-    
+
     // 3. Run compatibility tests
     let mut tester = CameraCompatibilityTester::new();
-    
+
     // Load from config
     let loaded_config = CameraConfigFile::load_from_toml(config_path).unwrap();
     for cam in loaded_config.cameras {
@@ -215,14 +217,14 @@ async fn test_framework_integration() {
             tester.add_camera(test_config);
         }
     }
-    
+
     // 4. Run tests
     let results = tester.run_all_tests().await;
-    
+
     // 5. Generate report
     let report = tester.generate_report(&results);
     assert!(!report.is_empty());
-    
+
     // 6. Cleanup
     env.teardown().await;
     std::fs::remove_file(config_path).ok();
@@ -230,9 +232,11 @@ async fn test_framework_integration() {
 }
 
 // Helper function to run specific camera tests
-pub async fn test_specific_camera(url: &str) -> Result<CompatibilityTestResult, Box<dyn std::error::Error>> {
+pub async fn test_specific_camera(
+    url: &str,
+) -> Result<CompatibilityTestResult, Box<dyn std::error::Error>> {
     gst::init()?;
-    
+
     let config = CameraTestConfig {
         name: "Manual Test".to_string(),
         vendor: "Unknown".to_string(),
@@ -246,7 +250,7 @@ pub async fn test_specific_camera(url: &str) -> Result<CompatibilityTestResult, 
         features: CameraFeatures::default(),
         known_quirks: vec![],
     };
-    
+
     let tester = CameraCompatibilityTester::new();
     Ok(tester.test_camera(&config).await)
 }

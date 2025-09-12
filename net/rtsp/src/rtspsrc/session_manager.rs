@@ -9,8 +9,8 @@
 //
 // SPDX-License-Identifier: MPL-2.0
 
-use std::time::{Duration, Instant};
 use rtsp_types::headers::Session;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tokio::time::{interval, Interval};
 
@@ -19,8 +19,8 @@ const KEEPALIVE_FACTOR: f64 = 0.8; // Send keep-alive at 80% of timeout
 
 #[derive(Debug, Clone)]
 pub enum KeepAliveMethod {
-    GetParameter,  // Empty GET_PARAMETER (preferred)
-    Options,       // OPTIONS request
+    GetParameter, // Empty GET_PARAMETER (preferred)
+    Options,      // OPTIONS request
     RtcpRr,       // RTCP Receiver Reports
 }
 
@@ -56,13 +56,13 @@ impl SessionManager {
         // Session header format: "session-id[;timeout=seconds]"
         // Note: The Session type from rtsp_types strips the timeout field
         // See: https://github.com/sdroege/rtsp-types/issues/24
-        
+
         self.session = Some(session.clone());
-        
+
         // For now, we'll use the default timeout since rtsp_types strips it
         // In the future, we should parse the raw header to extract timeout
         self.timeout = DEFAULT_SESSION_TIMEOUT;
-        
+
         self.reset_activity();
         self.start_keepalive_timer();
     }
@@ -71,11 +71,11 @@ impl SessionManager {
     pub fn parse_session_with_timeout(&mut self, header_value: &str) {
         // Parse format: "session-id[;timeout=seconds]"
         let parts: Vec<&str> = header_value.split(';').collect();
-        
+
         if let Some(session_id) = parts.first() {
             self.session = Some(Session(session_id.trim().to_string(), None));
         }
-        
+
         // Look for timeout parameter
         for part in parts.iter().skip(1) {
             let trimmed = part.trim();
@@ -92,7 +92,7 @@ impl SessionManager {
                 }
             }
         }
-        
+
         self.reset_activity();
         self.start_keepalive_timer();
     }
@@ -118,10 +118,11 @@ impl SessionManager {
         if self.session.is_none() {
             return false;
         }
-        
+
         let elapsed = self.last_activity.elapsed();
-        let keepalive_threshold = Duration::from_secs_f64(self.timeout.as_secs_f64() * KEEPALIVE_FACTOR);
-        
+        let keepalive_threshold =
+            Duration::from_secs_f64(self.timeout.as_secs_f64() * KEEPALIVE_FACTOR);
+
         elapsed >= keepalive_threshold
     }
 
@@ -130,7 +131,7 @@ impl SessionManager {
         if self.session.is_none() {
             return false;
         }
-        
+
         self.last_activity.elapsed() > self.timeout
     }
 
@@ -139,10 +140,11 @@ impl SessionManager {
         if self.session.is_none() {
             return None;
         }
-        
+
         let elapsed = self.last_activity.elapsed();
-        let keepalive_threshold = Duration::from_secs_f64(self.timeout.as_secs_f64() * KEEPALIVE_FACTOR);
-        
+        let keepalive_threshold =
+            Duration::from_secs_f64(self.timeout.as_secs_f64() * KEEPALIVE_FACTOR);
+
         if elapsed >= keepalive_threshold {
             Some(Duration::ZERO)
         } else {
@@ -162,7 +164,8 @@ impl SessionManager {
 
     /// Start the keep-alive timer
     fn start_keepalive_timer(&mut self) {
-        let keepalive_interval_duration = Duration::from_secs_f64(self.timeout.as_secs_f64() * KEEPALIVE_FACTOR);
+        let keepalive_interval_duration =
+            Duration::from_secs_f64(self.timeout.as_secs_f64() * KEEPALIVE_FACTOR);
         self.keepalive_interval = Some(interval(keepalive_interval_duration));
     }
 
@@ -232,16 +235,16 @@ mod tests {
     #[tokio::test]
     async fn test_session_timeout_parsing() {
         let mut manager = SessionManager::new();
-        
+
         // Test with timeout
         manager.parse_session_with_timeout("12345;timeout=90");
         assert_eq!(manager.session().unwrap().0, "12345");
         assert_eq!(manager.timeout, Duration::from_secs(90));
-        
+
         // Test without timeout
         manager.parse_session_with_timeout("67890");
         assert_eq!(manager.session().unwrap().0, "67890");
-        
+
         // Test with spaces
         manager.parse_session_with_timeout("abcdef ; timeout=30");
         assert_eq!(manager.session().unwrap().0, "abcdef");
@@ -252,17 +255,17 @@ mod tests {
     async fn test_keepalive_timing() {
         let mut manager = SessionManager::new();
         manager.set_session(Session("test".to_string(), None));
-        
+
         // Initially, should not need keep-alive
         assert!(!manager.needs_keepalive());
-        
+
         // Simulate time passing (we can't actually wait in tests)
         manager.last_activity = Instant::now() - Duration::from_secs(50);
-        
+
         // At 50 seconds with 60 second timeout, should need keep-alive (>80%)
         assert!(manager.needs_keepalive());
         assert!(!manager.is_timed_out());
-        
+
         // Simulate timeout
         manager.last_activity = Instant::now() - Duration::from_secs(61);
         assert!(manager.is_timed_out());
@@ -272,11 +275,11 @@ mod tests {
     async fn test_activity_reset() {
         let mut manager = SessionManager::new();
         manager.set_session(Session("test".to_string(), None));
-        
+
         // Simulate old activity
         manager.last_activity = Instant::now() - Duration::from_secs(50);
         assert!(manager.needs_keepalive());
-        
+
         // Reset activity
         manager.reset_activity();
         assert!(!manager.needs_keepalive());

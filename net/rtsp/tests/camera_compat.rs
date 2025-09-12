@@ -2,10 +2,10 @@
 // Tests rtspsrc2 against various real and simulated IP cameras
 
 use gst::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use serde::{Serialize, Deserialize};
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -267,22 +267,19 @@ impl CameraCompatibilityTester {
 
             // Test features
             if config.features.audio {
-                result.features.insert(
-                    "Audio".to_string(),
-                    self.test_audio(config).await,
-                );
+                result
+                    .features
+                    .insert("Audio".to_string(), self.test_audio(config).await);
             }
             if config.features.ptz {
-                result.features.insert(
-                    "PTZ".to_string(),
-                    self.test_ptz(config).await,
-                );
+                result
+                    .features
+                    .insert("PTZ".to_string(), self.test_ptz(config).await);
             }
             if config.features.onvif {
-                result.features.insert(
-                    "ONVIF".to_string(),
-                    self.test_onvif(config).await,
-                );
+                result
+                    .features
+                    .insert("ONVIF".to_string(), self.test_onvif(config).await);
             }
             if config.features.backchannel {
                 result.features.insert(
@@ -307,15 +304,12 @@ impl CameraCompatibilityTester {
 
         gst::init().ok();
 
-        let pipeline_str = format!(
-            "rtspsrc2 location={} latency=100 ! fakesink",
-            config.url
-        );
+        let pipeline_str = format!("rtspsrc2 location={} latency=100 ! fakesink", config.url);
 
         match gst::parse::launch(&pipeline_str) {
             Ok(pipeline) => {
                 let pipeline = pipeline.downcast::<gst::Pipeline>().unwrap();
-                
+
                 if let Some(rtspsrc) = pipeline.by_name("rtspsrc2") {
                     if let Some(username) = &config.username {
                         rtspsrc.set_property("user-id", username);
@@ -329,7 +323,7 @@ impl CameraCompatibilityTester {
 
                 // Wait for state change
                 let (res, _, _) = pipeline.state(Some(gst::ClockTime::from_seconds(10)));
-                
+
                 pipeline.set_state(gst::State::Null).ok();
 
                 match res {
@@ -372,7 +366,7 @@ impl CameraCompatibilityTester {
         }
 
         let connection_start = Instant::now();
-        
+
         // Measure connection time
         let pipeline_str = format!(
             "rtspsrc2 location={} name=src ! fakesink sync=false",
@@ -381,12 +375,12 @@ impl CameraCompatibilityTester {
 
         if let Ok(pipeline) = gst::parse::launch(&pipeline_str) {
             let pipeline = pipeline.downcast::<gst::Pipeline>().unwrap();
-            
+
             if pipeline.set_state(gst::State::Playing).is_ok() {
                 // Wait for first buffer
                 let bus = pipeline.bus().unwrap();
                 let timeout = gst::ClockTime::from_seconds(10);
-                
+
                 if let Some(msg) = bus.timed_pop_filtered(
                     timeout,
                     &[gst::MessageType::StateChanged, gst::MessageType::Error],
@@ -403,7 +397,7 @@ impl CameraCompatibilityTester {
                     }
                 }
             }
-            
+
             pipeline.set_state(gst::State::Null).ok();
         }
 
@@ -428,11 +422,20 @@ impl CameraCompatibilityTester {
         report.push_str(&format!("Total cameras tested: {}\n\n", results.len()));
 
         report.push_str("## Summary\n\n");
-        
-        let passed = results.iter().filter(|r| matches!(r.connectivity, TestStatus::Pass)).count();
-        let failed = results.iter().filter(|r| matches!(r.connectivity, TestStatus::Fail(_))).count();
-        let skipped = results.iter().filter(|r| matches!(r.connectivity, TestStatus::Skip(_))).count();
-        
+
+        let passed = results
+            .iter()
+            .filter(|r| matches!(r.connectivity, TestStatus::Pass))
+            .count();
+        let failed = results
+            .iter()
+            .filter(|r| matches!(r.connectivity, TestStatus::Fail(_)))
+            .count();
+        let skipped = results
+            .iter()
+            .filter(|r| matches!(r.connectivity, TestStatus::Skip(_)))
+            .count();
+
         report.push_str(&format!("- Passed: {}\n", passed));
         report.push_str(&format!("- Failed: {}\n", failed));
         report.push_str(&format!("- Skipped: {}\n\n", skipped));
@@ -440,50 +443,62 @@ impl CameraCompatibilityTester {
         report.push_str("## Detailed Results\n\n");
 
         for result in results {
-            report.push_str(&format!("### {} - {}\n", result.camera.vendor, result.camera.model));
+            report.push_str(&format!(
+                "### {} - {}\n",
+                result.camera.vendor, result.camera.model
+            ));
             report.push_str(&format!("- **Name**: {}\n", result.camera.name));
             if let Some(fw) = &result.camera.firmware {
                 report.push_str(&format!("- **Firmware**: {}\n", fw));
             }
             report.push_str(&format!("- **Connectivity**: {:?}\n", result.connectivity));
-            
+
             if !result.stream_formats.is_empty() {
                 report.push_str("- **Stream Formats**:\n");
                 for (format, status) in &result.stream_formats {
                     report.push_str(&format!("  - {}: {:?}\n", format, status));
                 }
             }
-            
+
             if !result.features.is_empty() {
                 report.push_str("- **Features**:\n");
                 for (feature, status) in &result.features {
                     report.push_str(&format!("  - {}: {:?}\n", feature, status));
                 }
             }
-            
+
             if result.performance.connection_time > Duration::from_secs(0) {
                 report.push_str("- **Performance**:\n");
-                report.push_str(&format!("  - Connection time: {:?}\n", result.performance.connection_time));
+                report.push_str(&format!(
+                    "  - Connection time: {:?}\n",
+                    result.performance.connection_time
+                ));
                 if result.performance.first_frame_time > Duration::from_secs(0) {
-                    report.push_str(&format!("  - First frame: {:?}\n", result.performance.first_frame_time));
+                    report.push_str(&format!(
+                        "  - First frame: {:?}\n",
+                        result.performance.first_frame_time
+                    ));
                 }
             }
-            
+
             if !result.camera.known_quirks.is_empty() {
                 report.push_str("- **Known Quirks**:\n");
                 for quirk in &result.camera.known_quirks {
                     report.push_str(&format!("  - {}\n", quirk));
                 }
             }
-            
+
             if !result.errors.is_empty() {
                 report.push_str("- **Errors**:\n");
                 for error in &result.errors {
                     report.push_str(&format!("  - {}\n", error));
                 }
             }
-            
-            report.push_str(&format!("- **Test Duration**: {:?}\n\n", result.test_duration));
+
+            report.push_str(&format!(
+                "- **Test Duration**: {:?}\n\n",
+                result.test_duration
+            ));
         }
 
         report
@@ -499,14 +514,16 @@ mod tests {
         gst::init().unwrap();
 
         let mut tester = CameraCompatibilityTester::new();
-        
+
         // Test with Wowza public stream
         let config = CameraTestConfig {
             name: "Wowza Test".to_string(),
             vendor: "Wowza".to_string(),
             model: "Test Server".to_string(),
             firmware: None,
-            url: "rtsp://807e9439d5ca.entrypoint.cloud.wowza.com:1935/app-rC94792j/068b9c9a_stream2".to_string(),
+            url:
+                "rtsp://807e9439d5ca.entrypoint.cloud.wowza.com:1935/app-rC94792j/068b9c9a_stream2"
+                    .to_string(),
             username: None,
             password: None,
             transport: TransportMode::Auto,
@@ -520,9 +537,9 @@ mod tests {
 
         tester.add_camera(config);
         let results = tester.run_all_tests().await;
-        
+
         assert_eq!(results.len(), 1);
-        
+
         // Generate report
         let report = tester.generate_report(&results);
         println!("{}", report);
@@ -534,17 +551,17 @@ mod tests {
 
         let mut tester = CameraCompatibilityTester::new();
         tester.load_builtin_cameras();
-        
+
         // Should have loaded multiple camera configs
         assert!(tester.configs.len() > 3);
-        
+
         // Run tests (most will be skipped due to placeholder URLs)
         let results = tester.run_all_tests().await;
-        
+
         // Generate report
         let report = tester.generate_report(&results);
         println!("{}", report);
-        
+
         // Save report to file
         std::fs::write("camera_compatibility_report.md", report).ok();
     }

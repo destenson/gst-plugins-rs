@@ -208,16 +208,16 @@ mod tests {
     fn test_save_and_load_toml() {
         let config = create_example_config();
         let path = "test_cameras.toml";
-        
+
         // Save to TOML
         config.save_to_toml(path).unwrap();
-        
+
         // Load from TOML
         let loaded = CameraConfigFile::load_from_toml(path).unwrap();
-        
+
         assert_eq!(loaded.cameras.len(), config.cameras.len());
         assert_eq!(loaded.cameras[0].name, config.cameras[0].name);
-        
+
         // Cleanup
         fs::remove_file(path).ok();
     }
@@ -226,16 +226,16 @@ mod tests {
     fn test_save_and_load_json() {
         let config = create_example_config();
         let path = "test_cameras.json";
-        
+
         // Save to JSON
         config.save_to_json(path).unwrap();
-        
+
         // Load from JSON
         let loaded = CameraConfigFile::load_from_json(path).unwrap();
-        
+
         assert_eq!(loaded.cameras.len(), config.cameras.len());
         assert_eq!(loaded.cameras[0].vendor, config.cameras[0].vendor);
-        
+
         // Cleanup
         fs::remove_file(path).ok();
     }
@@ -243,13 +243,17 @@ mod tests {
     #[test]
     fn test_generate_example_config_file() {
         let config = create_example_config();
-        
+
         // Save example TOML config
-        config.save_to_toml("camera_test_config_example.toml").unwrap();
-        
+        config
+            .save_to_toml("camera_test_config_example.toml")
+            .unwrap();
+
         // Save example JSON config
-        config.save_to_json("camera_test_config_example.json").unwrap();
-        
+        config
+            .save_to_json("camera_test_config_example.json")
+            .unwrap();
+
         println!("Example configuration files generated:");
         println!("- camera_test_config_example.toml");
         println!("- camera_test_config_example.json");

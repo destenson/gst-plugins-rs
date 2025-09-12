@@ -8,11 +8,11 @@
 //
 // SPDX-License-Identifier: MPL-2.0
 
+use futures::future::select_all;
 use std::sync::LazyLock;
 use std::time::Duration;
 use tokio::net::TcpStream;
-use tokio::time::{timeout, sleep};
-use futures::future::select_all;
+use tokio::time::{sleep, timeout};
 static CAT: LazyLock<gst::DebugCategory> = LazyLock::new(|| {
     gst::DebugCategory::new(
         "rtspsrc2-racer",
@@ -92,12 +92,8 @@ impl ConnectionRacer {
                 gst::debug!(CAT, "Using no racing strategy, single connection attempt");
                 TcpStream::connect(hostname_port).await
             }
-            ConnectionRacingStrategy::FirstWins => {
-                self.connect_first_wins(hostname_port).await
-            }
-            ConnectionRacingStrategy::LastWins => {
-                self.connect_last_wins(hostname_port).await
-            }
+            ConnectionRacingStrategy::FirstWins => self.connect_first_wins(hostname_port).await,
+            ConnectionRacingStrategy::LastWins => self.connect_last_wins(hostname_port).await,
             ConnectionRacingStrategy::Hybrid => {
                 // Try first-wins first, if that fails try last-wins
                 gst::debug!(CAT, "Using hybrid strategy");
@@ -115,8 +111,11 @@ impl ConnectionRacer {
     /// First-wins strategy (Happy Eyeballs)
     /// Launch multiple connections with staggered delays, use first successful
     async fn connect_first_wins(&self, hostname_port: &str) -> Result<TcpStream, std::io::Error> {
-        gst::debug!(CAT, "Using first-wins racing strategy with {} parallel connections", 
-                   self.config.max_parallel_connections);
+        gst::debug!(
+            CAT,
+            "Using first-wins racing strategy with {} parallel connections",
+            self.config.max_parallel_connections
+        );
 
         let mut futures = Vec::new();
         let mut handles = Vec::new();
@@ -125,15 +124,20 @@ impl ConnectionRacer {
             let hostname_port = hostname_port.to_string();
             let delay = Duration::from_millis((i * self.config.racing_delay_ms) as u64);
             let racing_timeout = self.config.racing_timeout;
-            
+
             let handle = tokio::spawn(async move {
                 if i > 0 {
                     sleep(delay).await;
                 }
-                gst::trace!(CAT, "Starting connection attempt {} after {}ms delay", i + 1, delay.as_millis());
+                gst::trace!(
+                    CAT,
+                    "Starting connection attempt {} after {}ms delay",
+                    i + 1,
+                    delay.as_millis()
+                );
                 timeout(racing_timeout, TcpStream::connect(&hostname_port)).await
             });
-            
+
             handles.push(handle);
         }
 
@@ -149,7 +153,10 @@ impl ConnectionRacer {
 
             match result {
                 Ok(Ok(Ok(stream))) => {
-                    gst::debug!(CAT, "First-wins: connection successful, cancelling other attempts");
+                    gst::debug!(
+                        CAT,
+                        "First-wins: connection successful, cancelling other attempts"
+                    );
                     // Cancel remaining futures
                     for future in futures {
                         future.abort();
@@ -173,15 +180,18 @@ impl ConnectionRacer {
 
         Err(std::io::Error::new(
             std::io::ErrorKind::ConnectionRefused,
-            "All connection attempts failed in first-wins racing"
+            "All connection attempts failed in first-wins racing",
         ))
     }
 
     /// Last-wins strategy
     /// For devices that drop older connections, use the newest successful connection
     async fn connect_last_wins(&self, hostname_port: &str) -> Result<TcpStream, std::io::Error> {
-        gst::debug!(CAT, "Using last-wins racing strategy with {} parallel connections", 
-                   self.config.max_parallel_connections);
+        gst::debug!(
+            CAT,
+            "Using last-wins racing strategy with {} parallel connections",
+            self.config.max_parallel_connections
+        );
 
         let mut futures = Vec::new();
         let mut handles = Vec::new();
@@ -190,15 +200,20 @@ impl ConnectionRacer {
             let hostname_port = hostname_port.to_string();
             let delay = Duration::from_millis((i * self.config.racing_delay_ms) as u64);
             let racing_timeout = self.config.racing_timeout;
-            
+
             let handle = tokio::spawn(async move {
                 if i > 0 {
                     sleep(delay).await;
                 }
-                gst::trace!(CAT, "Starting connection attempt {} after {}ms delay", i + 1, delay.as_millis());
+                gst::trace!(
+                    CAT,
+                    "Starting connection attempt {} after {}ms delay",
+                    i + 1,
+                    delay.as_millis()
+                );
                 timeout(racing_timeout, TcpStream::connect(&hostname_port)).await
             });
-            
+
             handles.push(handle);
         }
 
@@ -216,7 +231,10 @@ impl ConnectionRacer {
 
             match result {
                 Ok(Ok(Ok(stream))) => {
-                    gst::debug!(CAT, "Last-wins: new successful connection, replacing previous");
+                    gst::debug!(
+                        CAT,
+                        "Last-wins: new successful connection, replacing previous"
+                    );
                     // Drop the old connection if we have one
                     if let Some(old_stream) = last_successful.take() {
                         drop(old_stream);
@@ -241,7 +259,7 @@ impl ConnectionRacer {
         } else {
             Err(std::io::Error::new(
                 std::io::ErrorKind::ConnectionRefused,
-                "No successful connections in last-wins racing"
+                "No successful connections in last-wins racing",
             ))
         }
     }
@@ -253,14 +271,38 @@ mod tests {
 
     #[test]
     fn test_strategy_from_string() {
-        assert_eq!(ConnectionRacingStrategy::from_string("none"), ConnectionRacingStrategy::None);
-        assert_eq!(ConnectionRacingStrategy::from_string("first-wins"), ConnectionRacingStrategy::FirstWins);
-        assert_eq!(ConnectionRacingStrategy::from_string("first_wins"), ConnectionRacingStrategy::FirstWins);
-        assert_eq!(ConnectionRacingStrategy::from_string("happy-eyeballs"), ConnectionRacingStrategy::FirstWins);
-        assert_eq!(ConnectionRacingStrategy::from_string("last-wins"), ConnectionRacingStrategy::LastWins);
-        assert_eq!(ConnectionRacingStrategy::from_string("last_wins"), ConnectionRacingStrategy::LastWins);
-        assert_eq!(ConnectionRacingStrategy::from_string("hybrid"), ConnectionRacingStrategy::Hybrid);
-        assert_eq!(ConnectionRacingStrategy::from_string("unknown"), ConnectionRacingStrategy::None);
+        assert_eq!(
+            ConnectionRacingStrategy::from_string("none"),
+            ConnectionRacingStrategy::None
+        );
+        assert_eq!(
+            ConnectionRacingStrategy::from_string("first-wins"),
+            ConnectionRacingStrategy::FirstWins
+        );
+        assert_eq!(
+            ConnectionRacingStrategy::from_string("first_wins"),
+            ConnectionRacingStrategy::FirstWins
+        );
+        assert_eq!(
+            ConnectionRacingStrategy::from_string("happy-eyeballs"),
+            ConnectionRacingStrategy::FirstWins
+        );
+        assert_eq!(
+            ConnectionRacingStrategy::from_string("last-wins"),
+            ConnectionRacingStrategy::LastWins
+        );
+        assert_eq!(
+            ConnectionRacingStrategy::from_string("last_wins"),
+            ConnectionRacingStrategy::LastWins
+        );
+        assert_eq!(
+            ConnectionRacingStrategy::from_string("hybrid"),
+            ConnectionRacingStrategy::Hybrid
+        );
+        assert_eq!(
+            ConnectionRacingStrategy::from_string("unknown"),
+            ConnectionRacingStrategy::None
+        );
     }
 
     #[test]
