@@ -18,6 +18,7 @@ gst = { workspace = true, features = ["v1_16"] }
 gst-app = { workspace = true, features = ["v1_16"] }
 gst-net = { workspace = true, features = ["v1_16"] }
 gst-pbutils = { workspace = true, features = ["v1_16"] }
+gst-rtsp = { workspace = true, features = ["v1_16"] }
 gst-sdp = { workspace = true, features = ["v1_16"] }
 lru = "0.16.1"
 rand = "0.9.2"
@@ -49,9 +50,9 @@ gst-plugin-version-helper.workspace = true
 static = []
 capi = []
 doc = ["gst/v1_18"]
-v1_18 = ["gst/v1_18", "gst-app/v1_18", "gst-net/v1_18", "gst-pbutils/v1_18", "gst-sdp/v1_18", "gst-check/v1_18"]
-v1_20 = ["v1_18", "gst/v1_20", "gst-app/v1_20", "gst-net/v1_20", "gst-pbutils/v1_20", "gst-sdp/v1_20", "gst-check/v1_20"]
-v1_24 = ["v1_20", "gst/v1_24", "gst-app/v1_24", "gst-net/v1_24", "gst-pbutils/v1_24", "gst-sdp/v1_24", "gst-check/v1_24"]
+v1_18 = ["gst/v1_18", "gst-app/v1_18", "gst-net/v1_18", "gst-pbutils/v1_18", "gst-rtsp/v1_18", "gst-sdp/v1_18", "gst-check/v1_18"]
+v1_20 = ["v1_18", "gst/v1_20", "gst-app/v1_20", "gst-net/v1_20", "gst-pbutils/v1_20", "gst-rtsp/v1_20", "gst-sdp/v1_20", "gst-check/v1_20"]
+v1_24 = ["v1_20", "gst/v1_24", "gst-app/v1_24", "gst-net/v1_24", "gst-pbutils/v1_24", "gst-rtsp/v1_24", "gst-sdp/v1_24", "gst-check/v1_24"]
 adaptive = []
 tokio-console = ["dep:console-subscriber", "tokio/tracing"]
 tracing = ["dep:tracing"]

@@ -47,6 +47,8 @@ use gst::glib;
 use gst::prelude::*;
 use gst::subclass::prelude::*;
 use gst_net::gio;
+use gst_rtsp;
+use gst_rtsp::rtsp_message::RTSPMessage;
 use gst_sdp;
 
 #[cfg(feature = "tracing")]
@@ -1083,7 +1085,12 @@ impl RtspSrc {
     #[allow(dead_code)]
     fn emit_select_stream(&self, stream_id: u32, caps: &gst::Caps) -> bool {
         let obj = self.obj();
-        gst::debug!(CAT, obj = obj, "Emitting select-stream signal for stream {}", stream_id);
+        gst::debug!(
+            CAT,
+            obj = obj,
+            "Emitting select-stream signal for stream {}",
+            stream_id
+        );
         obj.emit_by_name::<bool>("select-stream", &[&stream_id, caps])
     }
 
@@ -1095,6 +1102,70 @@ impl RtspSrc {
         let obj = self.obj();
         gst::debug!(CAT, obj = obj, "Emitting new-manager signal");
         obj.emit_by_name::<()>("new-manager", &[manager]);
+    }
+
+    /// Emit the accept-certificate signal (placeholder)
+    /// This function will be called when TLS certificate validation is needed.
+    /// Applications can connect to this signal to perform custom certificate validation.
+    /// Returns true to accept the certificate, false to reject it.
+    #[allow(dead_code)]
+    fn emit_accept_certificate(
+        &self,
+        connection: &gio::TlsConnection,
+        certificate: &gio::TlsCertificate,
+        flags: gio::TlsCertificateFlags,
+    ) -> bool {
+        let obj = self.obj();
+        gst::debug!(
+            CAT,
+            obj = obj,
+            "Emitting accept-certificate signal with flags {:?}",
+            flags
+        );
+        obj.emit_by_name::<bool>("accept-certificate", &[connection, certificate, &flags])
+    }
+
+    /// Emit the before-send signal (placeholder)
+    /// This function will be called before sending RTSP messages.
+    /// Applications can connect to this signal to modify or cancel RTSP messages.
+    /// Returns true to send the message, false to cancel it.
+    #[allow(dead_code)]
+    fn emit_before_send(&self, message: &RTSPMessage) -> bool {
+        let obj = self.obj();
+        gst::debug!(CAT, obj = obj, "Emitting before-send signal");
+        obj.emit_by_name::<bool>("before-send", &[message])
+    }
+
+    /// Emit the request-rtcp-key signal (placeholder)
+    /// This function will be called to get RTCP encryption key for a stream.
+    /// Applications can connect to this signal to provide SRTCP key parameters.
+    /// Returns GstCaps with the encryption key parameters or None.
+    #[allow(dead_code)]
+    fn emit_request_rtcp_key(&self, stream_id: u32) -> Option<gst::Caps> {
+        let obj = self.obj();
+        gst::debug!(
+            CAT,
+            obj = obj,
+            "Emitting request-rtcp-key signal for stream {}",
+            stream_id
+        );
+        obj.emit_by_name::<Option<gst::Caps>>("request-rtcp-key", &[&stream_id])
+    }
+
+    /// Emit the request-rtp-key signal (placeholder)
+    /// This function will be called to get RTP encryption key for a stream.
+    /// Applications can connect to this signal to provide SRTP key parameters.
+    /// Returns GstCaps with the encryption key parameters or None.
+    #[allow(dead_code)]
+    fn emit_request_rtp_key(&self, stream_id: u32) -> Option<gst::Caps> {
+        let obj = self.obj();
+        gst::debug!(
+            CAT,
+            obj = obj,
+            "Emitting request-rtp-key signal for stream {}",
+            stream_id
+        );
+        obj.emit_by_name::<Option<gst::Caps>>("request-rtp-key", &[&stream_id])
     }
 }
 
@@ -2293,6 +2364,57 @@ impl ObjectImpl for RtspSrc {
                 // new-manager signal: emitted when RTP manager is created
                 glib::subclass::Signal::builder("new-manager")
                     .param_types([gst::Element::static_type()])
+                    .build(),
+                // accept-certificate signal: emitted for TLS certificate validation
+                // Returns true to accept certificate, false to reject
+                // Since: 1.14
+                glib::subclass::Signal::builder("accept-certificate")
+                    .param_types([
+                        gio::TlsConnection::static_type(),
+                        gio::TlsCertificate::static_type(),
+                        gio::TlsCertificateFlags::static_type(),
+                    ])
+                    .return_type::<bool>()
+                    .accumulator(|_hint, acc, value| {
+                        use std::ops::ControlFlow;
+                        // Stop emission if a handler returns true
+                        if acc.get::<bool>().unwrap_or(false) {
+                            ControlFlow::Break(acc.clone())
+                        } else {
+                            ControlFlow::Continue(value.clone())
+                        }
+                    })
+                    .build(),
+                // before-send signal: emitted before sending RTSP messages
+                // Returns true to send message, false to cancel
+                // Since: 1.14
+                glib::subclass::Signal::builder("before-send")
+                    .param_types([RTSPMessage::static_type()])
+                    .return_type::<bool>()
+                    .accumulator(|_hint, _acc, value| {
+                        use std::ops::ControlFlow;
+                        // Stop emission if a handler returns false
+                        let val = value.get::<bool>().unwrap_or(true);
+                        if !val {
+                            ControlFlow::Break(value.clone())
+                        } else {
+                            ControlFlow::Continue(value.clone())
+                        }
+                    })
+                    .build(),
+                // request-rtcp-key signal: emitted to get RTCP encryption key
+                // Returns GstCaps with SRTCP key parameters
+                // Since: 1.4
+                glib::subclass::Signal::builder("request-rtcp-key")
+                    .param_types([u32::static_type()])
+                    .return_type::<Option<gst::Caps>>()
+                    .build(),
+                // request-rtp-key signal: emitted to get RTP encryption key
+                // Returns GstCaps with SRTP key parameters
+                // Since: 1.26
+                glib::subclass::Signal::builder("request-rtp-key")
+                    .param_types([u32::static_type()])
+                    .return_type::<Option<gst::Caps>>()
                     .build(),
             ]
         });

@@ -3912,6 +3912,7 @@ dependencies = [
  "gstreamer-check",
  "gstreamer-net",
  "gstreamer-pbutils",
+ "gstreamer-rtsp",
  "gstreamer-sdp",
  "lru 0.16.1",
  "prometheus",

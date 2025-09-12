@@ -29,7 +29,7 @@ fn test_signal_registration() {
         .expect("Failed to create rtspsrc2 element");
 
     // Test that signals can be connected to (which proves they exist)
-    
+
     // Test on-sdp signal
     let connected = Arc::new(AtomicBool::new(false));
     let connected_clone = connected.clone();
@@ -40,15 +40,11 @@ fn test_signal_registration() {
     // If we got here without panic, the signal exists
 
     // Test select-stream signal
-    element.connect("select-stream", false, |_values| {
-        Some(true.to_value())
-    });
+    element.connect("select-stream", false, |_values| Some(true.to_value()));
     // If we got here without panic, the signal exists
 
     // Test new-manager signal
-    element.connect("new-manager", false, |_values| {
-        None
-    });
+    element.connect("new-manager", false, |_values| None);
     // If we got here without panic, the signal exists
 }
 
