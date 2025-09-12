@@ -2,7 +2,7 @@
 
 This document tracks the implementation status of all feature parity PRPs for rtspsrc2 vs original rtspsrc.
 
-## Current Implementation Status (Updated: 2025-01-10)
+## Current Implementation Status (Updated: 2025-09-10)
 
 ### Overview
 - **rtspsrc (original)**: 51 properties, 10 signals, 7 actions, 9 URI protocols
@@ -181,8 +181,8 @@ This document tracks the implementation status of all feature parity PRPs for rt
 | PRP-32 | 1-Auth | 📋 Planned | - | - | - | 3-4h |
 | **PRP-33** | **1-Core** | **✅ COMPLETE** | **latency, drop-on-latency, probation** | - | - | **2-3h** |
 | **PRP-34** | **1-Core** | **✅ COMPLETE** | **buffer-mode** | - | - | **2-3h** |
-| **PRP-35** | **1-Core** | **⭐ NEXT** | **do-rtcp, do-retransmission, max-rtcp-rtp-time-diff** | - | - | **2-3h** |
-| PRP-36 | 1-Core | 📋 Planned | do-rtsp-keep-alive, tcp-timeout, teardown-timeout, udp-reconnect | - | - | 2-3h |
+| **PRP-35** | **1-Core** | **✅ COMPLETE** | **do-rtcp, do-retransmission, max-rtcp-rtp-time-diff** | - | - | **2-3h** |
+| **PRP-36** | **1-Core** | **⭐ NEXT** | **do-rtsp-keep-alive, tcp-timeout, teardown-timeout, udp-reconnect** | - | - | 2-3h |
 | PRP-37 | 1-Core | 📋 Planned | multicast-iface, port-range, udp-buffer-size | - | - | 2-3h |
 | PRP-38 | 1-Core | 📋 Planned | is-live, user-agent, connection-speed | - | - | 2-3h |
 | PRP-39 | 1-Core | 📋 Planned | ntp-sync, rfc7273-sync, ntp-time-source | - | - | 4-5h |
@@ -220,7 +220,7 @@ Each PRP must pass all quality gates before being marked complete:
 
 ---
 
-**Last Updated**: 2025-01-10  
+**Last Updated**: 2025-08-10  
 **Next Action**: Execute PRP-35 (RTCP Control Properties)  
 **Phase 1 Progress**: 2/9 PRPs complete (22%)  
 **Overall Progress**: 8/51 properties (16%), 0/10 signals (0%), 0/7 actions (0%)  
