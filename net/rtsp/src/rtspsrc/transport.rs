@@ -10,7 +10,7 @@
 //
 // https://www.rfc-editor.org/rfc/rfc2326.html
 
-use super::imp::{RtspError, RtspProtocol};
+use super::imp::{OldRtspError as RtspError, RtspProtocol};
 use rtsp_types::headers::{transport::RtpTransport, RtpLowerTransport};
 use std::{convert::TryFrom, net::IpAddr};
 use tokio::net::UdpSocket;

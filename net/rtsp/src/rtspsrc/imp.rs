@@ -21,11 +21,13 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use anyhow::Result;
 use std::sync::LazyLock;
 
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use socket2::Socket;
+
+// Import the new RtspError type from error module
+use super::error::RtspError;
 use tokio::net::UdpSocket;
 use tokio::runtime;
 use tokio::sync::{mpsc, oneshot};
@@ -824,7 +826,8 @@ impl Default for RtspSrc {
 }
 
 #[derive(thiserror::Error, Debug)]
-pub enum RtspError {
+// TODO: This is the old error enum - should be migrated to use super::error::RtspError
+pub enum OldRtspError {
     #[error("Generic I/O error")]
     IOGeneric(#[from] std::io::Error),
     #[error("Read I/O error")]
@@ -3596,7 +3599,7 @@ impl RtspSrc {
         rtpsession_n: usize,
         caps: &gst::Caps,
         manager: &RtspManager,
-    ) -> Result<gst_app::AppSrc> {
+    ) -> std::result::Result<gst_app::AppSrc, glib::Error> {
         let callbacks = gst_app::AppSrcCallbacks::builder()
             .enough_data(|appsrc| {
                 gst::warning!(CAT, "appsrc {} is overrunning: enough data!", appsrc.name());
@@ -3623,11 +3626,12 @@ impl RtspSrc {
         #[cfg(feature = "v1_20")]
         appsrc.set_property("max-time", 2_000_000_000u64); // 2 seconds in nanoseconds
         let obj = self.obj();
-        obj.add(&appsrc)?;
+        obj.add(&appsrc).map_err(|e| glib::Error::new(gst::ResourceError::Failed, &e.to_string()))?;
         appsrc
             .static_pad("src")
             .unwrap()
-            .link(&manager.rtp_recv_sinkpad(rtpsession_n).unwrap())?;
+            .link(&manager.rtp_recv_sinkpad(rtpsession_n).unwrap())
+            .map_err(|_| glib::Error::new(gst::ResourceError::Failed, "Failed to link pads"))?;
         let templ = obj.pad_template("stream_%u").unwrap();
         let ghostpad = gst::GhostPad::builder_from_template(&templ)
             .name(format!("stream_{}", rtpsession_n))
@@ -3635,7 +3639,7 @@ impl RtspSrc {
         gst::info!(CAT, "Adding ghost srcpad {}", ghostpad.name());
         obj.add_pad(&ghostpad)
             .expect("Adding a ghostpad should never fail");
-        appsrc.sync_state_with_parent()?;
+        appsrc.sync_state_with_parent().map_err(|e| glib::Error::new(gst::ResourceError::Failed, &e.to_string()))?;
         Ok(appsrc)
     }
 
@@ -3643,7 +3647,7 @@ impl RtspSrc {
         &self,
         rtpsession_n: usize,
         manager: &RtspManager,
-    ) -> Result<gst_app::AppSrc> {
+    ) -> std::result::Result<gst_app::AppSrc, glib::Error> {
         let builder = gst_app::AppSrc::builder()
             .name(format!("rtcp_appsrc_{rtpsession_n}"))
             .format(gst::Format::Time);
@@ -3656,12 +3660,13 @@ impl RtspSrc {
             .stream_type(gst_app::AppStreamType::Stream)
             .is_live(true)
             .build();
-        self.obj().add(&appsrc)?;
+        self.obj().add(&appsrc).map_err(|e| glib::Error::new(gst::ResourceError::Failed, &e.to_string()))?;
         appsrc
             .static_pad("src")
             .unwrap()
-            .link(&manager.rtcp_recv_sinkpad(rtpsession_n).unwrap())?;
-        appsrc.sync_state_with_parent()?;
+            .link(&manager.rtcp_recv_sinkpad(rtpsession_n).unwrap())
+            .map_err(|_| glib::Error::new(gst::ResourceError::Failed, "Failed to link pads"))?;
+        appsrc.sync_state_with_parent().map_err(|e| glib::Error::new(gst::ResourceError::Failed, &e.to_string()))?;
         Ok(appsrc)
     }
 
@@ -3672,7 +3677,7 @@ impl RtspSrc {
         rtpsession_n: usize,
         manager: &RtspManager,
         on_rtcp: F,
-    ) -> Result<()> {
+    ) -> std::result::Result<(), glib::Error> {
         let cmd_tx_eos = self.cmd_queue();
         let cbs = gst_app::app_sink::AppSinkCallbacks::builder()
             .eos(move |_appsink| {
@@ -3690,11 +3695,12 @@ impl RtspSrc {
             .async_(false)
             .callbacks(cbs)
             .build();
-        self.obj().add(&rtcp_appsink)?;
+        self.obj().add(&rtcp_appsink).map_err(|e| glib::Error::new(gst::ResourceError::Failed, &e.to_string()))?;
         manager
             .rtcp_send_srcpad(rtpsession_n)
             .unwrap()
-            .link(&rtcp_appsink.static_pad("sink").unwrap())?;
+            .link(&rtcp_appsink.static_pad("sink").unwrap())
+            .map_err(|_| glib::Error::new(gst::ResourceError::Failed, "Failed to link pads"))?;
         Ok(())
     }
 
@@ -3726,7 +3732,7 @@ impl RtspSrc {
         &self,
         state: &mut RtspTaskState,
         mut cmd_rx: mpsc::Receiver<Commands>,
-    ) -> Result<()> {
+    ) -> std::result::Result<(), super::error::RtspError> {
         let cmd_tx = self.cmd_queue();
 
         let settings = { self.settings.lock().unwrap().clone() };
@@ -4118,7 +4124,7 @@ impl RtspSrc {
                             continue;
                         };
                         let Some(s) = &session else {
-                            return Err(RtspError::Fatal(format!("Can't handle {:?} response, no SETUP", expected)).into());
+                            return Err(RtspError::internal(format!("Can't handle {:?} response, no SETUP", expected)));
                         };
                         match expected {
                             Method::Play => {
@@ -4151,7 +4157,7 @@ impl RtspSrc {
                 Some(cmd) = cmd_rx.recv() => match cmd {
                     Commands::Play => {
                         let Some(s) = &session else {
-                            return Err(RtspError::InvalidMessage("Can't PLAY, no SETUP").into());
+                            return Err(RtspError::internal("Can't PLAY, no SETUP"));
                         };
                         self.post_start("request", "PLAY request sent");
                         let cseq = state.play(s).await.inspect_err(|_err| {
@@ -4161,7 +4167,7 @@ impl RtspSrc {
                     },
                     Commands::Pause => {
                         let Some(s) = &session else {
-                            return Err(RtspError::InvalidMessage("Can't PAUSE, no SETUP").into());
+                            return Err(RtspError::internal("Can't PAUSE, no SETUP"));
                         };
                         self.post_start("request", "PAUSE request sent");
                         let cseq = state.pause(s).await.inspect_err(|_err| {
@@ -4171,7 +4177,7 @@ impl RtspSrc {
                     },
                     Commands::Seek { position, flags } => {
                         let Some(s) = &session else {
-                            return Err(RtspError::InvalidMessage("Can't SEEK, no SETUP").into());
+                            return Err(RtspError::internal("Can't SEEK, no SETUP"));
                         };
                         gst::info!(CAT, "Processing seek to position {:?} with flags {:?}", position, flags);
 
@@ -4210,7 +4216,7 @@ impl RtspSrc {
                     Commands::Teardown(tx) => {
                         gst::info!(CAT, "Received Teardown command");
                         let Some(s) = &session else {
-                            return Err(RtspError::InvalidMessage("Can't TEARDOWN, no SETUP").into());
+                            return Err(RtspError::internal("Can't TEARDOWN, no SETUP"));
                         };
                         let _ = state.teardown(s).await;
                         if let Some(tx) = tx {
@@ -4290,7 +4296,7 @@ impl RtspSrc {
                         // Check for session timeout
                         if state.session_manager.is_timed_out() {
                             gst::error!(CAT, "Session timed out, terminating");
-                            return Err(RtspError::Fatal("Session timeout".to_string()).into());
+                            return Err(RtspError::internal("Session timeout"));
                         }
                     }
                 },
@@ -4408,7 +4414,7 @@ impl RtspManager {
         Ok(())
     }
 
-    fn configure_session(&self, session_id: u32, probation: u32) -> Result<(), RtspError> {
+    fn configure_session(&self, session_id: u32, probation: u32) -> Result<(), super::error::RtspError> {
         // Configure probation on the RTP session (similar to original rtspsrc)
         if !self.using_rtp2 {
             // Use get-internal-session signal to get the rtpsession object
@@ -4641,7 +4647,7 @@ impl RtspTaskState {
         method: Method,
         uri: Url,
         mut req_builder: rtsp_types::RequestBuilder,
-    ) -> Result<Response<Body>, RtspError> {
+    ) -> Result<Response<Body>, super::error::RtspError> {
         // Add auth header if we already have auth state
         if let Some(auth_header) = auth::generate_auth_header(
             &mut self.auth_state,
@@ -4660,7 +4666,9 @@ impl RtspTaskState {
 
         let rsp = match self.stream.next().await {
             Some(Ok(rtsp_types::Message::Response(rsp))) => Ok(rsp),
-            Some(Ok(m)) => Err(RtspError::UnexpectedMessage("authentication response", m)),
+            Some(Ok(m)) => Err(RtspError::Protocol(super::error::ProtocolError::InvalidResponse {
+                details: format!("Expected authentication response, got: {:?}", m),
+            })),
             Some(Err(e)) => Err(e.into()),
             None => Err(std::io::Error::new(
                 std::io::ErrorKind::UnexpectedEof,
@@ -4713,10 +4721,9 @@ impl RtspTaskState {
 
                 let retry_rsp = match self.stream.next().await {
                     Some(Ok(rtsp_types::Message::Response(rsp))) => Ok(rsp),
-                    Some(Ok(m)) => Err(RtspError::UnexpectedMessage(
-                        "authentication retry response",
-                        m,
-                    )),
+                    Some(Ok(m)) => Err(RtspError::Protocol(super::error::ProtocolError::InvalidResponse {
+                        details: format!("Expected authentication retry response, got: {:?}", m),
+                    })),
                     Some(Err(e)) => Err(e.into()),
                     None => Err(std::io::Error::new(
                         std::io::ErrorKind::UnexpectedEof,
@@ -4740,9 +4747,9 @@ impl RtspTaskState {
         cseq: u32,
         req_name: Method,
         session: Option<&Session>,
-    ) -> Result<(), RtspError> {
+    ) -> Result<(), super::error::RtspError> {
         if rsp.status() != StatusCode::Ok {
-            return Err(RtspError::Fatal(format!(
+            return Err(RtspError::internal(format!(
                 "{req_name:?} request failed: {}",
                 rsp.reason_phrase()
             )));
@@ -4750,7 +4757,7 @@ impl RtspTaskState {
         match rsp.typed_header::<CSeq>() {
             Ok(Some(v)) => {
                 if *v != cseq {
-                    return Err(RtspError::InvalidMessage("cseq does not match"));
+                    return Err(RtspError::internal("cseq does not match"));
                 }
             }
             Ok(None) => {
@@ -4771,7 +4778,7 @@ impl RtspTaskState {
         if let Some(s) = session {
             if let Some(have_s) = rsp.typed_header::<Session>()? {
                 if s.0 != have_s.0 {
-                    return Err(RtspError::Fatal(format!(
+                    return Err(RtspError::internal(format!(
                         "Session in header {} does not match our session {}",
                         s.0, have_s.0
                     )));
@@ -4800,7 +4807,7 @@ impl RtspTaskState {
         Self::check_response(&rsp, self.cseq, Method::Options, None)?;
 
         let Ok(Some(methods)) = rsp.typed_header::<Public>() else {
-            return Err(RtspError::InvalidMessage(
+            return Err(RtspError::internal(
                 "OPTIONS response does not contain a valid Public header",
             ));
         };
@@ -4818,7 +4825,7 @@ impl RtspTaskState {
             }
         }
         if !unsupported.is_empty() {
-            Err(RtspError::Fatal(format!(
+            Err(RtspError::internal(format!(
                 "Server doesn't support the required method{} {}",
                 if unsupported.len() == 1 { "" } else { "s:" },
                 unsupported.join(",")
@@ -4867,12 +4874,12 @@ impl RtspTaskState {
         mode: &TransportMode,
     ) -> Result<RtspTransportInfo, RtspError> {
         let mut last_error =
-            RtspError::Fatal("No matching transport found matching selected protocols".to_string());
+            RtspError::internal("No matching transport found matching selected protocols");
         let mut parsed_transports = Vec::new();
         for transport in transports.iter() {
             let Transport::Rtp(t) = transport else {
                 last_error =
-                    RtspError::Fatal(format!("Expected RTP transport, got {:#?}", transports));
+                    RtspError::internal(format!("Expected RTP transport, got {:#?}", transports));
                 continue;
             };
             // RTSP 2 specifies that we can have multiple SSRCs in the response
@@ -4881,7 +4888,7 @@ impl RtspTaskState {
                 s.set("ssrc", ssrc)
             }
             if !t.params.mode.is_empty() && !t.params.mode.contains(mode) {
-                last_error = RtspError::Fatal(format!(
+                last_error = RtspError::internal(format!(
                     "Requested mode {:?} doesn't match server modes: {:?}",
                     mode, t.params.mode
                 ));
@@ -4890,7 +4897,7 @@ impl RtspTaskState {
             let parsed = match RtspTransportInfo::try_from(t) {
                 Ok(p) => p,
                 Err(err) => {
-                    last_error = err;
+                    last_error = err.into();
                     continue;
                 }
             };
@@ -5142,7 +5149,7 @@ impl RtspTaskState {
             Self::check_response(&rsp, self.cseq, Method::Setup, session.as_ref())?;
             let new_session = rsp
                 .typed_header::<Session>()?
-                .ok_or(RtspError::InvalidMessage("No session in SETUP response"))?;
+                .ok_or_else(|| RtspError::internal("No session in SETUP response"))?;
             // Manually strip timeout field: https://github.com/sdroege/rtsp-types/issues/24
             session.replace(Session(new_session.0.clone(), None));
 
@@ -5165,7 +5172,7 @@ impl RtspTaskState {
                 if transports.len() == 1 {
                     Self::parse_setup_transports(&transports, &mut s, &protocols, &mode)
                 } else {
-                    Err(RtspError::InvalidMessage(
+                    Err(RtspError::internal(
                         "No transport header in SETUP response",
                     ))
                 }
@@ -5210,12 +5217,12 @@ impl RtspTaskState {
                 RtspTransportInfo::Tcp {
                     channels: (rtp_ch, rtcp_ch),
                 } => {
-                    if *rtp_ch != stream_num {
+                    if rtp_ch != &stream_num {
                         gst::info!(CAT, "RTP channel changed: {stream_num} -> {rtp_ch}");
                     }
                     stream_num += 1;
                     if let Some(rtcp_ch) = rtcp_ch {
-                        if *rtcp_ch != stream_num {
+                        if rtcp_ch != &stream_num {
                             gst::info!(CAT, "RTCP channel changed: {stream_num} -> {rtcp_ch}");
                         }
                         stream_num += 1;
@@ -5686,7 +5693,7 @@ impl RtspTaskState {
         let mut parameters = Vec::new();
         if !rsp.body().is_empty() {
             let body_str = std::str::from_utf8(rsp.body())
-                .map_err(|e| RtspError::Fatal(format!("Invalid UTF-8 in response: {}", e)))?;
+                .map_err(|e| RtspError::internal(format!("Invalid UTF-8 in response: {}", e)))?;
 
             for line in body_str.lines() {
                 if let Some((key, value)) = line.split_once(':') {

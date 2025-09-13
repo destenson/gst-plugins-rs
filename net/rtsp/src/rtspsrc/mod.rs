@@ -43,10 +43,15 @@ mod body;
 mod buffer_pool;
 mod connection_pool;
 mod connection_racer;
+pub mod error;
+pub mod error_recovery;
+mod error_migration_example;
+#[cfg(test)]
+mod error_tests;
 mod http_tunnel;
 mod imp;
 mod proxy;
-mod retry;
+pub mod retry;
 mod rtcp_enhanced;
 mod sdp;
 mod session_manager;

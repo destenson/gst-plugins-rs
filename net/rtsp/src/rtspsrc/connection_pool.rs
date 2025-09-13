@@ -4,7 +4,7 @@
 // This module provides connection pooling to reuse TCP connections
 // when connecting to multiple streams from the same server
 
-use anyhow::{anyhow, Result};
+use super::error::{ConfigurationError, Result, RtspError};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -114,13 +114,17 @@ impl ServerPool {
             Ok(())
         } else {
             // Pool is full, don't accept the connection
-            Err(anyhow!("Connection pool full for server"))
+            Err(RtspError::Configuration(ConfigurationError::ResourceAllocationFailed {
+                resource: "Connection pool full for server".to_string(),
+            }))
         }
     }
 
     fn add_new(&mut self, stream: TcpStream, server_addr: SocketAddr) -> Result<()> {
         if self.connections.len() >= self.max_connections {
-            return Err(anyhow!("Connection pool full for server"));
+            return Err(RtspError::Configuration(ConfigurationError::ResourceAllocationFailed {
+                resource: "Connection pool full for server".to_string(),
+            }));
         }
         self.connections
             .push(PooledConnection::new(stream, server_addr));
