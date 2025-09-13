@@ -87,6 +87,24 @@ impl ConnectionRacer {
         Self { config }
     }
 
+    /// Update the racing strategy dynamically
+    pub fn update_strategy(&mut self, strategy: ConnectionRacingStrategy) {
+        if self.config.strategy != strategy {
+            gst::info!(
+                CAT,
+                "Racing strategy changed from {:?} to {:?}",
+                self.config.strategy,
+                strategy
+            );
+            self.config.strategy = strategy;
+        }
+    }
+
+    /// Get the current racing strategy
+    pub fn current_strategy(&self) -> ConnectionRacingStrategy {
+        self.config.strategy
+    }
+
     /// Attempt to connect using the configured racing strategy
     pub async fn connect(&self, hostname_port: &str) -> Result<TcpStream, std::io::Error> {
         match self.config.strategy {

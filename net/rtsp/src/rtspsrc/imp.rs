@@ -1607,6 +1607,18 @@ impl ObjectImpl for RtspSrc {
                     .default_value("none")
                     .mutable_ready()
                     .build(),
+                glib::ParamSpecString::builder("auto-mode-status")
+                    .nick("Auto Mode Status")
+                    .blurb("Current auto mode strategy selection status")
+                    .default_value("")
+                    .read_only()
+                    .build(),
+                glib::ParamSpecString::builder("current-racing-strategy")
+                    .nick("Current Racing Strategy")
+                    .blurb("Currently active connection racing strategy")
+                    .default_value("none")
+                    .read_only()
+                    .build(),
                 // Telemetry properties (read-only)
                 #[cfg(feature = "telemetry")]
                 glib::ParamSpecUInt64::builder("metrics-connection-attempts")
@@ -2612,6 +2624,17 @@ impl ObjectImpl for RtspSrc {
                 let settings = self.settings.lock().unwrap();
                 settings.connection_racing.as_str().to_value()
             }
+            "auto-mode-status" => {
+                // TODO: Store and retrieve auto mode status from task
+                // For now, return empty string
+                String::new().to_value()
+            }
+            "current-racing-strategy" => {
+                // TODO: Store and retrieve current racing strategy from task
+                // For now, return the configured strategy
+                let settings = self.settings.lock().unwrap();
+                settings.connection_racing.as_str().to_value()
+            }
             // Telemetry metrics properties
             #[cfg(feature = "telemetry")]
             "metrics-connection-attempts" => {
@@ -3429,22 +3452,38 @@ impl RtspSrc {
                 racing_timeout: std::time::Duration::from_nanos(settings.racing_timeout.nseconds()),
                 proxy_config,
             };
-            let racer = super::connection_racer::ConnectionRacer::new(racing_config);
+            let mut racer = super::connection_racer::ConnectionRacer::new(racing_config);
 
             // Apply timeout to entire connection process
             let connection_timeout = std::time::Duration::from_nanos(settings.timeout.nseconds());
             let connection_result = time::timeout(connection_timeout, async {
                 // TODO: Add TLS support
                 loop {
+                    // Update racing strategy based on auto mode recommendations
+                    if let Some(recommended_strategy) = retry_calc.get_racing_strategy() {
+                        racer.update_strategy(recommended_strategy);
+                    }
+
+                    // Mark connection attempt start
+                    retry_calc.mark_connection_start();
+
                     match racer.connect(&hostname_port).await {
-                        Ok(s) => return Ok(s),
+                        Ok(s) => {
+                            // Record successful connection
+                            retry_calc.record_connection_result(true, false);
+                            return Ok(s);
+                        }
                         Err(err) => {
+                            // Record failed connection
+                            retry_calc.record_connection_result(false, false);
+
                             if let Some(delay) = retry_calc.next_delay() {
                                 let attempt = retry_calc.current_attempt();
+                                let auto_summary = retry_calc.get_auto_summary().unwrap_or_default();
                                 gst::warning!(
                                     CAT,
-                                    "Connection to '{}' failed (attempt {attempt}): {err:#?}. Retrying in {} ms...",
-                                    url, delay.as_millis()
+                                    "Connection to '{}' failed (attempt {attempt}): {err:#?}. Retrying in {} ms... Auto mode: {}",
+                                    url, delay.as_millis(), auto_summary
                                 );
 
                                 // Post a message about the retry attempt
