@@ -82,17 +82,6 @@ Roughly in order of priority:
 * ONVIF trick mode support
 * RTSP 2 support (no servers exist at present)
 
-## Missing configuration properties
-
-These are some misc rtspsrc props that haven't been implemented in rtspsrc2
-yet:
-
-* latency
-* do-rtx
-* do-rtcp
-* iface
-* user-agent
-
 ## Testing
 
 ### Unit Tests
