@@ -3902,6 +3902,7 @@ dependencies = [
  "anyhow",
  "atomic_refcell",
  "base64 0.22.1",
+ "bytes",
  "chrono",
  "console-subscriber",
  "data-encoding",
