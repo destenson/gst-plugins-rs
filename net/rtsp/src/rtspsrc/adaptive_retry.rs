@@ -274,6 +274,8 @@ pub struct AdaptiveRetryManager {
     current_strategy: Option<Strategy>,
     untested_strategies: Vec<Strategy>,
     exploration_rate: f32,
+    last_save_time: Arc<Mutex<Instant>>,
+    save_counter: Arc<Mutex<u64>>,
 }
 
 impl AdaptiveRetryManager {
@@ -295,6 +297,8 @@ impl AdaptiveRetryManager {
             current_strategy: None,
             untested_strategies,
             exploration_rate: DEFAULT_EXPLORATION_RATE,
+            last_save_time: Arc::new(Mutex::new(Instant::now())),
+            save_counter: Arc::new(Mutex::new(0)),
         }
     }
 
@@ -428,15 +432,28 @@ impl AdaptiveRetryManager {
         metrics.total_attempts += 1;
         metrics.last_updated = SystemTime::now();
         metrics.update_confidence();
+        
+        // Increment save counter
+        {
+            let mut counter = self.save_counter.lock().unwrap();
+            *counter += 1;
+        }
 
-        // Persist if enabled
-        if self.config.persistence {
+        // Persist if enabled (every 100 attempts or every 5 minutes)
+        if self.config.persistence && self.should_save() {
             let _ = self.persist_metrics(&metrics);
+            *self.last_save_time.lock().unwrap() = Instant::now();
+            *self.save_counter.lock().unwrap() = 0;
         }
     }
 
     pub fn get_current_confidence(&self) -> f32 {
         self.metrics.lock().unwrap().confidence_score
+    }
+    
+    /// Get confidence score as f64 (alias for compatibility)
+    pub fn get_confidence_score(&self) -> f64 {
+        self.get_current_confidence() as f64
     }
 
     pub fn get_best_strategy(&self) -> Strategy {
@@ -450,6 +467,54 @@ impl AdaptiveRetryManager {
             .unwrap_or(Strategy::ExponentialJitter)
     }
 
+    /// Check if we should save (every 100 attempts or 5 minutes)
+    fn should_save(&self) -> bool {
+        const SAVE_INTERVAL: Duration = Duration::from_secs(300); // 5 minutes
+        const SAVE_FREQUENCY: u64 = 100; // Every 100 attempts
+        
+        let counter = *self.save_counter.lock().unwrap();
+        let last_save = *self.last_save_time.lock().unwrap();
+        
+        counter >= SAVE_FREQUENCY || last_save.elapsed() > SAVE_INTERVAL
+    }
+    
+    /// Force save current metrics (e.g., on shutdown)
+    pub fn save_now(&self) -> Result<(), std::io::Error> {
+        if self.config.persistence {
+            let metrics = self.metrics.lock().unwrap();
+            self.persist_metrics(&metrics)
+        } else {
+            Ok(())
+        }
+    }
+    
+    /// Clean up old cache entries
+    pub fn cleanup_cache() -> Result<(), std::io::Error> {
+        let cache_dir = Self::cache_dir().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "Cache directory not found")
+        })?;
+        
+        if !cache_dir.exists() {
+            return Ok(());
+        }
+        
+        let now = SystemTime::now();
+        for entry in fs::read_dir(&cache_dir)? {
+            let entry = entry?;
+            let metadata = entry.metadata()?;
+            
+            if let Ok(modified) = metadata.modified() {
+                if let Ok(age) = now.duration_since(modified) {
+                    if age > Duration::from_secs(CACHE_TTL_DAYS * 24 * 3600) {
+                        let _ = fs::remove_file(entry.path());
+                    }
+                }
+            }
+        }
+        
+        Ok(())
+    }
+    
     fn cache_dir() -> Option<PathBuf> {
         dirs::cache_dir().map(|d| d.join("gstreamer").join("rtspsrc2"))
     }

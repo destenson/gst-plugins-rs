@@ -16,7 +16,7 @@ impl Default for BufferMode {
 }
 
 impl BufferMode {
-    fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             BufferMode::None => "none",
             BufferMode::Slave => "slave",
@@ -26,7 +26,7 @@ impl BufferMode {
         }
     }
 
-    fn from_str(s: &str) -> Result<Self, String> {
+    pub fn from_str(s: &str) -> Result<Self, String> {
         match s {
             "none" => Ok(BufferMode::None),
             "slave" => Ok(BufferMode::Slave),
@@ -37,7 +37,7 @@ impl BufferMode {
         }
     }
 
-    fn as_int(&self) -> u32 {
+    pub fn as_int(&self) -> u32 {
         match self {
             BufferMode::None => 0,
             BufferMode::Slave => 1,
@@ -47,7 +47,7 @@ impl BufferMode {
         }
     }
 
-    fn from_int(i: u32) -> Result<Self, String> {
+    pub fn from_int(i: u32) -> Result<Self, String> {
         match i {
             0 => Ok(BufferMode::None),
             1 => Ok(BufferMode::Slave),

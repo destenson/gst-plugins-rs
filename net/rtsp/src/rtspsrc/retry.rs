@@ -100,6 +100,9 @@ pub struct RetryCalculator {
     last_attempt_time: Option<Instant>,
     last_connection_start: Option<Instant>,
     server_url: Option<String>,
+    #[cfg(feature = "telemetry")]
+    telemetry: Option<super::telemetry::RtspMetrics>,
+    first_failure_time: Option<Instant>,
 }
 
 impl RetryCalculator {
@@ -119,6 +122,9 @@ impl RetryCalculator {
             last_attempt_time: None,
             last_connection_start: None,
             server_url: None,
+            #[cfg(feature = "telemetry")]
+            telemetry: None,
+            first_failure_time: None,
         }
     }
 
@@ -129,6 +135,12 @@ impl RetryCalculator {
             let adaptive_config = AdaptiveRetryConfig::default();
             self.adaptive_manager = Some(AdaptiveRetryManager::new(url, adaptive_config));
         }
+        self
+    }
+    
+    #[cfg(feature = "telemetry")]
+    pub fn with_telemetry(mut self, telemetry: super::telemetry::RtspMetrics) -> Self {
+        self.telemetry = Some(telemetry);
         self
     }
 
@@ -150,7 +162,13 @@ impl RetryCalculator {
             return None;
         }
 
-        let delay = match self.config.strategy {
+        let current_strategy = if self.config.strategy == RetryStrategy::Auto {
+            self.auto_selector.as_ref().map(|s| s.get_strategy()).unwrap_or(self.config.strategy)
+        } else {
+            self.config.strategy
+        };
+
+        let delay = match current_strategy {
             RetryStrategy::None => return None,
             RetryStrategy::Immediate => Duration::ZERO,
             RetryStrategy::Linear => self.calculate_linear_delay(),
@@ -164,6 +182,12 @@ impl RetryCalculator {
 
         self.attempt += 1;
         self.last_attempt_time = Some(Instant::now());
+        
+        // Record retry in telemetry
+        #[cfg(feature = "telemetry")]
+        if let Some(ref telemetry) = self.telemetry {
+            telemetry.record_retry(current_strategy.as_str());
+        }
 
         // Cap at max_delay
         Some(delay.min(self.config.max_delay))
@@ -173,6 +197,7 @@ impl RetryCalculator {
         self.attempt = 0;
         self.last_attempt_time = None;
         self.last_connection_start = None;
+        self.first_failure_time = None;
         if let Some(ref mut selector) = self.auto_selector {
             selector.reset();
         }
@@ -189,6 +214,23 @@ impl RetryCalculator {
 
     /// Record the result of a connection attempt for auto mode
     pub fn record_connection_result(&mut self, success: bool, connection_dropped: bool) {
+        // Track first failure time for recovery metrics
+        if !success && self.first_failure_time.is_none() {
+            self.first_failure_time = Some(Instant::now());
+        }
+        
+        // If successful, record recovery time
+        if success {
+            #[cfg(feature = "telemetry")]
+            if let Some(ref telemetry) = self.telemetry {
+                if let Some(first_failure) = self.first_failure_time {
+                    let recovery_time_ms = first_failure.elapsed().as_millis() as u64;
+                    telemetry.record_connection_recovery(recovery_time_ms);
+                }
+            }
+            self.first_failure_time = None;
+        }
+        
         if let Some(ref mut selector) = self.auto_selector {
             let connection_duration = if success && !connection_dropped {
                 // Connection is still alive
@@ -200,13 +242,43 @@ impl RetryCalculator {
                 // Connection failed
                 None
             };
-
+            
+            let old_strategy = selector.get_strategy();
             selector.record_attempt(ConnectionAttemptResult {
                 success,
                 connection_duration,
                 timestamp: Instant::now(),
                 retry_count: self.attempt,
             });
+            let new_strategy = selector.get_strategy();
+            
+            // Record strategy change in telemetry
+            #[cfg(feature = "telemetry")]
+            if old_strategy != new_strategy {
+                if let Some(ref telemetry) = self.telemetry {
+                    telemetry.record_retry_strategy_change(
+                        old_strategy.as_str(),
+                        new_strategy.as_str(),
+                        Some("auto-mode")
+                    );
+                }
+            }
+            
+            // Record auto mode pattern
+            #[cfg(feature = "telemetry")]
+            if let Some(ref telemetry) = self.telemetry {
+                let pattern = selector.get_network_pattern();
+                telemetry.record_auto_mode_pattern(&pattern.to_string());
+            }
+        }
+        
+        // Record adaptive confidence if using adaptive strategy
+        #[cfg(all(feature = "adaptive", feature = "telemetry"))]
+        if let Some(ref manager) = self.adaptive_manager {
+            if let Some(ref telemetry) = self.telemetry {
+                let confidence = manager.get_confidence_score();
+                telemetry.record_adaptive_confidence(confidence);
+            }
         }
     }
 
