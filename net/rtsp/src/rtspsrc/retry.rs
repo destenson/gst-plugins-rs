@@ -14,6 +14,8 @@ use std::time::{Duration, Instant};
 
 #[cfg(feature = "adaptive")]
 use super::adaptive_retry::{AdaptiveRetryConfig, AdaptiveRetryManager};
+use super::auto_selector::{AutoRetrySelector, ConnectionAttemptResult};
+use super::connection_racer::ConnectionRacingStrategy;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RetryStrategy {
@@ -25,6 +27,8 @@ pub enum RetryStrategy {
     Linear,
     Exponential,
     ExponentialJitter,
+    FirstWins,  // Connection racing strategy integrated with retry
+    LastWins,   // Connection racing strategy integrated with retry
 }
 
 impl Default for RetryStrategy {
@@ -44,6 +48,8 @@ impl RetryStrategy {
             "linear" => RetryStrategy::Linear,
             "exponential" => RetryStrategy::Exponential,
             "exponential-jitter" => RetryStrategy::ExponentialJitter,
+            "first-wins" => RetryStrategy::FirstWins,
+            "last-wins" => RetryStrategy::LastWins,
             _ => RetryStrategy::Auto,
         }
     }
@@ -58,6 +64,8 @@ impl RetryStrategy {
             RetryStrategy::Linear => "linear",
             RetryStrategy::Exponential => "exponential",
             RetryStrategy::ExponentialJitter => "exponential-jitter",
+            RetryStrategy::FirstWins => "first-wins",
+            RetryStrategy::LastWins => "last-wins",
         }
     }
 }
@@ -88,18 +96,28 @@ pub struct RetryCalculator {
     attempt: u32,
     #[cfg(feature = "adaptive")]
     adaptive_manager: Option<AdaptiveRetryManager>,
+    auto_selector: Option<AutoRetrySelector>,
     last_attempt_time: Option<Instant>,
+    last_connection_start: Option<Instant>,
     server_url: Option<String>,
 }
 
 impl RetryCalculator {
     pub fn new(config: RetryConfig) -> Self {
+        let auto_selector = if config.strategy == RetryStrategy::Auto {
+            Some(AutoRetrySelector::new())
+        } else {
+            None
+        };
+
         Self {
             config,
             attempt: 0,
             #[cfg(feature = "adaptive")]
             adaptive_manager: None,
+            auto_selector,
             last_attempt_time: None,
+            last_connection_start: None,
             server_url: None,
         }
     }
@@ -138,6 +156,7 @@ impl RetryCalculator {
             RetryStrategy::Linear => self.calculate_linear_delay(),
             RetryStrategy::Exponential => self.calculate_exponential_delay(false),
             RetryStrategy::ExponentialJitter => self.calculate_exponential_delay(true),
+            RetryStrategy::FirstWins | RetryStrategy::LastWins => Duration::from_millis(250),
             RetryStrategy::Auto => self.calculate_auto_delay(),
             #[cfg(feature = "adaptive")]
             RetryStrategy::Adaptive => self.calculate_adaptive_delay(),
@@ -153,10 +172,52 @@ impl RetryCalculator {
     pub fn reset(&mut self) {
         self.attempt = 0;
         self.last_attempt_time = None;
+        self.last_connection_start = None;
+        if let Some(ref mut selector) = self.auto_selector {
+            selector.reset();
+        }
     }
 
     pub fn current_attempt(&self) -> u32 {
         self.attempt
+    }
+
+    /// Mark the start of a connection attempt
+    pub fn mark_connection_start(&mut self) {
+        self.last_connection_start = Some(Instant::now());
+    }
+
+    /// Record the result of a connection attempt for auto mode
+    pub fn record_connection_result(&mut self, success: bool, connection_dropped: bool) {
+        if let Some(ref mut selector) = self.auto_selector {
+            let connection_duration = if success && !connection_dropped {
+                // Connection is still alive
+                self.last_connection_start.map(|start| start.elapsed())
+            } else if success && connection_dropped {
+                // Connection succeeded but then dropped
+                self.last_connection_start.map(|start| start.elapsed())
+            } else {
+                // Connection failed
+                None
+            };
+
+            selector.record_attempt(ConnectionAttemptResult {
+                success,
+                connection_duration,
+                timestamp: Instant::now(),
+                retry_count: self.attempt,
+            });
+        }
+    }
+
+    /// Get the recommended connection racing strategy from auto mode
+    pub fn get_racing_strategy(&self) -> Option<ConnectionRacingStrategy> {
+        self.auto_selector.as_ref().map(|s| s.get_racing_strategy())
+    }
+
+    /// Get auto mode status summary
+    pub fn get_auto_summary(&self) -> Option<String> {
+        self.auto_selector.as_ref().map(|s| s.get_summary())
     }
 
     fn calculate_linear_delay(&self) -> Duration {
@@ -176,10 +237,24 @@ impl RetryCalculator {
         }
     }
 
-    fn calculate_auto_delay(&self) -> Duration {
-        // Simple heuristic: use exponential with jitter for network issues
-        // This provides good balance between quick recovery and avoiding overload
-        self.calculate_exponential_delay(true)
+    fn calculate_auto_delay(&mut self) -> Duration {
+        if let Some(ref selector) = self.auto_selector {
+            // Use the auto-selected strategy
+            match selector.get_strategy() {
+                RetryStrategy::Immediate => Duration::ZERO,
+                RetryStrategy::Linear => self.calculate_linear_delay(),
+                RetryStrategy::Exponential => self.calculate_exponential_delay(false),
+                RetryStrategy::ExponentialJitter => self.calculate_exponential_delay(true),
+                RetryStrategy::FirstWins | RetryStrategy::LastWins => {
+                    // For racing strategies, use minimal delay
+                    Duration::from_millis(250)
+                }
+                _ => self.calculate_exponential_delay(true),
+            }
+        } else {
+            // Fallback to exponential with jitter
+            self.calculate_exponential_delay(true)
+        }
     }
 
     #[cfg(feature = "adaptive")]
@@ -246,6 +321,8 @@ mod tests {
             RetryStrategy::ExponentialJitter
         );
         assert_eq!(RetryStrategy::from_string("auto"), RetryStrategy::Auto);
+        assert_eq!(RetryStrategy::from_string("first-wins"), RetryStrategy::FirstWins);
+        assert_eq!(RetryStrategy::from_string("last-wins"), RetryStrategy::LastWins);
         #[cfg(feature = "adaptive")]
         assert_eq!(
             RetryStrategy::from_string("adaptive"),

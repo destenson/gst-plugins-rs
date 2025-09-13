@@ -587,6 +587,9 @@ struct Settings {
     max_parallel_connections: u32,
     racing_delay_ms: u32,
     racing_timeout: gst::ClockTime,
+    // Auto mode properties
+    auto_detection_attempts: u32,
+    auto_fallback_enabled: bool,
     seek_format: SeekFormat,
     // Authentication properties
     user_id: Option<String>,
@@ -688,6 +691,9 @@ impl Default for Settings {
             max_parallel_connections: 3,
             racing_delay_ms: 250,
             racing_timeout: gst::ClockTime::from_seconds(5),
+            // Auto mode defaults
+            auto_detection_attempts: 3,
+            auto_fallback_enabled: true,
             #[cfg(feature = "adaptive")]
             adaptive_learning: true,
             #[cfg(feature = "adaptive")]
@@ -1647,6 +1653,21 @@ impl ObjectImpl for RtspSrc {
                     .default_value(5_000_000_000) // 5 seconds
                     .mutable_ready()
                     .build(),
+                // Auto mode specific properties
+                glib::ParamSpecUInt::builder("auto-detection-attempts")
+                    .nick("Auto Detection Attempts")
+                    .blurb("Number of connection attempts before auto mode makes a strategy decision")
+                    .minimum(1)
+                    .maximum(10)
+                    .default_value(3)
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecBoolean::builder("auto-fallback-enabled")
+                    .nick("Auto Fallback Enabled")
+                    .blurb("Enable automatic fallback to other strategies on failure in auto mode")
+                    .default_value(true)
+                    .mutable_ready()
+                    .build(),
                 #[cfg(feature = "adaptive")]
                 glib::ParamSpecBoolean::builder("adaptive-learning")
                     .nick("Adaptive Learning")
@@ -2125,6 +2146,16 @@ impl ObjectImpl for RtspSrc {
             "racing-timeout" => {
                 let mut settings = self.settings.lock().unwrap();
                 settings.racing_timeout = value.get().expect("type checked upstream");
+                Ok(())
+            }
+            "auto-detection-attempts" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.auto_detection_attempts = value.get().expect("type checked upstream");
+                Ok(())
+            }
+            "auto-fallback-enabled" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.auto_fallback_enabled = value.get().expect("type checked upstream");
                 Ok(())
             }
             #[cfg(feature = "adaptive")]
@@ -2631,6 +2662,14 @@ impl ObjectImpl for RtspSrc {
             "racing-timeout" => {
                 let settings = self.settings.lock().unwrap();
                 settings.racing_timeout.to_value()
+            }
+            "auto-detection-attempts" => {
+                let settings = self.settings.lock().unwrap();
+                settings.auto_detection_attempts.to_value()
+            }
+            "auto-fallback-enabled" => {
+                let settings = self.settings.lock().unwrap();
+                settings.auto_fallback_enabled.to_value()
             }
             #[cfg(feature = "adaptive")]
             "adaptive-learning" => {
