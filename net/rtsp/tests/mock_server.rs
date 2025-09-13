@@ -331,7 +331,7 @@ async fn handle_client(
                     // Empty body for keep-alive
                     Vec::new()
                 };
-                
+
                 Response::builder(Version::V1_0, StatusCode::Ok)
                     .header(headers::CSEQ, cseq)
                     .header(headers::CONTENT_TYPE, "text/parameters")

@@ -199,15 +199,15 @@ pub enum RtspProtocol {
     UdpMulticast,
     Udp,
     Tcp,
-    Http,  // HTTP tunneling
+    Http, // HTTP tunneling
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum HttpTunnelMode {
     #[default]
-    Auto,    // Automatically detect need for tunneling
-    Never,   // Never use HTTP tunneling
-    Always,  // Always use HTTP tunneling
+    Auto, // Automatically detect need for tunneling
+    Never,  // Never use HTTP tunneling
+    Always, // Always use HTTP tunneling
 }
 
 impl fmt::Display for RtspProtocol {
@@ -689,7 +689,7 @@ impl Default for Settings {
 #[derive(Debug)]
 enum Commands {
     Play,
-    //Pause,
+    Pause,
     Seek {
         position: gst::ClockTime,
         flags: gst::SeekFlags,
@@ -1195,9 +1195,14 @@ impl RtspSrc {
         let cmd_queue = self.cmd_queue();
         let parameters = Some(vec![parameter.to_string()]);
         let promise = promise.clone();
-        
+
         RUNTIME.spawn(async move {
-            let _ = cmd_queue.send(Commands::GetParameter { parameters, promise }).await;
+            let _ = cmd_queue
+                .send(Commands::GetParameter {
+                    parameters,
+                    promise,
+                })
+                .await;
         });
 
         true
@@ -1248,9 +1253,14 @@ impl RtspSrc {
         let cmd_queue = self.cmd_queue();
         let parameters = Some(parameters);
         let promise = promise.clone();
-        
+
         RUNTIME.spawn(async move {
-            let _ = cmd_queue.send(Commands::GetParameter { parameters, promise }).await;
+            let _ = cmd_queue
+                .send(Commands::GetParameter {
+                    parameters,
+                    promise,
+                })
+                .await;
         });
 
         true
@@ -1291,9 +1301,14 @@ impl RtspSrc {
         let cmd_queue = self.cmd_queue();
         let parameters = vec![(parameter.to_string(), value.to_string())];
         let promise = promise.clone();
-        
+
         RUNTIME.spawn(async move {
-            let _ = cmd_queue.send(Commands::SetParameter { parameters, promise }).await;
+            let _ = cmd_queue
+                .send(Commands::SetParameter {
+                    parameters,
+                    promise,
+                })
+                .await;
         });
 
         true
@@ -3028,7 +3043,7 @@ impl ElementImpl for RtspSrc {
                 &gst::Caps::new_empty_simple("application/x-rtp"),
             )
             .unwrap();
-            
+
             // Sink pad template for ONVIF backchannel
             let sink_pad_template = gst::PadTemplate::new(
                 "backchannel_%u",
@@ -3083,6 +3098,10 @@ impl ElementImpl for RtspSrc {
                 let cmd_queue = self.cmd_queue();
                 //self.async_start().map_err(|_| gst::StateChangeError)?;
                 RUNTIME.spawn(async move { cmd_queue.send(Commands::Play).await });
+            }
+            gst::StateChange::PlayingToPaused => {
+                let cmd_queue = self.cmd_queue();
+                RUNTIME.spawn(async move { cmd_queue.send(Commands::Pause).await });
             }
             _ => {}
         }
@@ -3539,7 +3558,7 @@ impl RtspSrc {
                 )
                 .await?
         };
-        
+
         // Punch NAT holes for UDP transport after SETUP
         RtspTaskState::punch_nat_holes(&state.setup_params, settings.nat_method).await;
         let manager = RtspManager::new_with_settings(
@@ -3868,7 +3887,7 @@ impl RtspSrc {
                             if *expected == Method::GetParameter {
                                 // GET_PARAMETER response received
                                 let parameters = state.get_parameter_response(&rsp, *cseq, session.as_ref()).await?;
-                                
+
                                 // Check if this was a user request with a promise
                                 if let Some(promise) = state.pending_get_parameter_promises.remove(cseq) {
                                     // Fulfill promise with parameters
@@ -3887,7 +3906,7 @@ impl RtspSrc {
                             } else if *expected == Method::SetParameter {
                                 // SET_PARAMETER response received
                                 state.set_parameter_response(&rsp, *cseq, session.as_ref()).await?;
-                                
+
                                 // Check if this was a user request with a promise
                                 if let Some(promise) = state.pending_set_parameter_promises.remove(cseq) {
                                     // Fulfill promise with success
@@ -3912,6 +3931,10 @@ impl RtspSrc {
                             Method::Play => {
                                 state.play_response(&rsp, *cseq, s).await?;
                                 self.post_complete("request", "PLAY response received");
+                            }
+                            Method::Pause => {
+                                state.pause_response(&rsp, *cseq, s).await?;
+                                self.post_complete("request", "PAUSE response received");
                             }
                             Method::Teardown => state.teardown_response(&rsp, *cseq, s).await?,
                             Method::GetParameter | Method::SetParameter => {
@@ -3942,6 +3965,16 @@ impl RtspSrc {
                             self.post_cancelled("request", "PLAY request cancelled");
                         })?;
                         expected_response = Some((Method::Play, cseq));
+                    },
+                    Commands::Pause => {
+                        let Some(s) = &session else {
+                            return Err(RtspError::InvalidMessage("Can't PAUSE, no SETUP").into());
+                        };
+                        self.post_start("request", "PAUSE request sent");
+                        let cseq = state.pause(s).await.inspect_err(|_err| {
+                            self.post_cancelled("request", "PAUSE request cancelled");
+                        })?;
+                        expected_response = Some((Method::Pause, cseq));
                     },
                     Commands::Seek { position, flags } => {
                         let Some(s) = &session else {
@@ -4006,7 +4039,7 @@ impl RtspSrc {
                     }
                     Commands::GetParameter { parameters, promise } => {
                         gst::debug!(CAT, "Received GetParameter command: {:?}", parameters);
-                        
+
                         // Send GET_PARAMETER request
                         match state.get_parameter(session.as_ref(), parameters).await {
                             Ok(cseq) => {
@@ -4026,7 +4059,7 @@ impl RtspSrc {
                     }
                     Commands::SetParameter { parameters, promise } => {
                         gst::debug!(CAT, "Received SetParameter command: {:?}", parameters);
-                        
+
                         // Send SET_PARAMETER request
                         match state.set_parameter(session.as_ref(), parameters).await {
                             Ok(cseq) => {
@@ -4309,12 +4342,18 @@ impl RtspTaskState {
                 ..
             } = &params.transport
             {
-                if let (Some(sockets), Some(source), Some(server_port)) = (sockets, source, server_port) {
+                if let (Some(sockets), Some(source), Some(server_port)) =
+                    (sockets, source, server_port)
+                {
                     // Parse server address
                     let server_addr = match source.parse::<IpAddr>() {
                         Ok(addr) => addr,
                         Err(_) => {
-                            gst::warning!(CAT, "Failed to parse server address for NAT punching: {}", source);
+                            gst::warning!(
+                                CAT,
+                                "Failed to parse server address for NAT punching: {}",
+                                source
+                            );
                             continue;
                         }
                     };
@@ -4332,8 +4371,15 @@ impl RtspTaskState {
                                 0x00, 0x00, 0x00, 0x00, // SSRC
                             ];
                             match sockets.0.send_to(&dummy_rtp, rtp_dest).await {
-                                Ok(_) => gst::debug!(CAT, "Sent NAT punch packet {} to RTP port {}", i + 1, rtp_port),
-                                Err(e) => gst::warning!(CAT, "Failed to send NAT punch packet: {}", e),
+                                Ok(_) => gst::debug!(
+                                    CAT,
+                                    "Sent NAT punch packet {} to RTP port {}",
+                                    i + 1,
+                                    rtp_port
+                                ),
+                                Err(e) => {
+                                    gst::warning!(CAT, "Failed to send NAT punch packet: {}", e)
+                                }
                             }
                             tokio::time::sleep(Duration::from_millis(10)).await;
                         }
@@ -4351,8 +4397,15 @@ impl RtspTaskState {
                                 0x00, 0x00, 0x00, 0x00, // SSRC
                             ];
                             match rtcp_socket.send_to(&dummy_rtcp, rtcp_dest).await {
-                                Ok(_) => gst::debug!(CAT, "Sent NAT punch packet {} to RTCP port {}", i + 1, rtcp_port),
-                                Err(e) => gst::warning!(CAT, "Failed to send NAT punch packet: {}", e),
+                                Ok(_) => gst::debug!(
+                                    CAT,
+                                    "Sent NAT punch packet {} to RTCP port {}",
+                                    i + 1,
+                                    rtcp_port
+                                ),
+                                Err(e) => {
+                                    gst::warning!(CAT, "Failed to send NAT punch packet: {}", e)
+                                }
                             }
                             tokio::time::sleep(Duration::from_millis(10)).await;
                         }
@@ -4361,7 +4414,6 @@ impl RtspTaskState {
             }
         }
     }
-
 
     fn new(
         url: Url,
@@ -4739,6 +4791,12 @@ impl RtspTaskState {
             let media = m.media.to_ascii_lowercase();
             s.set("media", &media);
             s.set("payload", pt as i32);
+
+            // Check if SRTP is indicated by the media protocol
+            if super::srtp::is_srtp_protocol(&m.proto) {
+                s.set("uses-srtp", true);
+                s.set("srtp-profile", &m.proto);
+            }
 
             if let Err(err) = sdp::parse_media_attributes(&m.attributes, pt, &media, &mut s) {
                 gst::warning!(
@@ -5250,6 +5308,42 @@ impl RtspTaskState {
         Ok(())
     }
 
+    async fn pause(&mut self, session: &Session) -> Result<u32, RtspError> {
+        self.cseq += 1;
+        let request_uri = self.aggregate_control.as_ref().unwrap_or(&self.url).clone();
+        let mut req_builder = Request::builder(Method::Pause, self.version)
+            .typed_header::<CSeq>(&self.cseq.into())
+            .header(USER_AGENT, DEFAULT_USER_AGENT)
+            .request_uri(request_uri.clone())
+            .typed_header::<Session>(session);
+
+        // Add auth header if we have auth state
+        if let Some(auth_header) = auth::generate_auth_header(
+            &mut self.auth_state,
+            self.user_id.as_deref(),
+            self.user_pw.as_deref(),
+            &Method::Pause,
+            &request_uri.to_string(),
+        ) {
+            req_builder = req_builder.header(auth::AUTHORIZATION.clone(), auth_header);
+        }
+
+        let req = req_builder.build(Body::default());
+        gst::debug!(CAT, "-->> {req:#?}");
+        self.sink.send(req.into()).await?;
+        Ok(self.cseq)
+    }
+
+    async fn pause_response(
+        &mut self,
+        rsp: &Response<Body>,
+        cseq: u32,
+        session: &Session,
+    ) -> Result<(), RtspError> {
+        Self::check_response(rsp, cseq, Method::Pause, Some(session))?;
+        Ok(())
+    }
+
     async fn teardown(&mut self, session: &Session) -> Result<u32, RtspError> {
         self.cseq += 1;
         let request_uri = self.aggregate_control.as_ref().unwrap_or(&self.url).clone();
@@ -5662,11 +5756,11 @@ async fn udp_rtcp_task(
 ) {
     let mut buf = vec![0; UDP_PACKET_MAX_SIZE as usize];
     let mut cache: LruCache<_, _> = LruCache::new(NonZeroUsize::new(RTCP_ADDR_CACHE_SIZE).unwrap());
-    
+
     // NAT keep-alive timer - send dummy packet every 20 seconds to keep NAT mapping alive
     let mut nat_keepalive_interval = tokio::time::interval(Duration::from_secs(20));
     nat_keepalive_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    
+
     let error = loop {
         tokio::select! {
             send_rtcp = rx.recv() => match send_rtcp {

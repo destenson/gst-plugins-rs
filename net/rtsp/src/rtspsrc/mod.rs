@@ -48,6 +48,7 @@ mod retry;
 mod rtcp_enhanced;
 mod sdp;
 mod session_manager;
+pub mod srtp;
 mod tcp_message;
 #[cfg(feature = "telemetry")]
 mod telemetry;

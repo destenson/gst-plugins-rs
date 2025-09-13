@@ -42,7 +42,7 @@ async fn test_get_parameter_action() {
 
     // Create a promise for the get-parameter action
     let promise = gst::Promise::new();
-    
+
     // Call get-parameter action signal
     let result = element.emit_by_name::<bool>(
         "get-parameter",
@@ -52,7 +52,7 @@ async fn test_get_parameter_action() {
             &promise.to_value(),
         ],
     );
-    
+
     // The action should return true (request sent)
     assert!(result, "get-parameter action should return true");
 }
@@ -75,11 +75,11 @@ async fn test_get_parameters_action() {
 
     // Create a promise for the get-parameters action
     let promise = gst::Promise::new();
-    
+
     // Create parameter list
     let params = vec!["param1".to_string(), "param2".to_string()];
     let params_variant = gst::glib::Variant::from(params);
-    
+
     // Call get-parameters action signal
     let result = element.emit_by_name::<bool>(
         "get-parameters",
@@ -89,7 +89,7 @@ async fn test_get_parameters_action() {
             &promise.to_value(),
         ],
     );
-    
+
     // The action should return true (request sent)
     assert!(result, "get-parameters action should return true");
 }
@@ -112,7 +112,7 @@ async fn test_set_parameter_action() {
 
     // Create a promise for the set-parameter action
     let promise = gst::Promise::new();
-    
+
     // Call set-parameter action signal
     let result = element.emit_by_name::<bool>(
         "set-parameter",
@@ -123,7 +123,7 @@ async fn test_set_parameter_action() {
             &promise.to_value(),
         ],
     );
-    
+
     // The action should return true (request sent)
     assert!(result, "set-parameter action should return true");
 }
@@ -138,7 +138,7 @@ fn test_parameter_signal_validation() {
         .expect("Failed to create rtspsrc2 element");
 
     let promise = gst::Promise::new();
-    
+
     // Test empty parameter name (should return false)
     let result = element.emit_by_name::<bool>(
         "get-parameter",
@@ -149,7 +149,7 @@ fn test_parameter_signal_validation() {
         ],
     );
     assert!(!result, "get-parameter with empty name should return false");
-    
+
     // Test empty parameters array (should return false)
     let empty_params = Vec::<String>::new();
     let empty_variant = gst::glib::Variant::from(empty_params);
@@ -161,8 +161,11 @@ fn test_parameter_signal_validation() {
             &promise.to_value(),
         ],
     );
-    assert!(!result, "get-parameters with empty array should return false");
-    
+    assert!(
+        !result,
+        "get-parameters with empty array should return false"
+    );
+
     // Test empty parameter name in set-parameter (should return false)
     let result = element.emit_by_name::<bool>(
         "set-parameter",

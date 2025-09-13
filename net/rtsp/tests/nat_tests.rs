@@ -10,10 +10,10 @@
 
 use gst::prelude::*;
 use serial_test::serial;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::UdpSocket;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 mod mock_server;
 use mock_server::MockRtspServer;
@@ -42,7 +42,7 @@ fn test_nat_method_property() {
 
     // Test setting to none
     element.set_property_from_str("nat-method", "none");
-    
+
     // Test setting to dummy
     element.set_property_from_str("nat-method", "dummy");
 }
@@ -55,14 +55,14 @@ async fn test_nat_hole_punching_dummy_packets() {
     // Create a UDP socket to listen for NAT punch packets
     let listener = UdpSocket::bind("127.0.0.1:0").await.unwrap();
     let listen_addr = listener.local_addr().unwrap();
-    
+
     // Track received packets
     let packet_count = Arc::new(AtomicU32::new(0));
     let received_nat_punch = Arc::new(AtomicBool::new(false));
-    
+
     let packet_count_clone = packet_count.clone();
     let received_clone = received_nat_punch.clone();
-    
+
     // Start listening for packets
     tokio::spawn(async move {
         let mut buf = [0u8; 1024];
@@ -73,7 +73,7 @@ async fn test_nat_hole_punching_dummy_packets() {
                 if version == 2 {
                     // Valid RTP/RTCP packet
                     packet_count_clone.fetch_add(1, Ordering::SeqCst);
-                    
+
                     // Check if it's a minimal RTP packet (PT=96) or RTCP RR (PT=201)
                     let pt = if (buf[0] & 0x80) == 0x80 && (buf[1] & 0x7f) == 96 {
                         // RTP dummy packet
@@ -86,7 +86,7 @@ async fn test_nat_hole_punching_dummy_packets() {
                     } else {
                         false
                     };
-                    
+
                     if pt {
                         println!("Received NAT punch packet");
                     }
@@ -105,11 +105,13 @@ async fn test_nat_hole_punching_dummy_packets() {
 
     // Give some time for potential NAT punching (in real scenario after SETUP)
     tokio::time::sleep(Duration::from_millis(100)).await;
-    
+
     // Check that nat-method is properly set
     let nat_method_value = element.property_value("nat-method");
-    assert!(nat_method_value.to_string().contains("dummy") || 
-            nat_method_value.to_string().contains("1"));
+    assert!(
+        nat_method_value.to_string().contains("dummy")
+            || nat_method_value.to_string().contains("1")
+    );
 }
 
 #[tokio::test]
@@ -120,20 +122,17 @@ async fn test_nat_keepalive_mechanism() {
     // Create a UDP socket to listen for keep-alive packets
     let listener = UdpSocket::bind("127.0.0.1:0").await.unwrap();
     let listen_addr = listener.local_addr().unwrap();
-    
+
     let keepalive_count = Arc::new(AtomicU32::new(0));
     let keepalive_clone = keepalive_count.clone();
-    
+
     // Start listening for keep-alive packets
     let handle = tokio::spawn(async move {
         let mut buf = [0u8; 1024];
         let start = std::time::Instant::now();
-        
+
         while start.elapsed() < Duration::from_secs(25) {
-            match tokio::time::timeout(
-                Duration::from_secs(1),
-                listener.recv_from(&mut buf)
-            ).await {
+            match tokio::time::timeout(Duration::from_secs(1), listener.recv_from(&mut buf)).await {
                 Ok(Ok((len, _addr))) => {
                     if len >= 8 {
                         // Check for RTCP RR keep-alive packet
@@ -158,9 +157,11 @@ async fn test_nat_keepalive_mechanism() {
     // In a real test, we would set up a pipeline and start streaming
     // For now, just verify the property is set correctly
     let nat_method_value = element.property_value("nat-method");
-    assert!(nat_method_value.to_string().contains("dummy") || 
-            nat_method_value.to_string().contains("1"));
-    
+    assert!(
+        nat_method_value.to_string().contains("dummy")
+            || nat_method_value.to_string().contains("1")
+    );
+
     // Clean up
     handle.abort();
 }
@@ -177,20 +178,23 @@ fn test_nat_configuration_combinations() {
     // Test NAT method with TCP (should not affect TCP)
     element.set_property_from_str("nat-method", "dummy");
     element.set_property_from_str("protocols", "tcp");
-    
+
     // NAT method should still be set even with TCP
     let nat_method_value = element.property_value("nat-method");
-    assert!(nat_method_value.to_string().contains("dummy") || 
-            nat_method_value.to_string().contains("1"));
-    
+    assert!(
+        nat_method_value.to_string().contains("dummy")
+            || nat_method_value.to_string().contains("1")
+    );
+
     // Test NAT method with UDP
     element.set_property_from_str("protocols", "udp");
     let protocols: String = element.property("protocols");
     assert!(protocols.contains("udp"));
-    
+
     // Test NAT method none
     element.set_property_from_str("nat-method", "none");
     let nat_method_value = element.property_value("nat-method");
-    assert!(nat_method_value.to_string().contains("none") || 
-            nat_method_value.to_string().contains("0"));
+    assert!(
+        nat_method_value.to_string().contains("none") || nat_method_value.to_string().contains("0")
+    );
 }

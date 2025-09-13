@@ -4,7 +4,7 @@
 mod tests {
     use gst::prelude::*;
     use gst_plugin_rtsp::rtspsrc::tls::{
-        get_default_port, is_tls_url, TlsConfig, DEFAULT_RTSP_PORT, DEFAULT_RTSPS_PORT,
+        get_default_port, is_tls_url, TlsConfig, DEFAULT_RTSPS_PORT, DEFAULT_RTSP_PORT,
     };
     use url::Url;
 
@@ -43,7 +43,7 @@ mod tests {
     #[test]
     fn test_rtsps_url_with_explicit_port() {
         let url = Url::parse("rtsps://example.com:8554/stream").unwrap();
-        
+
         assert!(is_tls_url(&url));
         assert_eq!(url.port(), Some(8554));
     }
@@ -73,24 +73,23 @@ mod tests {
             .expect("Failed to create rtspsrc2");
 
         // Get default TLS validation flags
-        let default_flags: gst_net::gio::TlsCertificateFlags = 
+        let default_flags: gst_net::gio::TlsCertificateFlags =
             element.property("tls-validation-flags");
-        
+
         // Set to allow untrusted certificates
         element.set_property(
             "tls-validation-flags",
             gst_net::gio::TlsCertificateFlags::empty(),
         );
 
-        let new_flags: gst_net::gio::TlsCertificateFlags = 
-            element.property("tls-validation-flags");
+        let new_flags: gst_net::gio::TlsCertificateFlags = element.property("tls-validation-flags");
         assert_eq!(new_flags, gst_net::gio::TlsCertificateFlags::empty());
     }
 
     #[test]
     fn test_tls_config_defaults() {
         let config = TlsConfig::default();
-        
+
         assert!(!config.enabled);
         assert!(!config.accept_invalid_certs);
         assert!(!config.accept_invalid_hostnames);
@@ -124,13 +123,13 @@ mod tests {
     #[test]
     fn test_tls_config_with_custom_settings() {
         let mut config = TlsConfig::default();
-        
+
         config.enabled = true;
         config.accept_invalid_certs = true;
         config.accept_invalid_hostnames = true;
         config.min_version = Some(tokio_native_tls::native_tls::Protocol::Tlsv10);
         config.max_version = Some(tokio_native_tls::native_tls::Protocol::Tlsv13);
-        
+
         assert!(config.enabled);
         assert!(config.accept_invalid_certs);
         assert!(config.accept_invalid_hostnames);
@@ -151,18 +150,18 @@ mod tests {
             "rtsp://192.168.1.1:554/live",
             "rtsp://user:pass@camera.local/ch1",
         ];
-        
+
         let tls_urls = vec![
             "rtsps://example.com/stream",
             "rtsps://192.168.1.1:322/live",
             "rtsps://user:pass@camera.local/ch1",
         ];
-        
+
         for url_str in plain_urls {
             let url = Url::parse(url_str).unwrap();
             assert!(!is_tls_url(&url), "{} should not be TLS", url_str);
         }
-        
+
         for url_str in tls_urls {
             let url = Url::parse(url_str).unwrap();
             assert!(is_tls_url(&url), "{} should be TLS", url_str);

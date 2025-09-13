@@ -405,8 +405,18 @@ pub fn parse_media_attributes(
                     s.set("onvif-backchannel", true);
                 }
             }
-            // TODO: extmap, key-mgmt, rid, rtcp-fb, source-filter, ssrc
-            _ => s.set(format!("a-{attribute}"), value),
+            "crypto" => {
+                // SRTP crypto attribute
+                s.set("srtp-crypto", value);
+                s.set("uses-srtp", true);
+            }
+            "key-mgmt" => {
+                // SRTP key management (MIKEY)
+                s.set("srtp-key-mgmt", value);
+                s.set("uses-srtp", true);
+            }
+            // TODO: extmap, rid, rtcp-fb, source-filter, ssrc
+            _ => s.set(format!("a-{attr}"), value),
         };
         skip_attrs.push(attr);
     }

@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests {
     use gst::prelude::*;
-    use gst_plugin_rtsp::rtspsrc::auth::{AuthMethod, AuthState, generate_auth_header};
+    use gst_plugin_rtsp::rtspsrc::auth::{generate_auth_header, AuthMethod, AuthState};
     use rtsp_types::Method;
 
     fn init() {
@@ -60,7 +60,7 @@ mod tests {
     fn test_basic_auth_generation() {
         let auth_state = AuthState::default();
         let auth_header = auth_state.generate_basic_auth("user", "pass");
-        
+
         // Basic auth should be base64 encoded "user:pass"
         assert_eq!(auth_header, "Basic dXNlcjpwYXNz");
     }
@@ -78,12 +78,8 @@ mod tests {
             nc: 0,
         };
 
-        let auth_header = auth_state.generate_digest_auth(
-            "user",
-            "pass",
-            &Method::Describe,
-            "/stream",
-        );
+        let auth_header =
+            auth_state.generate_digest_auth("user", "pass", &Method::Describe, "/stream");
 
         // Should generate a valid Digest auth header
         assert!(auth_header.starts_with("Digest "));
@@ -118,19 +114,17 @@ mod tests {
     #[test]
     fn test_auth_with_special_characters() {
         let auth_state = AuthState::default();
-        
+
         // Test with special characters in password
         let auth_header = auth_state.generate_basic_auth("user", "p@ss!word#123");
-        
+
         // Should properly encode special characters
         assert!(auth_header.starts_with("Basic "));
-        
+
         // Decode and verify
         let encoded = auth_header.strip_prefix("Basic ").unwrap();
-        let decoded_bytes = base64::Engine::decode(
-            &base64::engine::general_purpose::STANDARD,
-            encoded
-        ).unwrap();
+        let decoded_bytes =
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, encoded).unwrap();
         let decoded = String::from_utf8(decoded_bytes).unwrap();
         assert_eq!(decoded, "user:p@ss!word#123");
     }
@@ -145,7 +139,7 @@ mod tests {
 
         // First set via URL
         element.set_property("location", "rtsp://urluser:urlpass@example.com/stream");
-        
+
         // Then override via properties
         element.set_property("user-id", "propuser");
         element.set_property("user-pw", "proppass");
