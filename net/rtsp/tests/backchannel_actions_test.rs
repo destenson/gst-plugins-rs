@@ -27,48 +27,108 @@ fn test_backchannel_action_registration() {
         .object_class()
         .find_signal("push-backchannel-buffer")
         .expect("push-backchannel-buffer action should be registered");
-    
+
     let query = signal_id.query();
-    assert_eq!(query.n_params(), 2, "push-backchannel-buffer should have 2 parameters");
-    assert_eq!(query.param_types()[0], u32::static_type(), "First param should be u32 (stream_id)");
-    assert_eq!(query.param_types()[1], gst::Buffer::static_type(), "Second param should be GstBuffer");
-    assert_eq!(query.return_type(), gst::FlowReturn::static_type(), "Return type should be GstFlowReturn");
+    assert_eq!(
+        query.n_params(),
+        2,
+        "push-backchannel-buffer should have 2 parameters"
+    );
+    assert_eq!(
+        query.param_types()[0],
+        u32::static_type(),
+        "First param should be u32 (stream_id)"
+    );
+    assert_eq!(
+        query.param_types()[1],
+        gst::Buffer::static_type(),
+        "Second param should be GstBuffer"
+    );
+    assert_eq!(
+        query.return_type(),
+        gst::FlowReturn::static_type(),
+        "Return type should be GstFlowReturn"
+    );
 
     // Test push-backchannel-sample action exists
     let signal_id = element
         .object_class()
         .find_signal("push-backchannel-sample")
         .expect("push-backchannel-sample action should be registered");
-    
+
     let query = signal_id.query();
-    assert_eq!(query.n_params(), 2, "push-backchannel-sample should have 2 parameters");
-    assert_eq!(query.param_types()[0], u32::static_type(), "First param should be u32 (stream_id)");
-    assert_eq!(query.param_types()[1], gst::Sample::static_type(), "Second param should be GstSample");
-    assert_eq!(query.return_type(), gst::FlowReturn::static_type(), "Return type should be GstFlowReturn");
+    assert_eq!(
+        query.n_params(),
+        2,
+        "push-backchannel-sample should have 2 parameters"
+    );
+    assert_eq!(
+        query.param_types()[0],
+        u32::static_type(),
+        "First param should be u32 (stream_id)"
+    );
+    assert_eq!(
+        query.param_types()[1],
+        gst::Sample::static_type(),
+        "Second param should be GstSample"
+    );
+    assert_eq!(
+        query.return_type(),
+        gst::FlowReturn::static_type(),
+        "Return type should be GstFlowReturn"
+    );
 
     // Test set-mikey-parameter action exists
     let signal_id = element
         .object_class()
         .find_signal("set-mikey-parameter")
         .expect("set-mikey-parameter action should be registered");
-    
+
     let query = signal_id.query();
-    assert_eq!(query.n_params(), 3, "set-mikey-parameter should have 3 parameters");
-    assert_eq!(query.param_types()[0], u32::static_type(), "First param should be u32 (stream_id)");
-    assert_eq!(query.param_types()[1], gst::Caps::static_type(), "Second param should be GstCaps");
-    assert_eq!(query.param_types()[2], gst::Promise::static_type(), "Third param should be GstPromise");
-    assert_eq!(query.return_type(), bool::static_type(), "Return type should be bool");
+    assert_eq!(
+        query.n_params(),
+        3,
+        "set-mikey-parameter should have 3 parameters"
+    );
+    assert_eq!(
+        query.param_types()[0],
+        u32::static_type(),
+        "First param should be u32 (stream_id)"
+    );
+    assert_eq!(
+        query.param_types()[1],
+        gst::Caps::static_type(),
+        "Second param should be GstCaps"
+    );
+    assert_eq!(
+        query.param_types()[2],
+        gst::Promise::static_type(),
+        "Third param should be GstPromise"
+    );
+    assert_eq!(
+        query.return_type(),
+        bool::static_type(),
+        "Return type should be bool"
+    );
 
     // Test remove-key action exists
     let signal_id = element
         .object_class()
         .find_signal("remove-key")
         .expect("remove-key action should be registered");
-    
+
     let query = signal_id.query();
     assert_eq!(query.n_params(), 1, "remove-key should have 1 parameter");
-    assert_eq!(query.param_types()[0], u32::static_type(), "First param should be u32 (stream_id)");
-    assert_eq!(query.return_type(), bool::static_type(), "Return type should be bool");
+    assert_eq!(
+        query.param_types()[0],
+        u32::static_type(),
+        "First param should be u32 (stream_id)"
+    );
+    assert_eq!(
+        query.return_type(),
+        bool::static_type(),
+        "Return type should be bool"
+    );
 
     println!("All backchannel actions are properly registered");
 }
@@ -83,7 +143,7 @@ fn test_push_backchannel_buffer_action() {
 
     // Create a test buffer
     let buffer = gst::Buffer::new();
-    
+
     // Test push-backchannel-buffer action invocation
     let result = element.emit_by_name::<gst::FlowReturn>(
         "push-backchannel-buffer",
@@ -115,11 +175,8 @@ fn test_push_backchannel_sample_action() {
         .field("rate", 48000i32)
         .field("channels", 2i32)
         .build();
-    let sample = gst::Sample::builder()
-        .buffer(&buffer)
-        .caps(&caps)
-        .build();
-    
+    let sample = gst::Sample::builder().buffer(&buffer).caps(&caps).build();
+
     // Test push-backchannel-sample action invocation
     let result = element.emit_by_name::<gst::FlowReturn>(
         "push-backchannel-sample",
@@ -148,10 +205,10 @@ fn test_set_mikey_parameter_action() {
     let caps = gst::Caps::builder("application/x-mikey")
         .field("key-mgmt", "prot=MIKEY;uri=\"sip:alice@atlanta.com\"")
         .build();
-    
+
     // Create a promise for async result
     let promise = gst::Promise::new();
-    
+
     // Test set-mikey-parameter action invocation
     let result = element.emit_by_name::<bool>(
         "set-mikey-parameter",
@@ -159,10 +216,7 @@ fn test_set_mikey_parameter_action() {
     );
 
     // Should return false since MIKEY isn't implemented
-    assert_eq!(
-        result, false,
-        "set-mikey-parameter should return false"
-    );
+    assert_eq!(result, false, "set-mikey-parameter should return false");
 
     println!("set-mikey-parameter action works correctly");
 }
@@ -176,16 +230,10 @@ fn test_remove_key_action() {
         .expect("Failed to create rtspsrc2 element");
 
     // Test remove-key action invocation
-    let result = element.emit_by_name::<bool>(
-        "remove-key",
-        &[&0u32.to_value()],
-    );
+    let result = element.emit_by_name::<bool>("remove-key", &[&0u32.to_value()]);
 
     // Should return false since key management isn't implemented
-    assert_eq!(
-        result, false,
-        "remove-key should return false"
-    );
+    assert_eq!(result, false, "remove-key should return false");
 
     println!("remove-key action works correctly");
 }
@@ -200,15 +248,24 @@ fn test_rtspsrc_backchannel_actions() {
 
     // Verify all backchannel actions are present
     assert!(
-        element.object_class().find_signal("push-backchannel-buffer").is_some(),
+        element
+            .object_class()
+            .find_signal("push-backchannel-buffer")
+            .is_some(),
         "push-backchannel-buffer action must be registered"
     );
     assert!(
-        element.object_class().find_signal("push-backchannel-sample").is_some(),
+        element
+            .object_class()
+            .find_signal("push-backchannel-sample")
+            .is_some(),
         "push-backchannel-sample action must be registered"
     );
     assert!(
-        element.object_class().find_signal("set-mikey-parameter").is_some(),
+        element
+            .object_class()
+            .find_signal("set-mikey-parameter")
+            .is_some(),
         "set-mikey-parameter action must be registered"
     );
     assert!(

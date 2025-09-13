@@ -37,6 +37,7 @@ use gst::prelude::*;
 
 #[cfg(feature = "adaptive")]
 mod adaptive_retry;
+mod auth;
 mod body;
 mod connection_racer;
 mod imp;
