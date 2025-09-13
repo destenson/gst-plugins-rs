@@ -3831,6 +3831,7 @@ dependencies = [
  "anyhow",
  "atomic_refcell",
  "base64 0.22.1",
+ "bitflags 2.9.4",
  "bytes",
  "chrono",
  "console-subscriber",
