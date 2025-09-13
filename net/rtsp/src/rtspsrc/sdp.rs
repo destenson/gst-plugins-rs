@@ -362,11 +362,27 @@ pub fn parse_media_attributes(
     s: &mut gst::structure::Structure,
 ) -> Result<(), RtspError> {
     let mut skip_attrs = vec!["control", "range", "ssrc"];
+    let mut _is_backchannel = false;
 
     for Attribute { attribute, value } in attrs {
         let attr = attribute.as_str();
         if skip_attrs.contains(&attr) {
             continue;
+        }
+
+        // Handle ONVIF-specific attributes without values
+        match attr {
+            "sendonly" | "recvonly" | "sendrecv" | "inactive" => {
+                s.set("media-direction", attr);
+                // recvonly indicates this is a backchannel stream
+                if attr == "recvonly" {
+                    _is_backchannel = true;
+                    s.set("onvif-backchannel", true);
+                }
+                skip_attrs.push(attr);
+                continue;
+            }
+            _ => {}
         }
 
         let Some(value) = value else {
@@ -382,6 +398,13 @@ pub fn parse_media_attributes(
             "rtpmap" => parse_rtpmap(value, pt, media, s)?,
             "fmtp" => parse_fmtp(value, s),
             "framesize" => parse_framesize(value, s),
+            "setup" => {
+                // ONVIF setup attribute (active/passive)
+                s.set("onvif-setup", value);
+                if value == "active" || value == "passive" {
+                    s.set("onvif-backchannel", true);
+                }
+            }
             // TODO: extmap, key-mgmt, rid, rtcp-fb, source-filter, ssrc
             _ => s.set(format!("a-{attribute}"), value),
         };
