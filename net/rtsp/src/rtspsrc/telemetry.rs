@@ -6,6 +6,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use tracing::{event, info_span, span, Level, Span};
+use parking_lot::RwLock;
+use std::collections::HashMap;
 
 #[cfg(feature = "prometheus")]
 use prometheus::{
@@ -21,6 +23,10 @@ pub struct PrometheusMetrics {
     pub connection_successes: CounterVec,
     pub connection_failures: CounterVec,
     pub retry_count: CounterVec,
+    pub retry_strategy_changes: CounterVec,
+    pub connection_recovery_time: HistogramVec,
+    pub auto_mode_pattern: GaugeVec,
+    pub adaptive_confidence: GaugeVec,
     pub packets_received: CounterVec,
     pub packets_lost: CounterVec,
     pub bytes_received: CounterVec,
@@ -53,6 +59,26 @@ impl PrometheusMetrics {
                 "rtsp_retry_attempts_total",
                 "Total number of retry attempts",
                 &["strategy", "element_id"]
+            )?,
+            retry_strategy_changes: register_counter_vec!(
+                "rtsp_strategy_changes_total",
+                "Total number of retry strategy changes",
+                &["element_id", "reason"]
+            )?,
+            connection_recovery_time: register_histogram_vec!(
+                "rtsp_connection_recovery_seconds",
+                "Time to recover connection after failure",
+                &["element_id"]
+            )?,
+            auto_mode_pattern: register_gauge_vec!(
+                "rtsp_auto_mode_pattern",
+                "Current auto mode network pattern (0=unknown, 1=stable, 2=limited, 3=lossy)",
+                &["element_id"]
+            )?,
+            adaptive_confidence: register_gauge_vec!(
+                "rtsp_adaptive_confidence_score",
+                "Adaptive learning confidence score (0.0-1.0)",
+                &["element_id"]
             )?,
             packets_received: register_counter_vec!(
                 "rtsp_packets_received_total",
@@ -111,6 +137,10 @@ struct MetricsInner {
     // Retry metrics
     retry_count: AtomicU64,
     retry_strategy_changes: AtomicU64,
+    retry_attempts_by_strategy: Arc<parking_lot::RwLock<std::collections::HashMap<String, u64>>>,
+    connection_recovery_time_ms: AtomicU64,
+    auto_mode_pattern: AtomicU64, // 0=unknown, 1=stable, 2=limited, 3=lossy
+    adaptive_confidence_score: AtomicU64, // Stored as percentage * 100 (0-10000 for 0.0-100.0)
 
     // Performance metrics
     total_packets_received: AtomicU64,
@@ -157,6 +187,10 @@ impl RtspMetrics {
                 connection_failures: AtomicU64::new(0),
                 retry_count: AtomicU64::new(0),
                 retry_strategy_changes: AtomicU64::new(0),
+                retry_attempts_by_strategy: Arc::new(RwLock::new(HashMap::new())),
+                connection_recovery_time_ms: AtomicU64::new(0),
+                auto_mode_pattern: AtomicU64::new(0),
+                adaptive_confidence_score: AtomicU64::new(0),
                 total_packets_received: AtomicU64::new(0),
                 total_packets_lost: AtomicU64::new(0),
                 total_bytes_received: AtomicU64::new(0),
@@ -256,16 +290,116 @@ impl RtspMetrics {
         }
     }
 
-    pub fn record_retry_strategy_change(&self, old_strategy: &str, new_strategy: &str) {
+    pub fn record_retry_strategy_change(&self, old_strategy: &str, new_strategy: &str, reason: Option<&str>) {
         self.inner
             .retry_strategy_changes
             .fetch_add(1, Ordering::Relaxed);
+        let reason_str = reason.unwrap_or("manual");
         event!(
             Level::INFO,
             metric = "retry_strategy_change",
             old_strategy = old_strategy,
-            new_strategy = new_strategy
+            new_strategy = new_strategy,
+            reason = reason_str
         );
+        
+        // Track attempts per strategy
+        {
+            let mut attempts = self.inner.retry_attempts_by_strategy.write();
+            *attempts.entry(new_strategy.to_string()).or_insert(0) += 1;
+        }
+        
+        #[cfg(feature = "prometheus")]
+        if let Some(ref prom) = self.prometheus {
+            prom.retry_strategy_changes
+                .with_label_values(&[self.inner.element_id.as_str(), reason_str])
+                .inc();
+        }
+    }
+    
+    /// Record connection recovery time (time from first failure to successful reconnection)
+    pub fn record_connection_recovery(&self, recovery_time_ms: u64) {
+        self.inner
+            .connection_recovery_time_ms
+            .store(recovery_time_ms, Ordering::Relaxed);
+        event!(
+            Level::INFO,
+            metric = "connection_recovery",
+            recovery_time_ms = recovery_time_ms
+        );
+        
+        #[cfg(feature = "prometheus")]
+        if let Some(ref prom) = self.prometheus {
+            prom.connection_recovery_time
+                .with_label_values(&[self.inner.element_id.as_str()])
+                .observe(recovery_time_ms as f64 / 1000.0);
+        }
+    }
+    
+    /// Record auto mode pattern detection
+    pub fn record_auto_mode_pattern(&self, pattern: &str) {
+        let pattern_value = match pattern {
+            "stable" => 1,
+            "limited" => 2,
+            "lossy" => 3,
+            _ => 0, // unknown
+        };
+        self.inner
+            .auto_mode_pattern
+            .store(pattern_value, Ordering::Relaxed);
+        event!(
+            Level::DEBUG,
+            metric = "auto_mode_pattern",
+            pattern = pattern
+        );
+        
+        #[cfg(feature = "prometheus")]
+        if let Some(ref prom) = self.prometheus {
+            prom.auto_mode_pattern
+                .with_label_values(&[self.inner.element_id.as_str()])
+                .set(pattern_value as f64);
+        }
+    }
+    
+    /// Record adaptive learning confidence score
+    pub fn record_adaptive_confidence(&self, confidence: f64) {
+        // Store as integer (confidence * 100)
+        let confidence_int = (confidence * 100.0) as u64;
+        self.inner
+            .adaptive_confidence_score
+            .store(confidence_int, Ordering::Relaxed);
+        event!(
+            Level::DEBUG,
+            metric = "adaptive_confidence",
+            confidence = confidence
+        );
+        
+        #[cfg(feature = "prometheus")]
+        if let Some(ref prom) = self.prometheus {
+            prom.adaptive_confidence
+                .with_label_values(&[self.inner.element_id.as_str()])
+                .set(confidence);
+        }
+    }
+    
+    /// Get retry attempts by strategy
+    pub fn get_retry_attempts_by_strategy(&self) -> HashMap<String, u64> {
+        self.inner.retry_attempts_by_strategy.read().clone()
+    }
+    
+    /// Get current auto mode pattern
+    pub fn get_auto_mode_pattern(&self) -> String {
+        match self.inner.auto_mode_pattern.load(Ordering::Relaxed) {
+            1 => "stable".to_string(),
+            2 => "limited".to_string(),
+            3 => "lossy".to_string(),
+            _ => "unknown".to_string(),
+        }
+    }
+    
+    /// Get adaptive confidence score as float
+    pub fn get_adaptive_confidence(&self) -> f64 {
+        self.inner.adaptive_confidence_score.load(Ordering::Relaxed) as f64 / 100.0
     }
 
     // Packet tracking

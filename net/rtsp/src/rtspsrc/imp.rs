@@ -3367,6 +3367,11 @@ impl RtspSrc {
 
             let mut retry_calc = super::retry::RetryCalculator::new(retry_config)
                 .with_server_url(&url.to_string());
+            
+            #[cfg(feature = "telemetry")]
+            {
+                retry_calc = retry_calc.with_telemetry(task_src.metrics.clone());
+            }
 
             // Create proxy config if configured
             let proxy_config = if let Some(ref proxy_url) = settings.proxy {
@@ -3386,105 +3391,198 @@ impl RtspSrc {
                 super::proxy::ProxyConfig::from_env()
             };
 
-            // Create connection racer config
-            let racing_config = super::connection_racer::ConnectionRacingConfig {
-                strategy: settings.connection_racing,
-                max_parallel_connections: settings.max_parallel_connections,
-                racing_delay_ms: settings.racing_delay_ms,
-                racing_timeout: std::time::Duration::from_nanos(settings.racing_timeout.nseconds()),
-                proxy_config,
-            };
-            let mut racer = super::connection_racer::ConnectionRacer::new(racing_config);
-
+            // Check if HTTP tunneling should be used
+            let use_tunneling = super::http_tunnel::should_use_tunneling(&url, settings.http_tunnel_mode);
+            
             // Apply timeout to entire connection process
             let connection_timeout = std::time::Duration::from_nanos(settings.timeout.nseconds());
-            let connection_result = time::timeout(connection_timeout, async {
-                // TODO: Add TLS support
-                loop {
-                    // Update racing strategy based on auto mode recommendations
-                    if let Some(recommended_strategy) = retry_calc.get_racing_strategy() {
-                        racer.update_strategy(recommended_strategy);
-                    }
-
-                    // Mark connection attempt start
-                    retry_calc.mark_connection_start();
-
-                    match racer.connect(&hostname_port).await {
-                        Ok(s) => {
-                            // Record successful connection
-                            retry_calc.record_connection_result(true, false);
-                            return Ok(s);
-                        }
-                        Err(err) => {
-                            // Record failed connection
-                            retry_calc.record_connection_result(false, false);
-
-                            if let Some(delay) = retry_calc.next_delay() {
-                                let attempt = retry_calc.current_attempt();
-                                let auto_summary = retry_calc.get_auto_summary().unwrap_or_default();
-                                gst::warning!(
-                                    CAT,
-                                    "Connection to '{}' failed (attempt {attempt}): {err:#?}. Retrying in {} ms... Auto mode: {}",
-                                    url, delay.as_millis(), auto_summary
-                                );
-
-                                // Post a message about the retry attempt
-                                let msg = gst::message::Element::builder(
-                                    gst::Structure::builder("rtsp-connection-retry")
-                                        .field("attempt", attempt)
-                                        .field("error", format!("{err:#?}"))
-                                        .field("next-delay-ms", delay.as_millis() as u64)
-                                        .build(),
-                                )
-                                .src(&*task_src.obj())
-                                .build();
-                                let _ = task_src.obj().post_message(msg);
-
-                                tokio::time::sleep(delay).await;
-                            } else {
-                                return Err(format!("Failed to connect to RTSP server '{}' after {} attempts: {err:#?}", url, retry_calc.current_attempt()));
+            let connection_result = if use_tunneling {
+                gst::info!(CAT, "Using HTTP tunneling for connection");
+                
+                // HTTP tunneling connection logic
+                time::timeout(connection_timeout, async {
+                    loop {
+                        // Mark connection attempt start
+                        retry_calc.mark_connection_start();
+                        
+                        // Create HTTP tunnel
+                        let mut tunnel = match super::http_tunnel::HttpTunnel::new(
+                            &url,
+                            settings.proxy.clone(),
+                            settings.proxy_id.clone(),
+                            settings.proxy_pw.clone(),
+                        ) {
+                            Ok(t) => t,
+                            Err(e) => {
+                                return Err(format!("Failed to create HTTP tunnel: {}", e));
+                            }
+                        };
+                        
+                        match tunnel.connect().await {
+                            Ok(_) => {
+                                // Record successful connection
+                                retry_calc.record_connection_result(true, false);
+                                // Return a marker to indicate tunneled connection
+                                return Ok(Err(tunnel)); // Using Err to differentiate from regular TcpStream
+                            }
+                            Err(err) => {
+                                // Record failed connection
+                                retry_calc.record_connection_result(false, false);
+                                
+                                if let Some(delay) = retry_calc.next_delay() {
+                                    let attempt = retry_calc.current_attempt();
+                                    let auto_summary = retry_calc.get_auto_summary().unwrap_or_default();
+                                    gst::warning!(
+                                        CAT,
+                                        "HTTP tunnel connection to '{}' failed (attempt {attempt}): {err:#?}. Retrying in {} ms... Auto mode: {}",
+                                        url, delay.as_millis(), auto_summary
+                                    );
+                                    
+                                    // Post a message about the retry attempt
+                                    let msg = gst::message::Element::builder(
+                                        gst::Structure::builder("rtsp-connection-retry")
+                                            .field("attempt", attempt)
+                                            .field("error", format!("{err:#?}"))
+                                            .field("next-delay-ms", delay.as_millis() as u64)
+                                            .build(),
+                                    )
+                                    .src(&*task_src.obj())
+                                    .build();
+                                    let _ = task_src.obj().post_message(msg);
+                                    
+                                    tokio::time::sleep(delay).await;
+                                } else {
+                                    return Err(format!("Failed to establish HTTP tunnel to '{}' after {} attempts: {err:#?}", url, retry_calc.current_attempt()));
+                                }
                             }
                         }
                     }
-                }
-            }).await;
+                }).await
+            } else {
+                // Normal connection using connection racer
+                let racing_config = super::connection_racer::ConnectionRacingConfig {
+                    strategy: settings.connection_racing,
+                    max_parallel_connections: settings.max_parallel_connections,
+                    racing_delay_ms: settings.racing_delay_ms,
+                    racing_timeout: std::time::Duration::from_nanos(settings.racing_timeout.nseconds()),
+                    proxy_config,
+                };
+                let mut racer = super::connection_racer::ConnectionRacer::new(racing_config);
+                
+                time::timeout(connection_timeout, async {
+                    // TODO: Add TLS support
+                    loop {
+                        // Update racing strategy based on auto mode recommendations
+                        if let Some(recommended_strategy) = retry_calc.get_racing_strategy() {
+                            racer.update_strategy(recommended_strategy);
+                        }
+                        
+                        // Mark connection attempt start
+                        retry_calc.mark_connection_start();
+                        
+                        match racer.connect(&hostname_port).await {
+                            Ok(s) => {
+                                // Record successful connection
+                                retry_calc.record_connection_result(true, false);
+                                return Ok(Ok(s)); // Ok(Ok()) for regular connection
+                            }
+                            Err(err) => {
+                                // Record failed connection
+                                retry_calc.record_connection_result(false, false);
 
-            let s = match connection_result {
-                Ok(Ok(stream)) => stream,
-                Ok(Err(err)) => {
-                    gst::element_imp_error!(
-                        task_src,
-                        gst::ResourceError::OpenRead,
-                        ["{}", err]
-                    );
-                    return;
+                                if let Some(delay) = retry_calc.next_delay() {
+                                    let attempt = retry_calc.current_attempt();
+                                    let auto_summary = retry_calc.get_auto_summary().unwrap_or_default();
+                                    gst::warning!(
+                                        CAT,
+                                        "Connection to '{}' failed (attempt {attempt}): {err:#?}. Retrying in {} ms... Auto mode: {}",
+                                        url, delay.as_millis(), auto_summary
+                                    );
+
+                                    // Post a message about the retry attempt
+                                    let msg = gst::message::Element::builder(
+                                        gst::Structure::builder("rtsp-connection-retry")
+                                            .field("attempt", attempt)
+                                            .field("error", format!("{err:#?}"))
+                                            .field("next-delay-ms", delay.as_millis() as u64)
+                                            .build(),
+                                    )
+                                    .src(&*task_src.obj())
+                                    .build();
+                                    let _ = task_src.obj().post_message(msg);
+
+                                    tokio::time::sleep(delay).await;
+                                } else {
+                                    return Err(format!("Failed to connect to RTSP server '{}' after {} attempts: {err:#?}", url, retry_calc.current_attempt()));
+                                }
+                            }
+                        }
+                    }
+                }).await
+            };
+
+            // Handle both tunneled and normal connections
+            let is_tunneled = matches!(connection_result, Ok(Ok(Err(_))));
+            
+            let (stream, sink) = if is_tunneled {
+                // HTTP tunneled connection
+                match connection_result {
+                    Ok(Ok(Err(tunnel))) => {
+                        gst::info!(CAT, "Connected via HTTP tunnel!");
+                        
+                        // For now, we'll need to properly implement the tunnel stream/sink conversion
+                        // This is a placeholder implementation
+                        gst::element_imp_error!(
+                            task_src,
+                            gst::CoreError::NotImplemented,
+                            ["HTTP tunnel stream conversion not yet fully implemented"]
+                        );
+                        return;
+                    }
+                    _ => unreachable!(),
                 }
-                Err(_elapsed) => {
-                    gst::element_imp_error!(
-                        task_src,
-                        gst::ResourceError::OpenRead,
-                        ["Connection timeout after {} seconds", connection_timeout.as_secs()]
-                    );
-                    #[cfg(feature = "telemetry")]
-                    task_src.metrics.record_timeout_error();
-                    return;
+            } else {
+                // Normal TCP connection
+                match connection_result {
+                    Ok(Ok(Ok(tcp_stream))) => {
+                        let _ = tcp_stream.set_nodelay(true);
+                        gst::info!(CAT, "Connected via TCP!");
+                        
+                        let (read, write) = tcp_stream.into_split();
+                        let stream = Box::pin(super::tcp_message::async_read(read, MAX_MESSAGE_SIZE).fuse());
+                        let sink = Box::pin(super::tcp_message::async_write(write));
+                        (stream, sink)
+                    }
+                    Ok(Err(err)) => {
+                        gst::element_imp_error!(
+                            task_src,
+                            gst::ResourceError::OpenRead,
+                            ["{}", err]
+                        );
+                        return;
+                    }
+                    Err(_elapsed) => {
+                        gst::element_imp_error!(
+                            task_src,
+                            gst::ResourceError::OpenRead,
+                            ["Connection timeout after {} seconds", connection_timeout.as_secs()]
+                        );
+                        #[cfg(feature = "telemetry")]
+                        task_src.metrics.record_timeout_error();
+                        return;
+                    }
+                    _ => unreachable!(),
                 }
             };
-            let _ = s.set_nodelay(true);
 
-            gst::info!(CAT, "Connected!");
+            gst::info!(CAT, "Connection established (tunneled: {})", is_tunneled);
 
             #[cfg(feature = "telemetry")]
             {
                 let connection_time = std::time::Instant::now().duration_since(std::time::Instant::now()).as_millis() as u64;
                 task_src.metrics.record_connection_success(connection_time);
-                event!(Level::INFO, "RTSP connection established");
+                event!(Level::INFO, "RTSP connection established (tunneled: {})", is_tunneled);
             }
-
-            let (read, write) = s.into_split();
-
-            let stream = Box::pin(super::tcp_message::async_read(read, MAX_MESSAGE_SIZE).fuse());
-            let sink = Box::pin(super::tcp_message::async_write(write));
 
             // Get authentication credentials from settings
             let (user_id, user_pw) = {

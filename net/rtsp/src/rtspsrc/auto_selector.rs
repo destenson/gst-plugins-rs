@@ -48,6 +48,17 @@ pub enum NetworkPattern {
     Unknown,
 }
 
+impl std::fmt::Display for NetworkPattern {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NetworkPattern::Stable => write!(f, "stable"),
+            NetworkPattern::ConnectionLimited => write!(f, "limited"),
+            NetworkPattern::HighPacketLoss => write!(f, "lossy"),
+            NetworkPattern::Unknown => write!(f, "unknown"),
+        }
+    }
+}
+
 /// Auto selector for retry strategies
 pub struct AutoRetrySelector {
     /// Recent connection attempts for analysis
@@ -192,6 +203,11 @@ impl AutoRetrySelector {
 
     /// Get current network pattern
     pub fn get_pattern(&self) -> NetworkPattern {
+        self.current_pattern
+    }
+    
+    /// Get current network pattern as string
+    pub fn get_network_pattern(&self) -> NetworkPattern {
         self.current_pattern
     }
 

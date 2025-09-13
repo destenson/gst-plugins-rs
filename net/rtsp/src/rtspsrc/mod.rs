@@ -54,6 +54,8 @@ mod retry_integration_tests;
 #[cfg(test)]
 mod racing_strategy_tests;
 mod http_tunnel;
+#[cfg(test)]
+mod http_tunnel_tests;
 mod imp;
 mod proxy;
 pub mod retry;
