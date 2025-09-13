@@ -32,6 +32,20 @@ architecture of rtspsrc. There are some major problems with rtspsrc:
 * GET_PARAMETER and SET_PARAMETER support (NEW!)
   - Used for keep-alive and camera control
   - Essential for PTZ cameras and ONVIF devices
+* Performance optimizations (NEW!)
+  - Buffer pool management for reduced allocations
+  - TCP connection pooling for multiple streams from same server
+  - Zero-copy buffer operations where possible
+* Enhanced RTCP support (NEW!)
+  - Extended RTCP statistics collection
+  - RTCP XR (Extended Reports) support (RFC 3611)
+  - Feedback message handling (RFC 4585)
+  - VoIP quality metrics (R-factor, MOS score)
+* Telemetry and observability (NEW!)
+  - Structured logging with tracing
+  - Metrics collection for monitoring
+  - Connection and performance statistics
+  - tokio-console support for async debugging
 
 ## Missing features
 
@@ -235,9 +249,44 @@ This plugin is available as a Debian package (`gst-plugin-rtsp`) with the follow
 
 For build scripts and packaging tools, see the `scripts/` directory.
 
+## Performance Features
+
+### Buffer Pool Management
+The plugin includes an efficient buffer pool to reduce memory allocations:
+- Pre-allocated buffers for common packet sizes
+- Automatic reuse of buffers
+- Memory limit enforcement
+- Zero-copy operations where possible
+
+### TCP Connection Pooling
+Reduces connection overhead when streaming from the same server:
+- Reuses TCP connections for multiple streams
+- Automatic health checking and cleanup
+- Configurable pool size and idle timeout
+- Thread-safe connection sharing
+
+### RTCP Enhancements
+Advanced RTCP statistics and feedback:
+- Extended Reports (XR) for quality monitoring
+- VoIP metrics including R-factor and MOS scores
+- Feedback messages (NACK, PLI, FIR, REMB)
+- Comprehensive jitter and packet loss tracking
+
+### Telemetry
+Enable telemetry features for production monitoring:
+```bash
+cargo build --features telemetry
+```
+
+This provides:
+- Structured logging with tracing
+- Prometheus metrics export (optional)
+- tokio-console support for async debugging
+- Performance event tracking
+
 ## Maintenance and future cleanup
 
 * Test with market RTSP cameras
   - Camera compatibility testing framework has been implemented
   - Includes support for Axis, Hikvision, Dahua, and ONVIF devices
-* Add tokio-console and tokio tracing support
+* Add tokio-console and tokio tracing support (COMPLETED)
