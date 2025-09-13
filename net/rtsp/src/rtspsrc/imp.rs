@@ -54,6 +54,7 @@ use gst_sdp;
 #[cfg(feature = "tracing")]
 use tracing::{event, Level};
 
+use super::auth::{self, AuthState};
 use super::body::Body;
 use super::sdp;
 use super::transport::RtspTransportInfo;
@@ -484,7 +485,7 @@ impl BufferingAppSrc {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Settings {
     location: Option<Url>,
     port_start: u16,
@@ -553,6 +554,9 @@ struct Settings {
     backchannel: BackchannelType,
     onvif_mode: bool,
     onvif_rate_control: bool,
+    // Authentication properties
+    user_id: Option<String>,
+    user_pw: Option<String>,
     #[cfg(feature = "adaptive")]
     adaptive_learning: bool,
     #[cfg(feature = "adaptive")]
@@ -567,84 +571,6 @@ struct Settings {
     adaptive_confidence_threshold: f32,
     #[cfg(feature = "adaptive")]
     adaptive_change_detection: bool,
-}
-
-impl Clone for Settings {
-    fn clone(&self) -> Self {
-        Settings {
-            location: self.location.clone(),
-            port_start: self.port_start,
-            protocols: self.protocols.clone(),
-            timeout: self.timeout,
-            receive_mtu: self.receive_mtu,
-            retry_strategy: self.retry_strategy.clone(),
-            max_reconnection_attempts: self.max_reconnection_attempts,
-            reconnection_timeout: self.reconnection_timeout,
-            initial_retry_delay: self.initial_retry_delay,
-            linear_retry_step: self.linear_retry_step,
-            connection_racing: self.connection_racing.clone(),
-            max_parallel_connections: self.max_parallel_connections,
-            racing_delay_ms: self.racing_delay_ms,
-            racing_timeout: self.racing_timeout,
-            seek_format: self.seek_format,
-            latency_ms: self.latency_ms,
-            drop_on_latency: self.drop_on_latency,
-            probation: self.probation,
-            buffer_mode: self.buffer_mode,
-            do_rtcp: self.do_rtcp,
-            do_retransmission: self.do_retransmission,
-            max_rtcp_rtp_time_diff: self.max_rtcp_rtp_time_diff,
-            do_rtsp_keep_alive: self.do_rtsp_keep_alive,
-            tcp_timeout: self.tcp_timeout,
-            teardown_timeout: self.teardown_timeout,
-            udp_reconnect: self.udp_reconnect,
-            multicast_iface: self.multicast_iface.clone(),
-            port_range: self.port_range.clone(),
-            udp_buffer_size: self.udp_buffer_size,
-            is_live: self.is_live,
-            user_agent: self.user_agent.clone(),
-            connection_speed: self.connection_speed,
-            ntp_sync: self.ntp_sync,
-            rfc7273_sync: self.rfc7273_sync,
-            ntp_time_source: self.ntp_time_source,
-            max_ts_offset: self.max_ts_offset,
-            max_ts_offset_adjustment: self.max_ts_offset_adjustment,
-            add_reference_timestamp_meta: self.add_reference_timestamp_meta,
-            default_rtsp_version: self.default_rtsp_version,
-            rtp_blocksize: self.rtp_blocksize,
-            tcp_timestamp: self.tcp_timestamp,
-            sdes: self.sdes.clone(),
-            // Clone the TLS validation flags (database/interaction stored separately)
-            tls_validation_flags: self.tls_validation_flags,
-            // Clone proxy and HTTP tunneling properties
-            proxy: self.proxy.clone(),
-            proxy_id: self.proxy_id.clone(),
-            proxy_pw: self.proxy_pw.clone(),
-            extra_http_request_headers: self.extra_http_request_headers.clone(),
-            // Clone NAT traversal properties
-            nat_method: self.nat_method,
-            ignore_x_server_reply: self.ignore_x_server_reply,
-            force_non_compliant_url: self.force_non_compliant_url,
-            // Clone ONVIF backchannel properties
-            backchannel: self.backchannel,
-            onvif_mode: self.onvif_mode,
-            onvif_rate_control: self.onvif_rate_control,
-            #[cfg(feature = "adaptive")]
-            adaptive_learning: self.adaptive_learning,
-            #[cfg(feature = "adaptive")]
-            adaptive_persistence: self.adaptive_persistence,
-            #[cfg(feature = "adaptive")]
-            adaptive_cache_ttl: self.adaptive_cache_ttl,
-            #[cfg(feature = "adaptive")]
-            adaptive_discovery_time: self.adaptive_discovery_time,
-            #[cfg(feature = "adaptive")]
-            adaptive_exploration_rate: self.adaptive_exploration_rate,
-            #[cfg(feature = "adaptive")]
-            adaptive_confidence_threshold: self.adaptive_confidence_threshold,
-            #[cfg(feature = "adaptive")]
-            adaptive_change_detection: self.adaptive_change_detection,
-        }
-    }
 }
 
 impl Default for Settings {
@@ -728,6 +654,9 @@ impl Default for Settings {
             adaptive_confidence_threshold: 0.8,
             #[cfg(feature = "adaptive")]
             adaptive_change_detection: true,
+            // Authentication properties
+            user_id: None,
+            user_pw: None,
         }
     }
 }
@@ -1332,7 +1261,7 @@ impl RtspSrc {
         buffer: &gst::Buffer,
     ) -> gst::FlowReturn {
         let obj = self.obj();
-        
+
         gst::debug!(
             CAT,
             obj = obj,
@@ -1344,7 +1273,7 @@ impl RtspSrc {
         // TODO: Implement actual backchannel buffer transmission
         // This is a placeholder implementation
         // Actual implementation would send the buffer through the backchannel
-        
+
         // Return NOT_SUPPORTED since backchannel isn't implemented yet
         gst::FlowReturn::NotSupported
     }
@@ -1356,7 +1285,7 @@ impl RtspSrc {
         sample: &gst::Sample,
     ) -> gst::FlowReturn {
         let obj = self.obj();
-        
+
         gst::debug!(
             CAT,
             obj = obj,
@@ -1367,7 +1296,7 @@ impl RtspSrc {
         // TODO: Implement actual backchannel sample transmission
         // This is a placeholder implementation
         // Actual implementation would send the sample through the backchannel
-        
+
         // Return NOT_SUPPORTED since backchannel isn't implemented yet
         gst::FlowReturn::NotSupported
     }
@@ -1380,7 +1309,7 @@ impl RtspSrc {
         promise: &gst::Promise,
     ) -> bool {
         let obj = self.obj();
-        
+
         gst::debug!(
             CAT,
             obj = obj,
@@ -1392,7 +1321,7 @@ impl RtspSrc {
         // TODO: Implement actual MIKEY parameter setting
         // This is a placeholder implementation
         // Actual implementation would set SRTP keys via MIKEY protocol
-        
+
         // Return false since MIKEY isn't implemented yet
         false
     }
@@ -1400,7 +1329,7 @@ impl RtspSrc {
     /// Handle remove-key action signal
     fn handle_remove_key(&self, stream_id: u32) -> bool {
         let obj = self.obj();
-        
+
         gst::debug!(
             CAT,
             obj = obj,
@@ -1411,7 +1340,7 @@ impl RtspSrc {
         // TODO: Implement actual key removal
         // This is a placeholder implementation
         // Actual implementation would remove encryption keys for the stream
-        
+
         // Return false since key management isn't implemented yet
         false
     }
@@ -1862,6 +1791,17 @@ impl ObjectImpl for RtspSrc {
                     .default_value(true)
                     .mutable_ready()
                     .build(),
+                // Authentication properties
+                glib::ParamSpecString::builder("user-id")
+                    .nick("RTSP user ID")
+                    .blurb("RTSP location URI user id for authentication")
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecString::builder("user-pw")
+                    .nick("RTSP user password")
+                    .blurb("RTSP location URI user password for authentication")
+                    .mutable_ready()
+                    .build(),
             ]
         });
 
@@ -2258,6 +2198,21 @@ impl ObjectImpl for RtspSrc {
                 settings.onvif_rate_control = value.get::<bool>().expect("type checked upstream");
                 Ok(())
             }
+            // Authentication properties
+            "user-id" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.user_id = value
+                    .get::<Option<String>>()
+                    .expect("type checked upstream");
+                Ok(())
+            }
+            "user-pw" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.user_pw = value
+                    .get::<Option<String>>()
+                    .expect("type checked upstream");
+                Ok(())
+            }
             name => unimplemented!("Property '{name}'"),
         };
 
@@ -2585,6 +2540,15 @@ impl ObjectImpl for RtspSrc {
                 let settings = self.settings.lock().unwrap();
                 settings.onvif_rate_control.to_value()
             }
+            // Authentication properties
+            "user-id" => {
+                let settings = self.settings.lock().unwrap();
+                settings.user_id.to_value()
+            }
+            "user-pw" => {
+                let settings = self.settings.lock().unwrap();
+                settings.user_pw.to_value()
+            }
             name => unimplemented!("Property '{name}'"),
         }
     }
@@ -2749,8 +2713,8 @@ impl ObjectImpl for RtspSrc {
                 glib::subclass::Signal::builder("push-backchannel-buffer")
                     .action()
                     .param_types([
-                        u32::static_type(),          // stream index
-                        gst::Buffer::static_type(),  // buffer with media data
+                        u32::static_type(),         // stream index
+                        gst::Buffer::static_type(), // buffer with media data
                     ])
                     .return_type::<gst::FlowReturn>()
                     .class_handler(|args| {
@@ -2770,8 +2734,8 @@ impl ObjectImpl for RtspSrc {
                 glib::subclass::Signal::builder("push-backchannel-sample")
                     .action()
                     .param_types([
-                        u32::static_type(),          // stream index
-                        gst::Sample::static_type(),  // sample with media data and caps
+                        u32::static_type(),         // stream index
+                        gst::Sample::static_type(), // sample with media data and caps
                     ])
                     .return_type::<gst::FlowReturn>()
                     .class_handler(|args| {
@@ -3123,7 +3087,13 @@ impl RtspSrc {
             let stream = Box::pin(super::tcp_message::async_read(read, MAX_MESSAGE_SIZE).fuse());
             let sink = Box::pin(super::tcp_message::async_write(write));
 
-            let mut state = RtspTaskState::new(url, stream, sink);
+            // Get authentication credentials from settings
+            let (user_id, user_pw) = {
+                let settings = task_src.settings.lock().unwrap();
+                (settings.user_id.clone(), settings.user_pw.clone())
+            };
+
+            let mut state = RtspTaskState::new(url, stream, sink, user_id, user_pw);
 
             let task_ret = task_src.rtsp_task(&mut state, rx).await;
             gst::info!(CAT, "Exited rtsp_task");
@@ -4034,6 +4004,9 @@ struct RtspTaskState {
     setup_params: Vec<RtspSetupParams>,
     handles: Vec<JoinHandle<()>>,
     session_manager: super::session_manager::SessionManager,
+    auth_state: AuthState,
+    user_id: Option<String>,
+    user_pw: Option<String>,
 }
 
 struct RtspSetupParams {
@@ -4044,7 +4017,13 @@ struct RtspSetupParams {
 }
 
 impl RtspTaskState {
-    fn new(url: Url, stream: RtspStream, sink: RtspSink) -> Self {
+    fn new(
+        url: Url,
+        stream: RtspStream,
+        sink: RtspSink,
+        user_id: Option<String>,
+        user_pw: Option<String>,
+    ) -> Self {
         RtspTaskState {
             cseq: 0u32,
             url,
@@ -4057,10 +4036,112 @@ impl RtspTaskState {
             setup_params: Vec::new(),
             handles: Vec::new(),
             session_manager: super::session_manager::SessionManager::new(),
+            auth_state: AuthState::default(),
+            user_id,
+            user_pw,
         }
     }
 
-    #[allow(clippy::result_large_err)]
+    /// Send request with authentication retry on 401
+    async fn send_request_with_auth(
+        &mut self,
+        method: Method,
+        uri: Url,
+        mut req_builder: rtsp_types::RequestBuilder,
+    ) -> Result<Response<Body>, RtspError> {
+        // Add auth header if we already have auth state
+        if let Some(auth_header) = auth::generate_auth_header(
+            &mut self.auth_state,
+            self.user_id.as_deref(),
+            self.user_pw.as_deref(),
+            &method,
+            &uri.to_string(),
+        ) {
+            gst::debug!(CAT, "Adding authentication header to {method:?} request");
+            req_builder = req_builder.header(auth::AUTHORIZATION.clone(), auth_header);
+        }
+        let req = req_builder.build(Body::default());
+
+        gst::debug!(CAT, "-->> {req:#?}");
+        self.sink.send(req.into()).await?;
+
+        let rsp = match self.stream.next().await {
+            Some(Ok(rtsp_types::Message::Response(rsp))) => Ok(rsp),
+            Some(Ok(m)) => Err(RtspError::UnexpectedMessage("authentication response", m)),
+            Some(Err(e)) => Err(e.into()),
+            None => Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "authentication response",
+            )
+            .into()),
+        }?;
+        gst::debug!(CAT, "<<-- {rsp:#?}");
+
+        // Check if we got a 401 Unauthorized response
+        if auth::requires_auth(&rsp) {
+            gst::debug!(
+                CAT,
+                "Got 401 Unauthorized for {method:?}, attempting authentication"
+            );
+
+            // Parse the authentication challenge
+            if let Err(e) = self.auth_state.parse_challenge(&rsp) {
+                gst::warning!(CAT, "Failed to parse authentication challenge: {e}");
+                return Ok(rsp);
+            }
+
+            // If we have credentials, retry with authentication
+            if self.user_id.is_some() && self.user_pw.is_some() {
+                gst::debug!(CAT, "Retrying {method:?} with authentication");
+
+                // Increment cseq for retry
+                self.cseq += 1;
+
+                // Rebuild request with new cseq and auth header
+                let mut retry_builder = Request::builder(method.clone(), self.version)
+                    .typed_header::<CSeq>(&self.cseq.into())
+                    .request_uri(uri.clone())
+                    .header(USER_AGENT, DEFAULT_USER_AGENT);
+
+                // Add auth header
+                if let Some(auth_header) = auth::generate_auth_header(
+                    &mut self.auth_state,
+                    self.user_id.as_deref(),
+                    self.user_pw.as_deref(),
+                    &method,
+                    &uri.to_string(),
+                ) {
+                    retry_builder = retry_builder.header(auth::AUTHORIZATION.clone(), auth_header);
+                }
+                let retry_req = retry_builder.build(Body::default());
+
+                gst::debug!(CAT, "-->> (retry) {retry_req:#?}");
+                self.sink.send(retry_req.into()).await?;
+
+                let retry_rsp = match self.stream.next().await {
+                    Some(Ok(rtsp_types::Message::Response(rsp))) => Ok(rsp),
+                    Some(Ok(m)) => Err(RtspError::UnexpectedMessage(
+                        "authentication retry response",
+                        m,
+                    )),
+                    Some(Err(e)) => Err(e.into()),
+                    None => Err(std::io::Error::new(
+                        std::io::ErrorKind::UnexpectedEof,
+                        "authentication retry response",
+                    )
+                    .into()),
+                }?;
+                gst::debug!(CAT, "<<-- (retry) {retry_rsp:#?}");
+
+                return Ok(retry_rsp);
+            } else {
+                gst::warning!(CAT, "Authentication required but no credentials provided");
+            }
+        }
+
+        Ok(rsp)
+    }
+
     fn check_response(
         rsp: &Response<Body>,
         cseq: u32,
@@ -4115,24 +4196,14 @@ impl RtspTaskState {
 
     async fn options(&mut self) -> Result<(), RtspError> {
         self.cseq += 1;
-        let req = Request::builder(Method::Options, self.version)
+        let req_builder = Request::builder(Method::Options, self.version)
             .typed_header::<CSeq>(&self.cseq.into())
             .request_uri(self.url.clone())
-            .header(USER_AGENT, DEFAULT_USER_AGENT)
-            .build(Body::default());
+            .header(USER_AGENT, DEFAULT_USER_AGENT);
 
-        gst::debug!(CAT, "-->> {req:#?}");
-        self.sink.send(req.into()).await?;
-
-        let rsp = match self.stream.next().await {
-            Some(Ok(rtsp_types::Message::Response(rsp))) => Ok(rsp),
-            Some(Ok(m)) => Err(RtspError::UnexpectedMessage("OPTIONS response", m)),
-            Some(Err(e)) => Err(e.into()),
-            None => Err(
-                std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "options response").into(),
-            ),
-        }?;
-        gst::debug!(CAT, "<<-- {rsp:#?}");
+        let rsp = self
+            .send_request_with_auth(Method::Options, self.url.clone(), req_builder)
+            .await?;
         Self::check_response(&rsp, self.cseq, Method::Options, None)?;
 
         let Ok(Some(methods)) = rsp.typed_header::<Public>() else {
@@ -4166,26 +4237,15 @@ impl RtspTaskState {
 
     async fn describe(&mut self) -> Result<(), RtspError> {
         self.cseq += 1;
-        let req = Request::builder(Method::Describe, self.version)
+        let req_builder = Request::builder(Method::Describe, self.version)
             .typed_header::<CSeq>(&self.cseq.into())
             .header(USER_AGENT, DEFAULT_USER_AGENT)
             .header(ACCEPT, "application/sdp")
-            .request_uri(self.url.clone())
-            .build(Body::default());
+            .request_uri(self.url.clone());
 
-        gst::debug!(CAT, "-->> {req:#?}");
-        self.sink.send(req.into()).await?;
-
-        let rsp = match self.stream.next().await {
-            Some(Ok(rtsp_types::Message::Response(rsp))) => Ok(rsp),
-            Some(Ok(m)) => Err(RtspError::UnexpectedMessage("DESCRIBE response", m)),
-            Some(Err(e)) => Err(e.into()),
-            None => Err(std::io::Error::new(
-                std::io::ErrorKind::UnexpectedEof,
-                "describe response",
-            )
-            .into()),
-        }?;
+        let rsp = self
+            .send_request_with_auth(Method::Describe, self.url.clone(), req_builder)
+            .await?;
         gst::debug!(
             CAT,
             "<<-- Response {:#?}",
@@ -4262,13 +4322,14 @@ impl RtspTaskState {
         protocols: &[RtspProtocol],
         mode: TransportMode,
     ) -> Result<Vec<RtspSetupParams>, RtspError> {
-        let sdp = self.sdp.as_ref().expect("Must have SDP by now");
+        // Clone what we need from sdp to avoid borrow conflicts
+        let sdp_clone = self.sdp.clone().expect("Must have SDP by now");
         let base = self
             .content_base_or_location
             .as_ref()
             .and_then(|s| Url::parse(s).ok())
             .unwrap_or_else(|| self.url.clone());
-        self.aggregate_control = sdp
+        self.aggregate_control = sdp_clone
             .get_first_attribute_value("control")
             // No attribute and no value have the same meaning for us
             .ok()
@@ -4278,7 +4339,7 @@ impl RtspTaskState {
 
         // TODO: parse range for VOD
         let skip_attrs = ["control", "range"];
-        for sdp_types::Attribute { attribute, value } in &sdp.attributes {
+        for sdp_types::Attribute { attribute, value } in &sdp_clone.attributes {
             if skip_attrs.contains(&attribute.as_str()) {
                 continue;
             }
@@ -4288,7 +4349,7 @@ impl RtspTaskState {
 
         let message_structure = b.build();
 
-        let conn_source = sdp
+        let conn_source = sdp_clone
             .connection
             .as_ref()
             .map(|c| c.connection_address.as_str())
@@ -4297,7 +4358,7 @@ impl RtspTaskState {
         let mut port_next = port_start;
         let mut stream_num = 0;
         let mut setup_params: Vec<RtspSetupParams> = Vec::new();
-        for m in &sdp.medias {
+        for m in &sdp_clone.medias {
             if !["audio", "video"].contains(&m.media.as_str()) {
                 gst::info!(CAT, "Ignoring unsupported media {}", m.media);
                 continue;
@@ -4308,7 +4369,9 @@ impl RtspTaskState {
                 .ok()
                 .flatten()
                 .and_then(|v| sdp::parse_control_path(v, &base));
-            let Some(control_url) = media_control.as_ref().or(self.aggregate_control.as_ref())
+            let Some(control_url) = media_control
+                .clone()
+                .or_else(|| self.aggregate_control.clone())
             else {
                 gst::warning!(
                     CAT,
@@ -4405,36 +4468,20 @@ impl RtspTaskState {
 
             self.cseq += 1;
             let transports: Transports = transports.as_slice().into();
-            let req = Request::builder(Method::Setup, self.version)
+            let mut req_builder = Request::builder(Method::Setup, self.version)
                 .typed_header::<CSeq>(&self.cseq.into())
                 .header(USER_AGENT, DEFAULT_USER_AGENT)
                 .typed_header::<Transports>(&transports)
                 .request_uri(control_url.clone());
-            let req = if let Some(s) = session {
-                req.typed_header::<Session>(s)
-            } else {
-                req
-            };
-            let req = req.build(Body::default());
-            let cseq = self.cseq;
+            if let Some(s) = session {
+                req_builder = req_builder.typed_header::<Session>(s);
+            }
 
-            gst::debug!(CAT, "-->> {req:#?}");
-            self.sink.send(req.into()).await?;
-
-            // RTSP 2 supports pipelining of SETUP requests, so this ping-pong would have to be
-            // reworked if we want to support it.
-            let rsp = match self.stream.next().await {
-                Some(Ok(rtsp_types::Message::Response(rsp))) => Ok(rsp),
-                Some(Ok(m)) => Err(RtspError::UnexpectedMessage("SETUP response", m)),
-                Some(Err(e)) => Err(e.into()),
-                None => Err(std::io::Error::new(
-                    std::io::ErrorKind::UnexpectedEof,
-                    "setup response",
-                )
-                .into()),
-            }?;
+            let rsp = self
+                .send_request_with_auth(Method::Setup, control_url.clone(), req_builder)
+                .await?;
             gst::debug!(CAT, "<<-- {rsp:#?}");
-            Self::check_response(&rsp, cseq, Method::Setup, session.as_ref())?;
+            Self::check_response(&rsp, self.cseq, Method::Setup, session.as_ref())?;
             let new_session = rsp
                 .typed_header::<Session>()?
                 .ok_or(RtspError::InvalidMessage("No session in SETUP response"))?;
@@ -4647,14 +4694,25 @@ impl RtspTaskState {
         // Create Range header based on seek position and format
         let range_header = Self::create_range_header(seek_position, seek_format);
 
-        let req = Request::builder(Method::Play, self.version)
+        let mut req_builder = Request::builder(Method::Play, self.version)
             .typed_header::<CSeq>(&self.cseq.into())
             .typed_header::<Range>(&range_header)
             .header(USER_AGENT, DEFAULT_USER_AGENT)
-            .request_uri(request_uri)
+            .request_uri(request_uri.clone())
             .typed_header::<Session>(session);
 
-        let req = req.build(Body::default());
+        // Add auth header if we have auth state
+        if let Some(auth_header) = auth::generate_auth_header(
+            &mut self.auth_state,
+            self.user_id.as_deref(),
+            self.user_pw.as_deref(),
+            &Method::Play,
+            &request_uri.to_string(),
+        ) {
+            req_builder = req_builder.header(auth::AUTHORIZATION.clone(), auth_header);
+        }
+
+        let req = req_builder.build(Body::default());
         gst::debug!(CAT, "-->> {req:#?}");
         self.sink.send(req.into()).await?;
         Ok(self.cseq)
@@ -4848,13 +4906,24 @@ impl RtspTaskState {
     async fn teardown(&mut self, session: &Session) -> Result<u32, RtspError> {
         self.cseq += 1;
         let request_uri = self.aggregate_control.as_ref().unwrap_or(&self.url).clone();
-        let req = Request::builder(Method::Teardown, self.version)
+        let mut req_builder = Request::builder(Method::Teardown, self.version)
             .typed_header::<CSeq>(&self.cseq.into())
             .header(USER_AGENT, DEFAULT_USER_AGENT)
-            .request_uri(request_uri)
+            .request_uri(request_uri.clone())
             .typed_header::<Session>(session);
 
-        let req = req.build(Body::default());
+        // Add auth header if we have auth state
+        if let Some(auth_header) = auth::generate_auth_header(
+            &mut self.auth_state,
+            self.user_id.as_deref(),
+            self.user_pw.as_deref(),
+            &Method::Teardown,
+            &request_uri.to_string(),
+        ) {
+            req_builder = req_builder.header(auth::AUTHORIZATION.clone(), auth_header);
+        }
+
+        let req = req_builder.build(Body::default());
         gst::debug!(CAT, "-->> {req:#?}");
         self.sink.send(req.into()).await?;
         Ok(self.cseq)
@@ -4880,7 +4949,7 @@ impl RtspTaskState {
         let mut req = Request::builder(Method::GetParameter, self.version)
             .typed_header::<CSeq>(&self.cseq.into())
             .header(USER_AGENT, DEFAULT_USER_AGENT)
-            .request_uri(request_uri);
+            .request_uri(request_uri.clone());
 
         if let Some(s) = session {
             req = req.typed_header::<Session>(s);
@@ -4894,6 +4963,17 @@ impl RtspTaskState {
             // Empty GET_PARAMETER for keep-alive
             Body::default()
         };
+
+        // Add auth header if we have auth state
+        if let Some(auth_header) = auth::generate_auth_header(
+            &mut self.auth_state,
+            self.user_id.as_deref(),
+            self.user_pw.as_deref(),
+            &Method::GetParameter,
+            &request_uri.to_string(),
+        ) {
+            req = req.header(auth::AUTHORIZATION.clone(), auth_header);
+        }
 
         let req = req.build(body);
         gst::debug!(CAT, "-->> {req:#?}");
@@ -4935,7 +5015,7 @@ impl RtspTaskState {
             .typed_header::<CSeq>(&self.cseq.into())
             .header(USER_AGENT, DEFAULT_USER_AGENT)
             .header(rtsp_types::headers::CONTENT_TYPE, "text/parameters")
-            .request_uri(request_uri);
+            .request_uri(request_uri.clone());
 
         if let Some(s) = session {
             req = req.typed_header::<Session>(s);
@@ -4946,6 +5026,17 @@ impl RtspTaskState {
             .map(|(k, v)| format!("{}: {}", k, v))
             .collect::<Vec<_>>()
             .join("\r\n");
+
+        // Add auth header if we have auth state
+        if let Some(auth_header) = auth::generate_auth_header(
+            &mut self.auth_state,
+            self.user_id.as_deref(),
+            self.user_pw.as_deref(),
+            &Method::SetParameter,
+            &request_uri.to_string(),
+        ) {
+            req = req.header(auth::AUTHORIZATION.clone(), auth_header);
+        }
 
         let req = req.build(Body::from(body_str.into_bytes()));
         gst::debug!(CAT, "-->> {req:#?}");

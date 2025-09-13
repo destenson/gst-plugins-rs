@@ -11,8 +11,10 @@ rust-version.workspace = true
 [dependencies]
 anyhow = "1.0.99"
 atomic_refcell = "0.1.13"
+base64 = "0.22"
 data-encoding = "2.9.0"
 dirs = "6.0.0"
+md-5 = "0.10"
 futures = { version = "0.3.31", optional = true }
 gst = { workspace = true, features = ["v1_16"] }
 gst-app = { workspace = true, features = ["v1_16"] }
