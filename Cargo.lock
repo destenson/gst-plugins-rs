@@ -3928,6 +3928,7 @@ dependencies = [
  "socket2 0.6.0",
  "thiserror 2.0.17",
  "tokio",
+ "tokio-native-tls",
  "tokio-stream",
  "tokio-test",
  "toml 0.9.5",

@@ -502,6 +502,9 @@ struct Settings {
     racing_delay_ms: u32,
     racing_timeout: gst::ClockTime,
     seek_format: SeekFormat,
+    // Authentication properties
+    user_id: Option<String>,
+    user_pw: Option<String>,
     // Jitterbuffer control properties
     latency_ms: u32,
     drop_on_latency: bool,
@@ -554,9 +557,6 @@ struct Settings {
     backchannel: BackchannelType,
     onvif_mode: bool,
     onvif_rate_control: bool,
-    // Authentication properties
-    user_id: Option<String>,
-    user_pw: Option<String>,
     #[cfg(feature = "adaptive")]
     adaptive_learning: bool,
     #[cfg(feature = "adaptive")]
@@ -605,6 +605,9 @@ impl Default for Settings {
             #[cfg(feature = "adaptive")]
             adaptive_discovery_time: gst::ClockTime::from_seconds(30),
             seek_format: SeekFormat::default(),
+            // Authentication properties
+            user_id: None,
+            user_pw: None,
             // Jitterbuffer control properties
             latency_ms: DEFAULT_LATENCY_MS,
             drop_on_latency: DEFAULT_DROP_ON_LATENCY,
@@ -660,9 +663,6 @@ impl Default for Settings {
             adaptive_confidence_threshold: 0.8,
             #[cfg(feature = "adaptive")]
             adaptive_change_detection: true,
-            // Authentication properties
-            user_id: None,
-            user_pw: None,
             // Compatibility properties (PRP-51)
             short_header: false,         // Default: false (send full headers)
             debug: false,                // Default: false (deprecated)

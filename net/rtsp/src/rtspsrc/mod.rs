@@ -50,6 +50,7 @@ mod session_manager;
 mod tcp_message;
 #[cfg(feature = "telemetry")]
 mod telemetry;
+mod tls;
 mod transport;
 
 glib::wrapper! {
