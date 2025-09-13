@@ -1,3 +1,4 @@
+#![allow(unused)]
 // TCP Connection pooling for reducing connection overhead
 //
 // This module provides connection pooling to reuse TCP connections
