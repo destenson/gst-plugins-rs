@@ -22,8 +22,11 @@ architecture of rtspsrc. There are some major problems with rtspsrc:
 * RTCP-based A/V sync
 * Lower transport selection and priority (NEW!)
   - Also supports different lower transports for each SETUP
-* Connection retry logic with configurable backoff strategies (NEW!)
-  - Multiple retry strategies: auto, adaptive, none, immediate, linear, exponential, exponential-jitter
+* Intelligent connection retry with auto-selection (NEW!)
+  - Auto mode: Heuristic-based strategy selection without configuration
+  - Adaptive mode: Learning-based optimization per server
+  - Manual strategies: none, immediate, linear, exponential, exponential-jitter
+  - Automatic connection racing for packet loss and device limitations
   - Configurable retry parameters and limits
 * Session timeout handling with automatic keep-alive (NEW!)
   - Parses session timeout from RTSP headers

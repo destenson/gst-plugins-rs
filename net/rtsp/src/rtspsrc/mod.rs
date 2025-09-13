@@ -38,6 +38,7 @@ use gst::prelude::*;
 #[cfg(feature = "adaptive")]
 mod adaptive_retry;
 mod auth;
+mod auto_selector;
 mod body;
 mod buffer_pool;
 mod connection_pool;
