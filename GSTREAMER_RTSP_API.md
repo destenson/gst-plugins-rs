@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-The gstreamer-rtsp crate provides Rust bindings for the GStreamer RTSP library, but **critical functionality is missing**. Most notably, `RTSPConnection` and `RTSPTransport` - the core types for RTSP client implementation - lack safe Rust bindings despite being available in the FFI layer.
+**UPDATE**: The missing bindings have been added locally to gstreamer-rs! `RTSPConnection` and `RTSPTransport` are now available with safe Rust bindings, including convenient builder patterns for easy construction and configuration.
 
 ## Current Status of gstreamer-rtsp Bindings
 
@@ -35,29 +35,34 @@ The following types are exposed through the gstreamer-rtsp crate (v0.24.0):
 - `RTSPProfile` - Transport profiles
 - `RTSPTransMode` - Transport modes
 
-### Missing Bindings (Available in FFI but Not Safe Rust)
+### Newly Added Bindings (Now Available!)
 
-Critical types present in `gstreamer-rtsp-sys` but lacking safe bindings:
+The following critical types have been added to the local gstreamer-rs with safe Rust bindings:
 
 #### RTSPConnection
-The most critical missing type. The C implementation (gstrtspsrc.c) heavily uses:
-- `gst_rtsp_connection_create()`
-- `gst_rtsp_connection_connect_with_response_usec()`
-- `gst_rtsp_connection_send_usec()`
-- `gst_rtsp_connection_receive_usec()`
-- `gst_rtsp_connection_close()`
-- `gst_rtsp_connection_free()`
-- `gst_rtsp_connection_set_tls_*()` functions
-- `gst_rtsp_connection_set_proxy()`
-- `gst_rtsp_connection_flush()`
-- `gst_rtsp_connection_reset_timeout()`
+Full safe bindings now available in `gstreamer_rtsp::rtsp_connection`:
+- `RTSPConnection::create()` - Create new connection from URL
+- `connect()`, `connect_with_response()` - Connect to server
+- `send()`, `receive()` - Send/receive RTSP messages
+- `close()` - Close connection
+- TLS configuration methods
+- Proxy support
+- Timeout management
+- Builder pattern via `RTSPConnectionBuilder` for convenient construction
 
-#### RTSPTransport
-Another critical missing type for transport negotiation:
-- `gst_rtsp_transport_new()`
-- `gst_rtsp_transport_init()`
-- `gst_rtsp_transport_free()`
-- `gst_rtsp_transport_as_text()`
+#### RTSPTransport  
+Complete transport negotiation support in `gstreamer_rtsp::rtsp_transport`:
+- `RTSPTransport::new()` - Create new transport
+- `set_trans()`, `set_profile()`, `set_lower_transport()` - Configure transport
+- `as_text()` - Serialize to string
+- `RTSPRange` - Port range configuration
+- Builder pattern via `RTSPTransportBuilder` for fluent API
+
+#### Builder Patterns
+Convenient builders in `gstreamer_rtsp::builders`:
+- `RTSPConnectionBuilder` - Fluent API for connection configuration
+- `RTSPTransportBuilder` - Easy transport setup
+- Helper functions for common patterns
 
 ## GIO Async Patterns in gstreamer-rs
 
@@ -91,31 +96,31 @@ TLS is handled through GIO types (available in FFI):
 - `gio::GTlsDatabase` - Certificate database
 - `gio::GTlsInteraction` - User interaction for TLS
 
-## Implementation Approach
+## Implementation Status
 
-### Option 1: Create Manual Bindings (Recommended)
+### ✅ Completed: Local Bindings Created
 
-Since RTSPConnection and RTSPTransport are not exposed through auto-generated bindings, manual bindings need to be created:
+The missing bindings have been successfully added to the local gstreamer-rs repository:
 
-1. **Create wrapper types** in gstreamer-rtsp/src/
-2. **Implement safe wrappers** for FFI functions
-3. **Handle memory management** with proper ownership semantics
-4. **Integrate with GIO** for async operations
+1. **RTSPConnection module** (`rtsp_connection.rs`)
+   - Full safe wrapper around FFI types
+   - Proper memory management with Drop trait
+   - GIO integration for async operations
+   - TLS and proxy configuration support
 
-### Option 2: Fix gstreamer-rs Upstream
+2. **RTSPTransport module** (`rtsp_transport.rs`)
+   - Complete transport configuration API
+   - Range and port management
+   - Serialization support
 
-As suggested, contributing the missing bindings to gstreamer-rs would benefit the entire ecosystem:
+3. **Builder patterns** (`builders.rs`)
+   - RTSPConnectionBuilder for fluent connection setup
+   - RTSPTransportBuilder for easy transport configuration
+   - Helper functions for common patterns
 
-1. **Add manual bindings** in gstreamer-rtsp/src/
-2. **Submit PR** to gitlab.freedesktop.org/gstreamer/gstreamer-rs
-3. **Use git dependency** until merged
+### Next Phase: Migration Implementation
 
-### Option 3: Direct FFI Usage (Not Recommended)
-
-Use unsafe FFI directly from gstreamer-rtsp-sys, but this approach:
-- Requires extensive unsafe code
-- Loses type safety benefits
-- Increases maintenance burden
+With the bindings now available, the rtspsrc can be migrated from Tokio to use these native GStreamer RTSP APIs.
 
 ## Migration Path from Tokio
 
@@ -139,11 +144,43 @@ Use unsafe FFI directly from gstreamer-rtsp-sys, but this approach:
 
 ## Example Patterns
 
-### Creating an RTSP Connection (C Code Reference)
-```c
-GstRTSPConnection *conn;
-gst_rtsp_connection_create(url, &conn);
-gst_rtsp_connection_connect_with_response_usec(conn, timeout, &response);
+### Creating an RTSP Connection (New Rust API)
+```rust
+use gstreamer_rtsp::{RTSPConnection, RTSPUrl};
+use gstreamer_rtsp::builders::RTSPConnectionBuilder;
+
+// Direct API
+let (result, url) = RTSPUrl::parse("rtsp://localhost:554/test");
+let url = url.unwrap();
+let conn = RTSPConnection::create(&url)?;
+conn.connect(timeout)?;
+
+// Builder pattern (recommended)
+let conn = RTSPConnectionBuilder::new("rtsp://localhost:554/test")?
+    .auth(RTSPAuthMethod::Basic, "user", "pass")
+    .proxy("proxy.example.com", 8080)
+    .timeout(Duration::from_secs(5))
+    .build()?;
+```
+
+### Configuring Transport
+```rust
+use gstreamer_rtsp::{RTSPTransport, RTSPTransMode, RTSPProfile, RTSPLowerTrans};
+use gstreamer_rtsp::builders::RTSPTransportBuilder;
+
+// Direct API
+let mut transport = RTSPTransport::new()?;
+transport.set_trans(RTSPTransMode::RTP);
+transport.set_profile(RTSPProfile::AVP);
+transport.set_lower_transport(RTSPLowerTrans::UDP);
+
+// Builder pattern (recommended)
+let transport = RTSPTransportBuilder::new()
+    .trans(RTSPTransMode::RTP)
+    .profile(RTSPProfile::AVP)
+    .lower_transport(RTSPLowerTrans::UDP)
+    .client_port_range(5000, 5001)
+    .build()?;
 ```
 
 ### MainLoop Integration Pattern
@@ -163,42 +200,55 @@ bus.add_watch(move |_, msg| {
 main_loop.run();
 ```
 
-## Required Work
+## Migration Tasks
 
 ### Immediate Tasks
-1. **Create RTSPConnection bindings**
-   - Wrapper struct with proper lifetime management
-   - Safe methods for create, connect, send, receive
-   - Integration with GIO async patterns
+1. **Update Cargo.toml dependencies**
+   - Point to local gstreamer-rs with new bindings
+   - Remove unnecessary Tokio dependencies
 
-2. **Create RTSPTransport bindings**
-   - Transport negotiation support
-   - Parameter parsing and serialization
+2. **Refactor connection management**
+   - Replace Tokio TCP/UDP sockets with RTSPConnection
+   - Migrate from futures to GIO callbacks
+   - Update error handling to use RTSPResult
 
-3. **Implement async patterns**
-   - MainLoop integration
-   - Callback registration
-   - Error propagation
+3. **Implement GLib MainLoop integration**
+   - Replace Tokio runtime with MainLoop
+   - Convert async/await patterns to callback-based
+   - Handle message dispatch through GIO
 
-### Long-term Tasks
-1. **Upstream contribution** to gstreamer-rs
-2. **Documentation** and examples
-3. **Test coverage** for new bindings
+### Implementation Considerations
+1. **Memory Management**
+   - RTSPConnection uses GObject reference counting
+   - Ensure proper cleanup with Drop implementations
+   - Handle ownership transfers correctly
+
+2. **Error Handling**
+   - Map RTSPResult to Rust Result types
+   - Preserve error context for debugging
+   - Handle GIO-specific errors
+
+3. **Testing Strategy**
+   - Unit tests for individual components
+   - Integration tests with real RTSP servers
+   - Performance comparison with Tokio version
 
 ## Conclusion
 
-While gstreamer-rtsp provides basic RTSP types, the absence of RTSPConnection and RTSPTransport bindings makes it impossible to implement a full RTSP client using only safe Rust. Manual bindings must be created, either locally or preferably as an upstream contribution to gstreamer-rs.
+With the successful addition of RTSPConnection and RTSPTransport bindings to the local gstreamer-rs, we now have all the necessary components to migrate rtspsrc from Tokio to the native GStreamer RTSP library. This provides:
 
-The migration from Tokio to GStreamer's RTSP library requires not just replacing network code, but also adopting GLib's async patterns and MainLoop architecture. However, this would provide:
-- Proven, battle-tested RTSP implementation
-- Built-in features (keep-alive, reconnection, TLS)
-- Better integration with GStreamer ecosystem
-- Reduced code complexity
+- ✅ Complete RTSP protocol implementation
+- ✅ Built-in keep-alive and reconnection
+- ✅ Native TLS support through GIO
+- ✅ Better GStreamer ecosystem integration
+- ✅ Reduced code complexity
+- ✅ Battle-tested implementation
 
 ## Next Steps
 
-1. **Decision Required**: Local bindings vs upstream contribution
-2. **Prototype**: Create minimal RTSPConnection binding
-3. **Validate**: Test async I/O patterns with MainLoop
-4. **Implement**: Full binding implementation
-5. **Migrate**: Port rtspsrc from Tokio to GStreamer RTSP
+1. ✅ **COMPLETED**: Added RTSPConnection and RTSPTransport bindings
+2. **IN PROGRESS**: Update documentation with new API examples
+3. **TODO**: Begin migration of rtspsrc from Tokio to GStreamer RTSP
+4. **TODO**: Implement MainLoop integration
+5. **TODO**: Test with various RTSP servers
+6. **FUTURE**: Consider upstream contribution to gstreamer-rs
