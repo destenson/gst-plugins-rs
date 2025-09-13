@@ -4,6 +4,7 @@
 // and proxies that block RTSP traffic.
 
 use crate::rtspsrc::imp::HttpTunnelMode;
+use crate::rtspsrc::proxy::{ProxyConfig, ProxyConnection};
 use anyhow::{anyhow, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use bytes::{Bytes, BytesMut};
@@ -12,7 +13,6 @@ use tokio::net::TcpStream;
 use tokio::sync::{mpsc, Mutex};
 use url::Url;
 
-use gst::glib;
 use std::sync::LazyLock;
 
 static CAT: LazyLock<gst::DebugCategory> = LazyLock::new(|| {
@@ -34,8 +34,8 @@ pub struct HttpTunnel {
     post_connection: Arc<Mutex<Option<TcpStream>>>,
     /// Tunnel URL
     url: Url,
-    /// Proxy settings
-    proxy: Option<String>,
+    /// Proxy configuration
+    proxy_config: Option<ProxyConfig>,
     /// Channel for receiving RTSP responses from GET connection
     response_rx: Arc<Mutex<mpsc::Receiver<Bytes>>>,
     response_tx: mpsc::Sender<Bytes>,
@@ -43,7 +43,12 @@ pub struct HttpTunnel {
 
 impl HttpTunnel {
     /// Create a new HTTP tunnel
-    pub fn new(rtsp_url: &Url, proxy: Option<String>) -> Result<Self> {
+    pub fn new(
+        rtsp_url: &Url,
+        proxy: Option<String>,
+        proxy_id: Option<String>,
+        proxy_pw: Option<String>,
+    ) -> Result<Self> {
         // Generate a unique session cookie
         let session_cookie = format!("{:x}", rand::random::<u64>());
 
@@ -62,12 +67,20 @@ impl HttpTunnel {
 
         let (response_tx, response_rx) = mpsc::channel(100);
 
+        // Create proxy config if proxy URL is provided
+        let proxy_config = if let Some(proxy_url) = proxy {
+            Some(ProxyConfig::from_url(&proxy_url, proxy_id, proxy_pw)?)
+        } else {
+            // Try to get from environment if not explicitly provided
+            ProxyConfig::from_env()
+        };
+
         Ok(Self {
             session_cookie,
             get_connection: Arc::new(Mutex::new(None)),
             post_connection: Arc::new(Mutex::new(None)),
             url: tunnel_url,
-            proxy,
+            proxy_config,
             response_rx: Arc::new(Mutex::new(response_rx)),
             response_tx,
         })
@@ -95,7 +108,12 @@ impl HttpTunnel {
             .ok_or_else(|| anyhow!("No host in URL"))?;
         let port = self.url.port().unwrap_or(80);
 
-        let stream = TcpStream::connect((host, port)).await?;
+        // Connect through proxy if configured, otherwise direct connection
+        let stream = if let Some(ref proxy) = self.proxy_config {
+            ProxyConnection::connect(proxy, host, port).await?
+        } else {
+            ProxyConnection::connect_direct(host, port).await?
+        };
 
         // Send HTTP GET request with x-sessioncookie header
         let get_request = format!(
@@ -134,7 +152,12 @@ impl HttpTunnel {
             .ok_or_else(|| anyhow!("No host in URL"))?;
         let port = self.url.port().unwrap_or(80);
 
-        let stream = TcpStream::connect((host, port)).await?;
+        // Connect through proxy if configured, otherwise direct connection
+        let stream = if let Some(ref proxy) = self.proxy_config {
+            ProxyConnection::connect(proxy, host, port).await?
+        } else {
+            ProxyConnection::connect_direct(host, port).await?
+        };
 
         // Send HTTP POST request with x-sessioncookie header
         let post_request = format!(
@@ -269,8 +292,8 @@ mod tests {
     #[test]
     fn test_session_cookie_generation() {
         let url = Url::parse("rtsp://example.com/stream").unwrap();
-        let tunnel1 = HttpTunnel::new(&url, None).unwrap();
-        let tunnel2 = HttpTunnel::new(&url, None).unwrap();
+        let tunnel1 = HttpTunnel::new(&url, None, None, None).unwrap();
+        let tunnel2 = HttpTunnel::new(&url, None, None, None).unwrap();
 
         // Session cookies should be unique
         assert_ne!(tunnel1.session_cookie, tunnel2.session_cookie);
@@ -279,7 +302,7 @@ mod tests {
     #[test]
     fn test_url_conversion() {
         let rtsp_url = Url::parse("rtsp://example.com:554/stream").unwrap();
-        let tunnel = HttpTunnel::new(&rtsp_url, None).unwrap();
+        let tunnel = HttpTunnel::new(&rtsp_url, None, None, None).unwrap();
 
         assert_eq!(tunnel.url.scheme(), "http");
         assert_eq!(tunnel.url.port(), Some(80));

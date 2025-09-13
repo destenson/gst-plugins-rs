@@ -3361,12 +3361,31 @@ impl RtspSrc {
             let mut retry_calc = super::retry::RetryCalculator::new(retry_config)
                 .with_server_url(&url.to_string());
 
+            // Create proxy config if configured
+            let proxy_config = if let Some(ref proxy_url) = settings.proxy {
+                match super::proxy::ProxyConfig::from_url(
+                    proxy_url,
+                    settings.proxy_id.clone(),
+                    settings.proxy_pw.clone(),
+                ) {
+                    Ok(config) => Some(config),
+                    Err(e) => {
+                        gst::warning!(CAT, "Failed to parse proxy URL: {}", e);
+                        None
+                    }
+                }
+            } else {
+                // Try to get from environment if not explicitly configured
+                super::proxy::ProxyConfig::from_env()
+            };
+
             // Create connection racer config
             let racing_config = super::connection_racer::ConnectionRacingConfig {
                 strategy: settings.connection_racing,
                 max_parallel_connections: settings.max_parallel_connections,
                 racing_delay_ms: settings.racing_delay_ms,
                 racing_timeout: std::time::Duration::from_nanos(settings.racing_timeout.nseconds()),
+                proxy_config,
             };
             let racer = super::connection_racer::ConnectionRacer::new(racing_config);
 

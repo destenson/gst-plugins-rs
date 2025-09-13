@@ -44,6 +44,7 @@ mod connection_pool;
 mod connection_racer;
 mod http_tunnel;
 mod imp;
+mod proxy;
 mod retry;
 mod rtcp_enhanced;
 mod sdp;
