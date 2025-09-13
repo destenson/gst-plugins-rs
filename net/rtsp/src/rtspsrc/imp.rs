@@ -199,6 +199,15 @@ pub enum RtspProtocol {
     UdpMulticast,
     Udp,
     Tcp,
+    Http,  // HTTP tunneling
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HttpTunnelMode {
+    #[default]
+    Auto,    // Automatically detect need for tunneling
+    Never,   // Never use HTTP tunneling
+    Always,  // Always use HTTP tunneling
 }
 
 impl fmt::Display for RtspProtocol {
@@ -207,6 +216,7 @@ impl fmt::Display for RtspProtocol {
             RtspProtocol::Udp => write!(f, "udp"),
             RtspProtocol::UdpMulticast => write!(f, "udp-mcast"),
             RtspProtocol::Tcp => write!(f, "tcp"),
+            RtspProtocol::Http => write!(f, "http"),
         }
     }
 }
@@ -549,6 +559,8 @@ struct Settings {
     proxy_id: Option<String>,
     proxy_pw: Option<String>,
     extra_http_request_headers: Option<gst::Structure>,
+    http_tunnel_mode: HttpTunnelMode,
+    tunnel_port: u16,
     // NAT traversal properties
     nat_method: NatMethod,
     ignore_x_server_reply: bool,
@@ -649,6 +661,8 @@ impl Default for Settings {
             proxy_id: None,
             proxy_pw: None,
             extra_http_request_headers: None,
+            http_tunnel_mode: HttpTunnelMode::default(),
+            tunnel_port: 80,
             // NAT traversal properties
             nat_method: NatMethod::default(), // Dummy
             ignore_x_server_reply: false,
@@ -767,6 +781,7 @@ fn parse_protocols_str(s: &str) -> Result<Vec<RtspProtocol>, glib::Error> {
             "udp-mcast" => acc.push(RtspProtocol::UdpMulticast),
             "udp" => acc.push(RtspProtocol::Udp),
             "tcp" => acc.push(RtspProtocol::Tcp),
+            "http" => acc.push(RtspProtocol::Http),
             _ => {
                 return Err(glib::Error::new(
                     gst::CoreError::Failed,
@@ -1416,8 +1431,22 @@ impl ObjectImpl for RtspSrc {
                     .build(),
                 glib::ParamSpecString::builder("protocols")
                     .nick("Protocols")
-                    .blurb("Allowed lower transport protocols, in order of preference")
+                    .blurb("Allowed lower transport protocols, in order of preference (udp-mcast,udp,tcp,http)")
                     .default_value("udp-mcast,udp,tcp")
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecString::builder("http-tunnel-mode")
+                    .nick("HTTP Tunnel Mode")
+                    .blurb("HTTP tunneling mode: auto, never, always")
+                    .default_value("auto")
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecUInt::builder("tunnel-port")
+                    .nick("Tunnel Port")
+                    .blurb("Port to use for HTTP tunneling (default: 80)")
+                    .minimum(1)
+                    .maximum(65535)
+                    .default_value(80)
                     .mutable_ready()
                     .build(),
                 glib::ParamSpecUInt64::builder("timeout")
@@ -1904,6 +1933,21 @@ impl ObjectImpl for RtspSrc {
                 let protocols = value.get::<Option<&str>>().expect("type checked upstream");
                 self.set_protocols(protocols)
             }
+            "http-tunnel-mode" => {
+                let mut settings = self.settings.lock().unwrap();
+                let mode_str = value.get::<&str>().expect("type checked upstream");
+                settings.http_tunnel_mode = match mode_str {
+                    "never" => HttpTunnelMode::Never,
+                    "always" => HttpTunnelMode::Always,
+                    _ => HttpTunnelMode::Auto,
+                };
+                Ok(())
+            }
+            "tunnel-port" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.tunnel_port = value.get::<u32>().expect("type checked upstream") as u16;
+                Ok(())
+            }
             "timeout" => {
                 let mut settings = self.settings.lock().unwrap();
                 let timeout = value.get().expect("type checked upstream");
@@ -2357,6 +2401,19 @@ impl ObjectImpl for RtspSrc {
                     .collect::<Vec<_>>()
                     .join(","))
                 .to_value()
+            }
+            "http-tunnel-mode" => {
+                let settings = self.settings.lock().unwrap();
+                let mode_str = match settings.http_tunnel_mode {
+                    HttpTunnelMode::Auto => "auto",
+                    HttpTunnelMode::Never => "never",
+                    HttpTunnelMode::Always => "always",
+                };
+                mode_str.to_value()
+            }
+            "tunnel-port" => {
+                let settings = self.settings.lock().unwrap();
+                (settings.tunnel_port as u32).to_value()
             }
             "timeout" => {
                 let settings = self.settings.lock().unwrap();
@@ -2923,6 +2980,15 @@ impl ObjectImpl for RtspSrc {
                 glib::subclass::Signal::builder("hard-limit")
                     .param_types([u32::static_type()]) // stream index experiencing hard limit
                     .build(),
+                // backchannel-detected signal: emitted when ONVIF backchannel stream is detected
+                // Notifies application that a backchannel stream is available for two-way audio
+                // Since: 1.0
+                glib::subclass::Signal::builder("backchannel-detected")
+                    .param_types([
+                        u32::static_type(),       // stream index of backchannel
+                        gst::Caps::static_type(), // capabilities of backchannel stream
+                    ])
+                    .build(),
                 // handle-request signal: emitted when server sends an RTSP request to the client (PRP-52)
                 // Allows application to handle server-initiated requests like ANNOUNCE, REDIRECT, etc.
                 // Since: 1.0
@@ -2963,8 +3029,17 @@ impl ElementImpl for RtspSrc {
                 &gst::Caps::new_empty_simple("application/x-rtp"),
             )
             .unwrap();
+            
+            // Sink pad template for ONVIF backchannel
+            let sink_pad_template = gst::PadTemplate::new(
+                "backchannel_%u",
+                gst::PadDirection::Sink,
+                gst::PadPresence::Request,
+                &gst::Caps::new_empty_simple("application/x-rtp"),
+            )
+            .unwrap();
 
-            vec![src_pad_template]
+            vec![src_pad_template, sink_pad_template]
         });
 
         PAD_TEMPLATES.as_ref()

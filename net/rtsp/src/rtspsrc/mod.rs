@@ -42,6 +42,7 @@ mod body;
 mod buffer_pool;
 mod connection_pool;
 mod connection_racer;
+mod http_tunnel;
 mod imp;
 mod retry;
 mod rtcp_enhanced;

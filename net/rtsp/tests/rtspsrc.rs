@@ -127,6 +127,85 @@ fn test_jitterbuffer_properties() {
 
 #[test]
 #[serial]
+fn test_http_tunneling_properties() {
+    init();
+
+    let element = gst::ElementFactory::make("rtspsrc2").build().unwrap();
+
+    // Test that HTTP tunneling properties exist
+    assert!(element.property_type("http-tunnel-mode").is_some());
+    assert!(element.property_type("tunnel-port").is_some());
+
+    // Test default values
+    assert_eq!(element.property::<String>("http-tunnel-mode"), "auto");
+    assert_eq!(element.property::<u32>("tunnel-port"), 80);
+
+    // Test setting values
+    element.set_property("http-tunnel-mode", "always");
+    assert_eq!(element.property::<String>("http-tunnel-mode"), "always");
+
+    element.set_property("http-tunnel-mode", "never");
+    assert_eq!(element.property::<String>("http-tunnel-mode"), "never");
+
+    element.set_property("tunnel-port", 8080u32);
+    assert_eq!(element.property::<u32>("tunnel-port"), 8080);
+
+    // Test protocols property includes http
+    element.set_property("protocols", "tcp,http");
+    assert_eq!(element.property::<String>("protocols"), "tcp,http");
+}
+
+#[test]
+#[serial]
+fn test_backchannel_detected_signal() {
+    init();
+
+    let element = gst::ElementFactory::make("rtspsrc2")
+        .build()
+        .expect("Failed to create rtspsrc2 element");
+
+    // Check that the backchannel-detected signal exists
+    let signal_query = element
+        .element_class()
+        .list_signals()
+        .iter()
+        .find(|s| s.name() == "backchannel-detected");
+    assert!(signal_query.is_some(), "backchannel-detected signal not found");
+
+    // Check signal parameters
+    let signal = signal_query.unwrap();
+    let param_types = signal.param_types();
+    assert_eq!(param_types.len(), 2); // stream_index, caps
+    assert_eq!(param_types[0], u32::static_type());
+    assert_eq!(param_types[1], gst::Caps::static_type());
+}
+
+#[test]
+#[serial]
+fn test_backchannel_pad_template() {
+    init();
+
+    let element = gst::ElementFactory::make("rtspsrc2")
+        .build()
+        .expect("Failed to create rtspsrc2 element");
+
+    // Get pad templates
+    let pad_templates = element.element_class().pad_templates();
+    
+    // Check for backchannel sink pad template
+    let backchannel_template = pad_templates
+        .iter()
+        .find(|t| t.name_template().starts_with("backchannel_"));
+    
+    assert!(backchannel_template.is_some(), "Backchannel pad template not found");
+    
+    let template = backchannel_template.unwrap();
+    assert_eq!(template.direction(), gst::PadDirection::Sink);
+    assert_eq!(template.presence(), gst::PadPresence::Request);
+}
+
+#[test]
+#[serial]
 fn test_get_parameter_signal() {
     init();
 

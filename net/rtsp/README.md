@@ -57,6 +57,17 @@ architecture of rtspsrc. There are some major problems with rtspsrc:
   - Configurable TLS validation flags
   - Support for self-signed certificates
 
+* HTTP tunneling support (NEW!)
+  - Properties for tunnel mode and port configuration
+  - Base64 encoding/decoding for RTSP messages
+  - Dual HTTP connection management (GET/POST)
+  - Auto-detection of tunneling need
+* ONVIF backchannel preparation (NEW!)
+  - SDP attribute parsing for stream direction (sendonly/recvonly/sendrecv)
+  - Detection of ONVIF backchannel streams
+  - Sink pad template for audio return channel
+  - Signal emission for backchannel detection
+
 ## Missing features
 
 Roughly in order of priority:
@@ -64,7 +75,6 @@ Roughly in order of priority:
 * Allow ignoring specific streams (SDP medias)
   - Currently all available source pads must be linked
 * SRTP support
-* HTTP tunnelling
 * Proxy support
 * Make TCP connection optional when using UDP transport
   - Or TCP reconnection if UDP has not timed out
@@ -78,7 +88,7 @@ Roughly in order of priority:
 * Clock sync support, such as RFC7273
 * PAUSE support with VOD
 * Seeking support with VOD
-* ONVIF backchannel support
+* ONVIF backchannel full implementation (prepared, data flow pending)
 * ONVIF trick mode support
 * RTSP 2 support (no servers exist at present)
 
@@ -149,7 +159,45 @@ gst-launch-1.0 rtspsrc2 location=rtsp://camera.local/stream \
 gst-launch-1.0 rtspsrc2 location=rtsp://camera.local/stream \
   retry-strategy=none ! \
   fakesink
+
+# HTTP tunneling (automatic detection)
+gst-launch-1.0 rtspsrc2 location=rtsp://camera.local/stream \
+  protocols=tcp,http \
+  http-tunnel-mode=auto ! \
+  decodebin ! autovideosink
+
+# Force HTTP tunneling on custom port
+gst-launch-1.0 rtspsrc2 location=rtsp://camera.local/stream \
+  http-tunnel-mode=always \
+  tunnel-port=8080 ! \
+  decodebin ! autovideosink
 ```
+
+### HTTP Tunneling Configuration
+
+The rtspsrc2 element supports HTTP tunneling for RTSP to bypass restrictive firewalls:
+
+#### Properties
+
+* `http-tunnel-mode` (string): HTTP tunneling mode
+  - `auto` (default): Automatically detect need for tunneling
+  - `never`: Never use HTTP tunneling
+  - `always`: Always use HTTP tunneling
+
+* `tunnel-port` (uint): Port to use for HTTP tunneling (default: 80)
+
+* `protocols` (string): Include "http" to enable HTTP as a transport option
+
+### ONVIF Backchannel Support (Preparation)
+
+The rtspsrc2 element has initial support for detecting ONVIF backchannel streams:
+
+* Parses SDP attributes for stream direction (sendonly/recvonly/sendrecv)
+* Detects ONVIF backchannel streams in SDP
+* Provides sink pad template for future audio return channel
+* Emits `backchannel-detected` signal when backchannel stream is found
+
+Note: Full backchannel data flow implementation is pending
 
 ## Camera Compatibility Testing
 
