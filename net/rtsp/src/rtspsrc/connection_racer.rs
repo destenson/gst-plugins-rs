@@ -8,6 +8,7 @@
 //
 // SPDX-License-Identifier: MPL-2.0
 
+use crate::rtspsrc::proxy::{ProxyConfig, ProxyConnection};
 use futures::future::select_all;
 use std::sync::LazyLock;
 use std::time::Duration;
@@ -62,6 +63,7 @@ pub struct ConnectionRacingConfig {
     pub max_parallel_connections: u32,
     pub racing_delay_ms: u32,
     pub racing_timeout: Duration,
+    pub proxy_config: Option<ProxyConfig>,
 }
 
 impl Default for ConnectionRacingConfig {
@@ -71,6 +73,7 @@ impl Default for ConnectionRacingConfig {
             max_parallel_connections: 3,
             racing_delay_ms: 250,
             racing_timeout: Duration::from_secs(5),
+            proxy_config: None,
         }
     }
 }
@@ -90,7 +93,7 @@ impl ConnectionRacer {
             ConnectionRacingStrategy::None => {
                 // Simple single connection attempt
                 gst::debug!(CAT, "Using no racing strategy, single connection attempt");
-                TcpStream::connect(hostname_port).await
+                self.connect_with_proxy(hostname_port).await
             }
             ConnectionRacingStrategy::FirstWins => self.connect_first_wins(hostname_port).await,
             ConnectionRacingStrategy::LastWins => self.connect_last_wins(hostname_port).await,
@@ -125,6 +128,7 @@ impl ConnectionRacer {
             let delay = Duration::from_millis((i * self.config.racing_delay_ms) as u64);
             let racing_timeout = self.config.racing_timeout;
 
+            let proxy_config = self.config.proxy_config.clone();
             let handle = tokio::spawn(async move {
                 if i > 0 {
                     sleep(delay).await;
@@ -135,7 +139,11 @@ impl ConnectionRacer {
                     i + 1,
                     delay.as_millis()
                 );
-                timeout(racing_timeout, TcpStream::connect(&hostname_port)).await
+                timeout(
+                    racing_timeout,
+                    Self::connect_with_proxy_static(&hostname_port, &proxy_config),
+                )
+                .await
             });
 
             handles.push(handle);
@@ -201,6 +209,7 @@ impl ConnectionRacer {
             let delay = Duration::from_millis((i * self.config.racing_delay_ms) as u64);
             let racing_timeout = self.config.racing_timeout;
 
+            let proxy_config = self.config.proxy_config.clone();
             let handle = tokio::spawn(async move {
                 if i > 0 {
                     sleep(delay).await;
@@ -211,7 +220,11 @@ impl ConnectionRacer {
                     i + 1,
                     delay.as_millis()
                 );
-                timeout(racing_timeout, TcpStream::connect(&hostname_port)).await
+                timeout(
+                    racing_timeout,
+                    Self::connect_with_proxy_static(&hostname_port, &proxy_config),
+                )
+                .await
             });
 
             handles.push(handle);
@@ -261,6 +274,41 @@ impl ConnectionRacer {
                 std::io::ErrorKind::ConnectionRefused,
                 "No successful connections in last-wins racing",
             ))
+        }
+    }
+
+    /// Connect with proxy support
+    async fn connect_with_proxy(&self, hostname_port: &str) -> Result<TcpStream, std::io::Error> {
+        Self::connect_with_proxy_static(hostname_port, &self.config.proxy_config).await
+    }
+
+    /// Static version for use in spawned tasks
+    async fn connect_with_proxy_static(
+        hostname_port: &str,
+        proxy_config: &Option<ProxyConfig>,
+    ) -> Result<TcpStream, std::io::Error> {
+        // Parse hostname and port from "host:port" string
+        let parts: Vec<&str> = hostname_port.split(':').collect();
+        if parts.len() != 2 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Invalid hostname:port format: {}", hostname_port),
+            ));
+        }
+        let host = parts[0];
+        let port = parts[1]
+            .parse::<u16>()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+
+        // Connect through proxy if configured, otherwise direct connection
+        if let Some(proxy) = proxy_config {
+            ProxyConnection::connect(proxy, host, port)
+                .await
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+        } else {
+            ProxyConnection::connect_direct(host, port)
+                .await
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
         }
     }
 }
@@ -320,5 +368,6 @@ mod tests {
         assert_eq!(config.max_parallel_connections, 3);
         assert_eq!(config.racing_delay_ms, 250);
         assert_eq!(config.racing_timeout, Duration::from_secs(5));
+        assert!(config.proxy_config.is_none());
     }
 }
