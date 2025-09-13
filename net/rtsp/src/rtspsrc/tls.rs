@@ -40,62 +40,60 @@ pub enum RtspStream {
 
 impl RtspStream {
     pub async fn connect(url: &Url, tls_config: &TlsConfig) -> Result<Self> {
-        let host = url
-            .host_str()
-            .ok_or_else(|| anyhow!("No host in URL"))?;
-        
+        let host = url.host_str().ok_or_else(|| anyhow!("No host in URL"))?;
+
         let is_tls = url.scheme() == "rtsps";
         let default_port = if is_tls {
             DEFAULT_RTSPS_PORT
         } else {
             DEFAULT_RTSP_PORT
         };
-        
+
         let port = url.port().unwrap_or(default_port);
         let addr = format!("{}:{}", host, port);
-        
+
         // Connect TCP first
         let tcp_stream = TcpStream::connect(&addr).await?;
-        
+
         if is_tls {
             // Upgrade to TLS
             let mut builder = native_tls::TlsConnector::builder();
-            
+
             if tls_config.accept_invalid_certs {
                 builder.danger_accept_invalid_certs(true);
             }
-            
+
             if tls_config.accept_invalid_hostnames {
                 builder.danger_accept_invalid_hostnames(true);
             }
-            
+
             if let Some(min_version) = tls_config.min_version {
                 builder.min_protocol_version(Some(min_version));
             }
-            
+
             if let Some(max_version) = tls_config.max_version {
                 builder.max_protocol_version(Some(max_version));
             }
-            
+
             let tls_connector = builder.build()?;
             let tls_connector = TlsConnector::from(tls_connector);
-            
+
             let tls_stream = tls_connector.connect(host, tcp_stream).await?;
             Ok(RtspStream::Tls(tls_stream))
         } else {
             Ok(RtspStream::Plain(tcp_stream))
         }
     }
-    
+
     pub fn is_tls(&self) -> bool {
         matches!(self, RtspStream::Tls(_))
     }
 }
 
 // Implement AsyncRead and AsyncWrite for RtspStream
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 impl AsyncRead for RtspStream {
     fn poll_read(
@@ -159,20 +157,20 @@ mod tests {
     fn test_tls_url_detection() {
         let rtsp_url = Url::parse("rtsp://example.com/stream").unwrap();
         let rtsps_url = Url::parse("rtsps://example.com/stream").unwrap();
-        
+
         assert!(!is_tls_url(&rtsp_url));
         assert!(is_tls_url(&rtsps_url));
     }
-    
+
     #[test]
     fn test_default_port_selection() {
         let rtsp_url = Url::parse("rtsp://example.com/stream").unwrap();
         let rtsps_url = Url::parse("rtsps://example.com/stream").unwrap();
-        
+
         assert_eq!(get_default_port(&rtsp_url), DEFAULT_RTSP_PORT);
         assert_eq!(get_default_port(&rtsps_url), DEFAULT_RTSPS_PORT);
     }
-    
+
     #[test]
     fn test_tls_config_defaults() {
         let config = TlsConfig::default();

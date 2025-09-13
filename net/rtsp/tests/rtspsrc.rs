@@ -170,7 +170,10 @@ fn test_backchannel_detected_signal() {
         .list_signals()
         .iter()
         .find(|s| s.name() == "backchannel-detected");
-    assert!(signal_query.is_some(), "backchannel-detected signal not found");
+    assert!(
+        signal_query.is_some(),
+        "backchannel-detected signal not found"
+    );
 
     // Check signal parameters
     let signal = signal_query.unwrap();
@@ -191,14 +194,17 @@ fn test_backchannel_pad_template() {
 
     // Get pad templates
     let pad_templates = element.element_class().pad_templates();
-    
+
     // Check for backchannel sink pad template
     let backchannel_template = pad_templates
         .iter()
         .find(|t| t.name_template().starts_with("backchannel_"));
-    
-    assert!(backchannel_template.is_some(), "Backchannel pad template not found");
-    
+
+    assert!(
+        backchannel_template.is_some(),
+        "Backchannel pad template not found"
+    );
+
     let template = backchannel_template.unwrap();
     assert_eq!(template.direction(), gst::PadDirection::Sink);
     assert_eq!(template.presence(), gst::PadPresence::Request);
@@ -254,7 +260,7 @@ fn test_get_parameters_signal() {
     let signal = signal_query.unwrap();
     let param_types = signal.param_types();
     assert_eq!(param_types.len(), 3); // parameters array, content_type, promise
-    // Note: First param is a glib::Variant for the string array
+                                      // Note: First param is a glib::Variant for the string array
     assert_eq!(param_types[1], Option::<String>::static_type());
     assert_eq!(param_types[2], gst::Promise::static_type());
 
@@ -310,11 +316,15 @@ fn test_nat_method_property() {
 
     // Test setting different values
     element.set_property_from_str("nat-method", "none");
-    let nat_method_str: String = element.property::<gst::glib::Value>("nat-method").to_string();
+    let nat_method_str: String = element
+        .property::<gst::glib::Value>("nat-method")
+        .to_string();
     assert!(nat_method_str.contains("none") || nat_method_str.contains("0"));
 
     element.set_property_from_str("nat-method", "dummy");
-    let nat_method_str: String = element.property::<gst::glib::Value>("nat-method").to_string();
+    let nat_method_str: String = element
+        .property::<gst::glib::Value>("nat-method")
+        .to_string();
     assert!(nat_method_str.contains("dummy") || nat_method_str.contains("1"));
 }
 
