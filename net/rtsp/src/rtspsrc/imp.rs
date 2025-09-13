@@ -58,6 +58,7 @@ use tracing::{event, Level};
 
 use super::auth::{self, AuthState};
 use super::body::Body;
+use super::buffer_mode::BufferMode;
 use super::sdp;
 use super::transport::RtspTransportInfo;
 
@@ -123,65 +124,6 @@ const DEFAULT_MAX_BUFFERED_BYTES: usize = 10 * 1024 * 1024; // 10 MB
 const DEFAULT_REQUIRE_ALL_STREAMS: bool = false;
 const BUFFER_QUEUE_CLEANUP_THRESHOLD: f32 = 0.8; // Start cleanup at 80% capacity
 
-// Buffer mode enum (matching original rtspsrc)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BufferMode {
-    None,   // Only use RTP timestamps
-    Slave,  // Slave receiver to sender clock
-    Buffer, // Do low/high watermark buffering
-    Auto,   // Choose mode depending on stream live
-    Synced, // Synchronized sender and receiver clocks
-}
-
-impl Default for BufferMode {
-    fn default() -> Self {
-        BufferMode::Auto // Matches DEFAULT_BUFFER_MODE (BUFFER_MODE_AUTO) from original
-    }
-}
-
-impl BufferMode {
-    fn as_str(&self) -> &'static str {
-        match self {
-            BufferMode::None => "none",
-            BufferMode::Slave => "slave",
-            BufferMode::Buffer => "buffer",
-            BufferMode::Auto => "auto",
-            BufferMode::Synced => "synced",
-        }
-    }
-
-    fn from_str(s: &str) -> Result<Self, String> {
-        match s {
-            "none" => Ok(BufferMode::None),
-            "slave" => Ok(BufferMode::Slave),
-            "buffer" => Ok(BufferMode::Buffer),
-            "auto" => Ok(BufferMode::Auto),
-            "synced" => Ok(BufferMode::Synced),
-            _ => Err(format!("Invalid buffer mode: {}", s)),
-        }
-    }
-
-    fn as_int(&self) -> u32 {
-        match self {
-            BufferMode::None => 0,
-            BufferMode::Slave => 1,
-            BufferMode::Buffer => 2,
-            BufferMode::Auto => 3,
-            BufferMode::Synced => 4,
-        }
-    }
-
-    fn from_int(i: u32) -> Result<Self, String> {
-        match i {
-            0 => Ok(BufferMode::None),
-            1 => Ok(BufferMode::Slave),
-            2 => Ok(BufferMode::Buffer),
-            3 => Ok(BufferMode::Auto),
-            4 => Ok(BufferMode::Synced),
-            _ => Err(format!("Invalid buffer mode value: {}", i)),
-        }
-    }
-}
 
 const MAX_MESSAGE_SIZE: usize = 1024 * 1024;
 const MAX_BIND_PORT_RETRY: u16 = 100;

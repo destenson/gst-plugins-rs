@@ -40,6 +40,7 @@ mod adaptive_retry;
 mod auth;
 mod auto_selector;
 mod body;
+mod buffer_mode;
 mod buffer_pool;
 mod connection_pool;
 mod connection_racer;
