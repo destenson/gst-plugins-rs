@@ -683,6 +683,14 @@ enum Commands {
     Teardown(Option<oneshot::Sender<()>>),
     Data(rtsp_types::Data<Body>),
     Reconnect,
+    GetParameter {
+        parameters: Option<Vec<String>>,
+        promise: gst::Promise,
+    },
+    SetParameter {
+        parameters: Vec<(String, String)>,
+        promise: gst::Promise,
+    },
 }
 
 #[derive(Debug)]
@@ -1147,7 +1155,7 @@ impl RtspSrc {
         &self,
         parameter: &str,
         content_type: Option<&str>,
-        _promise: &gst::Promise,
+        promise: &gst::Promise,
     ) -> bool {
         let obj = self.obj();
 
@@ -1169,12 +1177,16 @@ impl RtspSrc {
             content_type
         );
 
-        // TODO: Implement actual GET_PARAMETER request logic
-        // This is a placeholder implementation that returns false
-        // Actual implementation will send RTSP GET_PARAMETER request
-        // and fulfill promise with results
+        // Send GET_PARAMETER command to async task
+        let cmd_queue = self.cmd_queue();
+        let parameters = Some(vec![parameter.to_string()]);
+        let promise = promise.clone();
+        
+        RUNTIME.spawn(async move {
+            let _ = cmd_queue.send(Commands::GetParameter { parameters, promise }).await;
+        });
 
-        false
+        true
     }
 
     /// Handle get-parameters action signal
@@ -1184,7 +1196,7 @@ impl RtspSrc {
         &self,
         parameters: Vec<String>,
         content_type: Option<&str>,
-        _promise: &gst::Promise,
+        promise: &gst::Promise,
     ) -> bool {
         let obj = self.obj();
 
@@ -1218,12 +1230,16 @@ impl RtspSrc {
             content_type
         );
 
-        // TODO: Implement actual GET_PARAMETER request logic for multiple parameters
-        // This is a placeholder implementation that returns false
-        // Actual implementation will send RTSP GET_PARAMETER request
-        // and fulfill promise with results
+        // Send GET_PARAMETER command to async task
+        let cmd_queue = self.cmd_queue();
+        let parameters = Some(parameters);
+        let promise = promise.clone();
+        
+        RUNTIME.spawn(async move {
+            let _ = cmd_queue.send(Commands::GetParameter { parameters, promise }).await;
+        });
 
-        false
+        true
     }
 
     /// Handle set-parameter action signal
@@ -1234,7 +1250,7 @@ impl RtspSrc {
         parameter: &str,
         value: &str,
         content_type: Option<&str>,
-        _promise: &gst::Promise,
+        promise: &gst::Promise,
     ) -> bool {
         let obj = self.obj();
 
@@ -1257,12 +1273,16 @@ impl RtspSrc {
             content_type
         );
 
-        // TODO: Implement actual SET_PARAMETER request logic
-        // This is a placeholder implementation that returns false
-        // Actual implementation will send RTSP SET_PARAMETER request
-        // and fulfill promise with results
+        // Send SET_PARAMETER command to async task
+        let cmd_queue = self.cmd_queue();
+        let parameters = vec![(parameter.to_string(), value.to_string())];
+        let promise = promise.clone();
+        
+        RUNTIME.spawn(async move {
+            let _ = cmd_queue.send(Commands::SetParameter { parameters, promise }).await;
+        });
 
-        false
+        true
     }
 
     /// Handle push-backchannel-buffer action signal
@@ -3445,6 +3465,9 @@ impl RtspSrc {
                 )
                 .await?
         };
+        
+        // Punch NAT holes for UDP transport after SETUP
+        RtspTaskState::punch_nat_holes(&state.setup_params, settings.nat_method).await;
         let manager = RtspManager::new_with_settings(
             std::env::var("USE_RTP2").is_ok_and(|s| s == "1"),
             Some(&settings),
@@ -3766,13 +3789,41 @@ impl RtspSrc {
                         // Reset session activity on any response
                         state.session_manager.reset_activity();
 
-                        // Check if this is a keep-alive response (GET_PARAMETER or OPTIONS)
+                        // Check if this is a GET_PARAMETER or SET_PARAMETER response
                         if let Some((expected, cseq)) = &expected_response {
                             if *expected == Method::GetParameter {
-                                // Keep-alive response received
-                                state.get_parameter_response(&rsp, *cseq, session.as_ref()).await?;
+                                // GET_PARAMETER response received
+                                let parameters = state.get_parameter_response(&rsp, *cseq, session.as_ref()).await?;
+                                
+                                // Check if this was a user request with a promise
+                                if let Some(promise) = state.pending_get_parameter_promises.remove(cseq) {
+                                    // Fulfill promise with parameters
+                                    let mut s = gst::Structure::builder("rtsp-parameters");
+                                    for (key, value) in parameters {
+                                        s = s.field(&key, value);
+                                    }
+                                    promise.reply(Some(s.build()));
+                                    gst::debug!(CAT, "GET_PARAMETER promise fulfilled");
+                                } else {
+                                    // This was a keep-alive request
+                                    gst::debug!(CAT, "Keep-alive response received");
+                                }
                                 expected_response = None;
-                                gst::debug!(CAT, "Keep-alive response received");
+                                continue;
+                            } else if *expected == Method::SetParameter {
+                                // SET_PARAMETER response received
+                                state.set_parameter_response(&rsp, *cseq, session.as_ref()).await?;
+                                
+                                // Check if this was a user request with a promise
+                                if let Some(promise) = state.pending_set_parameter_promises.remove(cseq) {
+                                    // Fulfill promise with success
+                                    let s = gst::Structure::builder("rtsp-success")
+                                        .field("success", true)
+                                        .build();
+                                    promise.reply(Some(s));
+                                    gst::debug!(CAT, "SET_PARAMETER promise fulfilled");
+                                }
+                                expected_response = None;
                                 continue;
                             }
                         }
@@ -3789,9 +3840,9 @@ impl RtspSrc {
                                 self.post_complete("request", "PLAY response received");
                             }
                             Method::Teardown => state.teardown_response(&rsp, *cseq, s).await?,
-                            Method::GetParameter => {
+                            Method::GetParameter | Method::SetParameter => {
                                 // Already handled above
-                                unreachable!("GET_PARAMETER should have been handled above");
+                                unreachable!("GET_PARAMETER and SET_PARAMETER should have been handled above");
                             }
                             m => unreachable!("BUG: unexpected response method: {m:?}"),
                         };
@@ -3878,6 +3929,46 @@ impl RtspSrc {
                         // TODO: Implement reconnection logic for lost connections
                         // This would involve re-establishing the TCP connection and
                         // re-sending DESCRIBE/SETUP/PLAY commands
+                    }
+                    Commands::GetParameter { parameters, promise } => {
+                        gst::debug!(CAT, "Received GetParameter command: {:?}", parameters);
+                        
+                        // Send GET_PARAMETER request
+                        match state.get_parameter(session.as_ref(), parameters).await {
+                            Ok(cseq) => {
+                                // Store promise to be fulfilled when response arrives
+                                state.pending_get_parameter_promises.insert(cseq, promise);
+                                expected_response = Some((Method::GetParameter, cseq));
+                            }
+                            Err(e) => {
+                                gst::error!(CAT, "Failed to send GET_PARAMETER: {e:?}");
+                                // Reject the promise with error
+                                let s = gst::Structure::builder("rtsp-error")
+                                    .field("error", format!("Failed to send GET_PARAMETER: {e}"))
+                                    .build();
+                                promise.reply(Some(s));
+                            }
+                        }
+                    }
+                    Commands::SetParameter { parameters, promise } => {
+                        gst::debug!(CAT, "Received SetParameter command: {:?}", parameters);
+                        
+                        // Send SET_PARAMETER request
+                        match state.set_parameter(session.as_ref(), parameters).await {
+                            Ok(cseq) => {
+                                // Store promise to be fulfilled when response arrives
+                                state.pending_set_parameter_promises.insert(cseq, promise);
+                                expected_response = Some((Method::SetParameter, cseq));
+                            }
+                            Err(e) => {
+                                gst::error!(CAT, "Failed to send SET_PARAMETER: {e:?}");
+                                // Reject the promise with error
+                                let s = gst::Structure::builder("rtsp-error")
+                                    .field("error", format!("Failed to send SET_PARAMETER: {e}"))
+                                    .build();
+                                promise.reply(Some(s));
+                            }
+                        }
                     }
                 },
                 _ = keepalive_interval.tick() => {
@@ -4118,6 +4209,8 @@ struct RtspTaskState {
     auth_state: AuthState,
     user_id: Option<String>,
     user_pw: Option<String>,
+    pending_get_parameter_promises: std::collections::HashMap<u32, gst::Promise>,
+    pending_set_parameter_promises: std::collections::HashMap<u32, gst::Promise>,
 }
 
 struct RtspSetupParams {
@@ -4128,6 +4221,74 @@ struct RtspSetupParams {
 }
 
 impl RtspTaskState {
+    /// Send dummy packets to punch holes in NAT for UDP transport
+    async fn punch_nat_holes(setup_params: &[RtspSetupParams], nat_method: NatMethod) {
+        if nat_method != NatMethod::Dummy {
+            return;
+        }
+
+        for params in setup_params {
+            if let RtspTransportInfo::Udp {
+                source,
+                server_port,
+                sockets,
+                ..
+            } = &params.transport
+            {
+                if let (Some(sockets), Some(source), Some(server_port)) = (sockets, source, server_port) {
+                    // Parse server address
+                    let server_addr = match source.parse::<IpAddr>() {
+                        Ok(addr) => addr,
+                        Err(_) => {
+                            gst::warning!(CAT, "Failed to parse server address for NAT punching: {}", source);
+                            continue;
+                        }
+                    };
+
+                    // Send dummy RTP packet
+                    if let Some(rtp_port) = server_port.0.checked_add(0) {
+                        let rtp_dest = SocketAddr::new(server_addr, rtp_port);
+                        // Send 3 dummy packets with small delay between them
+                        for i in 0..3 {
+                            // Minimal RTP packet (12 bytes header)
+                            let dummy_rtp = vec![
+                                0x80, 0x60, // V=2, P=0, X=0, CC=0, M=0, PT=96
+                                0x00, 0x00, // Sequence number
+                                0x00, 0x00, 0x00, 0x00, // Timestamp
+                                0x00, 0x00, 0x00, 0x00, // SSRC
+                            ];
+                            match sockets.0.send_to(&dummy_rtp, rtp_dest).await {
+                                Ok(_) => gst::debug!(CAT, "Sent NAT punch packet {} to RTP port {}", i + 1, rtp_port),
+                                Err(e) => gst::warning!(CAT, "Failed to send NAT punch packet: {}", e),
+                            }
+                            tokio::time::sleep(Duration::from_millis(10)).await;
+                        }
+                    }
+
+                    // Send dummy RTCP packet if we have RTCP socket
+                    if let (Some(rtcp_socket), Some(rtcp_port)) = (&sockets.1, server_port.1) {
+                        let rtcp_dest = SocketAddr::new(server_addr, rtcp_port);
+                        // Send 3 dummy packets
+                        for i in 0..3 {
+                            // Minimal RTCP RR packet (8 bytes)
+                            let dummy_rtcp = vec![
+                                0x80, 0xc9, // V=2, P=0, RC=0, PT=201 (RR)
+                                0x00, 0x01, // Length
+                                0x00, 0x00, 0x00, 0x00, // SSRC
+                            ];
+                            match rtcp_socket.send_to(&dummy_rtcp, rtcp_dest).await {
+                                Ok(_) => gst::debug!(CAT, "Sent NAT punch packet {} to RTCP port {}", i + 1, rtcp_port),
+                                Err(e) => gst::warning!(CAT, "Failed to send NAT punch packet: {}", e),
+                            }
+                            tokio::time::sleep(Duration::from_millis(10)).await;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
     fn new(
         url: Url,
         stream: RtspStream,
@@ -4150,6 +4311,8 @@ impl RtspTaskState {
             auth_state: AuthState::default(),
             user_id,
             user_pw,
+            pending_get_parameter_promises: std::collections::HashMap::new(),
+            pending_set_parameter_promises: std::collections::HashMap::new(),
         }
     }
 
@@ -5426,6 +5589,11 @@ async fn udp_rtcp_task(
 ) {
     let mut buf = vec![0; UDP_PACKET_MAX_SIZE as usize];
     let mut cache: LruCache<_, _> = LruCache::new(NonZeroUsize::new(RTCP_ADDR_CACHE_SIZE).unwrap());
+    
+    // NAT keep-alive timer - send dummy packet every 20 seconds to keep NAT mapping alive
+    let mut nat_keepalive_interval = tokio::time::interval(Duration::from_secs(20));
+    nat_keepalive_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    
     let error = loop {
         tokio::select! {
             send_rtcp = rx.recv() => match send_rtcp {
@@ -5510,6 +5678,21 @@ async fn udp_rtcp_task(
                     }
                 }
                 Err(err) => break format!("UDP socket was closed: {err:?}"),
+            },
+            _ = nat_keepalive_interval.tick() => {
+                // Send NAT keep-alive packet if we have a destination address
+                if let Some(addr) = sender_addr.as_ref() {
+                    // Minimal RTCP RR packet for keep-alive (8 bytes)
+                    let keepalive_rtcp = vec![
+                        0x80, 0xc9, // V=2, P=0, RC=0, PT=201 (RR)
+                        0x00, 0x01, // Length
+                        0x00, 0x00, 0x00, 0x00, // SSRC
+                    ];
+                    match socket.send_to(&keepalive_rtcp, addr).await {
+                        Ok(_) => gst::trace!(CAT, "Sent NAT keep-alive RTCP packet to {}", addr),
+                        Err(e) => gst::warning!(CAT, "Failed to send NAT keep-alive: {}", e),
+                    }
+                }
             },
         }
     };
