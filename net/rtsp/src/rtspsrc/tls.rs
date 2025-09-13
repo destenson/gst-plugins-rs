@@ -3,7 +3,7 @@
 //
 // This module provides TLS support for secure RTSP connections (rtsps://)
 
-use anyhow::{anyhow, Result};
+use super::error::{NetworkError, ProtocolError, Result, RtspError};
 use tokio::net::TcpStream;
 use tokio_native_tls::{native_tls, TlsConnector, TlsStream};
 use url::Url;
@@ -40,7 +40,10 @@ pub enum RtspStream {
 
 impl RtspStream {
     pub async fn connect(url: &Url, tls_config: &TlsConfig) -> Result<Self> {
-        let host = url.host_str().ok_or_else(|| anyhow!("No host in URL"))?;
+        let host = url.host_str().ok_or_else(|| RtspError::Protocol(ProtocolError::InvalidUrl {
+            url: url.to_string(),
+            reason: "No host in URL".to_string(),
+        }))?;
 
         let is_tls = url.scheme() == "rtsps";
         let default_port = if is_tls {

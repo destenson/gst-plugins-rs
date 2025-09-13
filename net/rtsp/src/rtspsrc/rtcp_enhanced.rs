@@ -4,7 +4,7 @@
 // This module provides RTCP XR (Extended Reports) support, feedback messages,
 // and comprehensive statistics collection for stream quality monitoring
 
-use anyhow::{anyhow, Result};
+use super::error::{MediaError, Result, RtspError};
 use gst;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -160,7 +160,9 @@ pub struct XrReportBlock {
 impl XrReportBlock {
     pub fn parse_loss_rle(&self) -> Result<LossRleReport> {
         if self.block_type != XR_LOSS_RLE {
-            return Err(anyhow!("Not a Loss RLE block"));
+            return Err(RtspError::Media(MediaError::RtcpError {
+                details: "Not a Loss RLE block".to_string(),
+            }));
         }
 
         // Parse Loss RLE specific fields
@@ -178,7 +180,9 @@ impl XrReportBlock {
 
     pub fn parse_voip_metrics(&self) -> Result<VoipMetrics> {
         if self.block_type != XR_VOIP_METRICS {
-            return Err(anyhow!("Not a VoIP Metrics block"));
+            return Err(RtspError::Media(MediaError::RtcpError {
+                details: "Not a VoIP Metrics block".to_string(),
+            }));
         }
 
         // Parse VoIP metrics
@@ -355,7 +359,9 @@ impl RtcpEnhancedHandler {
 
     fn process_sender_report(&self, data: &[u8]) -> Result<()> {
         if data.len() < 28 {
-            return Err(anyhow!("SR packet too short"));
+            return Err(RtspError::Media(MediaError::RtcpError {
+                details: "SR packet too short".to_string(),
+            }));
         }
 
         let ssrc = u32::from_be_bytes([data[4], data[5], data[6], data[7]]);
@@ -369,7 +375,9 @@ impl RtcpEnhancedHandler {
 
     fn process_receiver_report(&self, data: &[u8]) -> Result<()> {
         if data.len() < 32 {
-            return Err(anyhow!("RR packet too short"));
+            return Err(RtspError::Media(MediaError::RtcpError {
+                details: "RR packet too short".to_string(),
+            }));
         }
 
         let _ssrc = u32::from_be_bytes([data[4], data[5], data[6], data[7]]);
@@ -421,7 +429,9 @@ impl RtcpEnhancedHandler {
 
     fn process_extended_report(&self, data: &[u8]) -> Result<()> {
         if data.len() < 8 {
-            return Err(anyhow!("XR packet too short"));
+            return Err(RtspError::Media(MediaError::RtcpError {
+                details: "XR packet too short".to_string(),
+            }));
         }
 
         let ssrc = u32::from_be_bytes([data[4], data[5], data[6], data[7]]);
@@ -475,7 +485,9 @@ impl RtcpEnhancedHandler {
 
     fn process_feedback(&self, data: &[u8]) -> Result<()> {
         if data.len() < 12 {
-            return Err(anyhow!("Feedback packet too short"));
+            return Err(RtspError::Media(MediaError::RtcpError {
+                details: "Feedback packet too short".to_string(),
+            }));
         }
 
         let message_type = data[1];

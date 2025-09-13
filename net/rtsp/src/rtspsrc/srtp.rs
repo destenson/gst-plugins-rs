@@ -8,8 +8,6 @@
 //
 // SPDX-License-Identifier: MPL-2.0
 
-use gst::glib;
-use gst::prelude::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct SrtpInfo {

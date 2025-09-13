@@ -5,7 +5,7 @@
 
 use crate::rtspsrc::imp::HttpTunnelMode;
 use crate::rtspsrc::proxy::{ProxyConfig, ProxyConnection};
-use anyhow::{anyhow, Result};
+use super::error::{NetworkError, ProtocolError, Result, RtspError};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use bytes::{Bytes, BytesMut};
 use std::sync::Arc;
@@ -56,13 +56,17 @@ impl HttpTunnel {
         let mut tunnel_url = rtsp_url.clone();
         tunnel_url
             .set_scheme("http")
-            .map_err(|_| anyhow!("Failed to set HTTP scheme"))?;
+            .map_err(|_| RtspError::Network(NetworkError::HttpTunnelError {
+                details: "Failed to set HTTP scheme".to_string(),
+            }))?;
 
         // Default to port 80 for HTTP if not specified
         if tunnel_url.port().is_none() {
             tunnel_url
                 .set_port(Some(80))
-                .map_err(|_| anyhow!("Failed to set port"))?;
+                .map_err(|_| RtspError::Network(NetworkError::HttpTunnelError {
+                    details: "Failed to set port".to_string(),
+                }))?;
         }
 
         let (response_tx, response_rx) = mpsc::channel(100);
@@ -105,7 +109,10 @@ impl HttpTunnel {
         let host = self
             .url
             .host_str()
-            .ok_or_else(|| anyhow!("No host in URL"))?;
+            .ok_or_else(|| RtspError::Protocol(ProtocolError::InvalidUrl {
+                url: self.url.to_string(),
+                reason: "No host in URL".to_string(),
+            }))?;
         let port = self.url.port().unwrap_or(80);
 
         // Connect through proxy if configured, otherwise direct connection
@@ -149,7 +156,10 @@ impl HttpTunnel {
         let host = self
             .url
             .host_str()
-            .ok_or_else(|| anyhow!("No host in URL"))?;
+            .ok_or_else(|| RtspError::Protocol(ProtocolError::InvalidUrl {
+                url: self.url.to_string(),
+                reason: "No host in URL".to_string(),
+            }))?;
         let port = self.url.port().unwrap_or(80);
 
         // Connect through proxy if configured, otherwise direct connection
@@ -242,7 +252,9 @@ impl HttpTunnel {
 
             Ok(())
         } else {
-            Err(anyhow!("POST connection not established"))
+            Err(RtspError::Network(NetworkError::HttpTunnelError {
+                details: "POST connection not established".to_string(),
+            }))
         }
     }
 
@@ -251,7 +263,9 @@ impl HttpTunnel {
         let mut rx = self.response_rx.lock().await;
         rx.recv()
             .await
-            .ok_or_else(|| anyhow!("Response channel closed"))
+            .ok_or_else(|| RtspError::Network(NetworkError::HttpTunnelError {
+                details: "Response channel closed".to_string(),
+            }))
     }
 
     /// Check if tunnel is connected

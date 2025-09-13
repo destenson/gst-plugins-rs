@@ -2,7 +2,7 @@
 //
 // This module implements HTTP CONNECT and SOCKS5 proxy support for RTSP connections
 
-use anyhow::{anyhow, Result};
+use super::error::{ConfigurationError, NetworkError, Result, RtspError};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -44,7 +44,10 @@ impl ProxyConfig {
         // Validate proxy scheme
         match parsed_url.scheme() {
             "http" | "https" | "socks5" | "socks" => {}
-            scheme => return Err(anyhow!("Unsupported proxy scheme: {}", scheme)),
+            scheme => return Err(RtspError::Configuration(ConfigurationError::InvalidParameter {
+                parameter: "proxy_url".to_string(),
+                reason: format!("Unsupported proxy scheme: {}", scheme),
+            })),
         }
 
         Ok(Self {
@@ -99,7 +102,10 @@ impl ProxyConfig {
         let host = self
             .url
             .host_str()
-            .ok_or_else(|| anyhow!("No host in proxy URL"))?
+            .ok_or_else(|| RtspError::Configuration(ConfigurationError::InvalidParameter {
+                parameter: "proxy_url".to_string(),
+                reason: "No host in proxy URL".to_string(),
+            }))?
             .to_string();
 
         let port = self.url.port().unwrap_or_else(|| match self.url.scheme() {
@@ -210,10 +216,12 @@ impl ProxyConnection {
 
         // Check for successful response (200 OK)
         if !response_str.starts_with("HTTP/1.1 200") && !response_str.starts_with("HTTP/1.0 200") {
-            return Err(anyhow!(
-                "HTTP CONNECT failed: {}",
-                response_str.lines().next().unwrap_or("Unknown error")
-            ));
+            return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
+                details: format!(
+                    "HTTP CONNECT failed: {}",
+                    response_str.lines().next().unwrap_or("Unknown error")
+                ),
+            }));
         }
 
         Ok(())
@@ -245,7 +253,9 @@ impl ProxyConnection {
         stream.read_exact(&mut response).await?;
 
         if response[0] != 0x05 {
-            return Err(anyhow!("Invalid SOCKS5 version: {}", response[0]));
+            return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
+                details: format!("Invalid SOCKS5 version: {}", response[0]),
+            }));
         }
 
         // Handle authentication if required
@@ -272,22 +282,25 @@ impl ProxyConnection {
                     stream.read_exact(&mut auth_response).await?;
 
                     if auth_response[0] != 0x01 || auth_response[1] != 0x00 {
-                        return Err(anyhow!("SOCKS5 authentication failed"));
+                        return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
+                            details: "SOCKS5 authentication failed".to_string(),
+                        }));
                     }
                 } else {
-                    return Err(anyhow!(
-                        "SOCKS5 server requires authentication but no credentials provided"
-                    ));
+                    return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
+                        details: "SOCKS5 server requires authentication but no credentials provided".to_string(),
+                    }));
                 }
             }
             0xFF => {
-                return Err(anyhow!("SOCKS5: No acceptable authentication methods"));
+                return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
+                    details: "SOCKS5: No acceptable authentication methods".to_string(),
+                }));
             }
             method => {
-                return Err(anyhow!(
-                    "SOCKS5: Unsupported authentication method: {}",
-                    method
-                ));
+                return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
+                    details: format!("SOCKS5: Unsupported authentication method: {}", method),
+                }));
             }
         }
 
@@ -326,21 +339,41 @@ impl ProxyConnection {
         stream.read_exact(&mut conn_response[..4]).await?;
 
         if conn_response[0] != 0x05 {
-            return Err(anyhow!("Invalid SOCKS5 version in response"));
+            return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
+                details: "Invalid SOCKS5 version in response".to_string(),
+            }));
         }
 
         // Check reply code
         match conn_response[1] {
             0x00 => {} // Success
-            0x01 => return Err(anyhow!("SOCKS5: General SOCKS server failure")),
-            0x02 => return Err(anyhow!("SOCKS5: Connection not allowed by ruleset")),
-            0x03 => return Err(anyhow!("SOCKS5: Network unreachable")),
-            0x04 => return Err(anyhow!("SOCKS5: Host unreachable")),
-            0x05 => return Err(anyhow!("SOCKS5: Connection refused")),
-            0x06 => return Err(anyhow!("SOCKS5: TTL expired")),
-            0x07 => return Err(anyhow!("SOCKS5: Command not supported")),
-            0x08 => return Err(anyhow!("SOCKS5: Address type not supported")),
-            code => return Err(anyhow!("SOCKS5: Unknown error code: {}", code)),
+            0x01 => return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
+                details: "SOCKS5: General SOCKS server failure".to_string(),
+            })),
+            0x02 => return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
+                details: "SOCKS5: Connection not allowed by ruleset".to_string(),
+            })),
+            0x03 => return Err(RtspError::Network(NetworkError::NetworkUnreachable {
+                details: "SOCKS5: Network unreachable".to_string(),
+            })),
+            0x04 => return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
+                details: "SOCKS5: Host unreachable".to_string(),
+            })),
+            0x05 => return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
+                details: "SOCKS5: Connection refused".to_string(),
+            })),
+            0x06 => return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
+                details: "SOCKS5: TTL expired".to_string(),
+            })),
+            0x07 => return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
+                details: "SOCKS5: Command not supported".to_string(),
+            })),
+            0x08 => return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
+                details: "SOCKS5: Address type not supported".to_string(),
+            })),
+            code => return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
+                details: format!("SOCKS5: Unknown error code: {}", code),
+            })),
         }
 
         // Skip the rest of the response (bound address)

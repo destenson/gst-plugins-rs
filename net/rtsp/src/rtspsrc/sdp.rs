@@ -8,7 +8,7 @@
 //
 // SPDX-License-Identifier: MPL-2.0
 
-use super::imp::RtspError;
+use super::imp::OldRtspError as RtspError;
 use super::imp::RtspProtocol;
 use super::imp::CAT;
 use sdp_types::Attribute;
