@@ -571,6 +571,12 @@ struct Settings {
     adaptive_confidence_threshold: f32,
     #[cfg(feature = "adaptive")]
     adaptive_change_detection: bool,
+
+    // Compatibility properties (PRP-51)
+    short_header: bool,         // Send minimal RTSP headers for broken encoders
+    debug: bool,                // Deprecated: use GST_DEBUG instead
+    use_pipeline_clock: bool,   // Deprecated: use ntp-time-source instead
+    client_managed_mikey: bool, // Enable client-managed MIKEY mode for SRTP
 }
 
 impl Default for Settings {
@@ -657,6 +663,11 @@ impl Default for Settings {
             // Authentication properties
             user_id: None,
             user_pw: None,
+            // Compatibility properties (PRP-51)
+            short_header: false,         // Default: false (send full headers)
+            debug: false,                // Default: false (deprecated)
+            use_pipeline_clock: false,   // Default: false (deprecated)
+            client_managed_mikey: false, // Default: false (server-managed mode)
         }
     }
 }
@@ -1343,6 +1354,16 @@ impl RtspSrc {
         // Return false since key management isn't implemented yet
         false
     }
+
+    /// Emit the handle-request signal (placeholder)
+    /// This function will be called when the server sends an RTSP request to the client.
+    /// Applications can connect to this signal to handle server-initiated requests.
+    /// The application should fill the response message appropriately.
+    fn emit_handle_request(&self, request: &RTSPMessage, response: &RTSPMessage) {
+        let obj = self.obj();
+        gst::debug!(CAT, obj = obj, "Emitting handle-request signal");
+        obj.emit_by_name::<()>("handle-request", &[request, response]);
+    }
 }
 
 impl ObjectImpl for RtspSrc {
@@ -1801,6 +1822,33 @@ impl ObjectImpl for RtspSrc {
                     .blurb("RTSP location URI user password for authentication")
                     .mutable_ready()
                     .build(),
+                // Compatibility properties (PRP-51)
+                glib::ParamSpecBoolean::builder("short-header")
+                    .nick("Send only basic RTSP headers")
+                    .blurb("Only send the basic RTSP headers for broken encoders")
+                    .default_value(false)
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecBoolean::builder("debug")
+                    .nick("Debug")
+                    .blurb("Dump request and response messages to stdout(DEPRECATED: Printed all RTSP message to gstreamer log as 'log' level)")
+                    .default_value(false)
+                    .mutable_ready()
+                    .deprecated()
+                    .build(),
+                glib::ParamSpecBoolean::builder("use-pipeline-clock")
+                    .nick("Use pipeline clock")
+                    .blurb("Use the pipeline running-time to set the NTP time in the RTCP SR messages(DEPRECATED: Use ntp-time-source property)")
+                    .default_value(false)
+                    .mutable_ready()
+                    .deprecated()
+                    .build(),
+                glib::ParamSpecBoolean::builder("client-managed-mikey")
+                    .nick("Client Managed MIKEY")
+                    .blurb("Enable client-managed MIKEY mode")
+                    .default_value(false)
+                    .mutable_ready()
+                    .build(),
             ]
         });
 
@@ -2212,6 +2260,43 @@ impl ObjectImpl for RtspSrc {
                     .expect("type checked upstream");
                 Ok(())
             }
+            // Compatibility properties (PRP-51)
+            "short-header" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.short_header = value.get::<bool>().expect("type checked upstream");
+                Ok(())
+            }
+            "debug" => {
+                let mut settings = self.settings.lock().unwrap();
+                let debug_enabled = value.get::<bool>().expect("type checked upstream");
+                if debug_enabled {
+                    gst::warning!(
+                        CAT,
+                        imp = self,
+                        "debug property is deprecated. Use GST_DEBUG=rtspsrc2:LOG instead"
+                    );
+                }
+                settings.debug = debug_enabled;
+                Ok(())
+            }
+            "use-pipeline-clock" => {
+                let mut settings = self.settings.lock().unwrap();
+                let use_pipeline_clock = value.get::<bool>().expect("type checked upstream");
+                if use_pipeline_clock {
+                    gst::warning!(
+                        CAT,
+                        imp = self,
+                        "use-pipeline-clock is deprecated. Use ntp-time-source property instead"
+                    );
+                }
+                settings.use_pipeline_clock = use_pipeline_clock;
+                Ok(())
+            }
+            "client-managed-mikey" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.client_managed_mikey = value.get::<bool>().expect("type checked upstream");
+                Ok(())
+            }
             name => unimplemented!("Property '{name}'"),
         };
 
@@ -2548,6 +2633,23 @@ impl ObjectImpl for RtspSrc {
                 let settings = self.settings.lock().unwrap();
                 settings.user_pw.to_value()
             }
+            // Compatibility properties (PRP-51)
+            "short-header" => {
+                let settings = self.settings.lock().unwrap();
+                settings.short_header.to_value()
+            }
+            "debug" => {
+                let settings = self.settings.lock().unwrap();
+                settings.debug.to_value()
+            }
+            "use-pipeline-clock" => {
+                let settings = self.settings.lock().unwrap();
+                settings.use_pipeline_clock.to_value()
+            }
+            "client-managed-mikey" => {
+                let settings = self.settings.lock().unwrap();
+                settings.client_managed_mikey.to_value()
+            }
             name => unimplemented!("Property '{name}'"),
         }
     }
@@ -2799,6 +2901,15 @@ impl ObjectImpl for RtspSrc {
                 // Since: 1.0
                 glib::subclass::Signal::builder("hard-limit")
                     .param_types([u32::static_type()]) // stream index experiencing hard limit
+                    .build(),
+                // handle-request signal: emitted when server sends an RTSP request to the client (PRP-52)
+                // Allows application to handle server-initiated requests like ANNOUNCE, REDIRECT, etc.
+                // Since: 1.0
+                glib::subclass::Signal::builder("handle-request")
+                    .param_types([
+                        RTSPMessage::static_type(), // request message from server
+                        RTSPMessage::static_type(), // response message to be filled by application
+                    ])
                     .build(),
             ]
         });
