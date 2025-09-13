@@ -1,3 +1,4 @@
+#![allow(unused)]
 // Enhanced RTCP handling with extended reports and statistics
 //
 // This module provides RTCP XR (Extended Reports) support, feedback messages,

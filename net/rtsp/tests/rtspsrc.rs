@@ -98,6 +98,7 @@ fn test_jitterbuffer_properties() {
 
     // Test that the properties exist and can be read/written
     assert!(element.property_type("latency").is_some());
+
     assert!(element.property_type("drop-on-latency").is_some());
     assert!(element.property_type("probation").is_some());
 
@@ -122,6 +123,120 @@ fn test_jitterbuffer_properties() {
 
     element.set_property("latency", u32::MAX);
     assert_eq!(element.property::<u32>("latency"), u32::MAX);
+}
+
+#[test]
+#[serial]
+fn test_get_parameter_signal() {
+    init();
+
+    let element = gst::ElementFactory::make("rtspsrc2")
+        .build()
+        .expect("Failed to create rtspsrc2 element");
+
+    // Check that the get-parameter signal exists
+    let signal_query = element
+        .element_class()
+        .list_signals()
+        .iter()
+        .find(|s| s.name() == "get-parameter");
+    assert!(signal_query.is_some(), "get-parameter signal not found");
+
+    // Check signal parameters
+    let signal = signal_query.unwrap();
+    let param_types = signal.param_types();
+    assert_eq!(param_types.len(), 3); // parameter, content_type, promise
+    assert_eq!(param_types[0], String::static_type());
+    assert_eq!(param_types[1], Option::<String>::static_type());
+    assert_eq!(param_types[2], gst::Promise::static_type());
+
+    // Check return type (bool)
+    assert_eq!(signal.return_type(), bool::static_type());
+}
+
+#[test]
+#[serial]
+fn test_get_parameters_signal() {
+    init();
+
+    let element = gst::ElementFactory::make("rtspsrc2")
+        .build()
+        .expect("Failed to create rtspsrc2 element");
+
+    // Check that the get-parameters signal exists
+    let signal_query = element
+        .element_class()
+        .list_signals()
+        .iter()
+        .find(|s| s.name() == "get-parameters");
+    assert!(signal_query.is_some(), "get-parameters signal not found");
+
+    // Check signal parameters
+    let signal = signal_query.unwrap();
+    let param_types = signal.param_types();
+    assert_eq!(param_types.len(), 3); // parameters array, content_type, promise
+    // Note: First param is a glib::Variant for the string array
+    assert_eq!(param_types[1], Option::<String>::static_type());
+    assert_eq!(param_types[2], gst::Promise::static_type());
+
+    // Check return type (bool)
+    assert_eq!(signal.return_type(), bool::static_type());
+}
+
+#[test]
+#[serial]
+fn test_set_parameter_signal() {
+    init();
+
+    let element = gst::ElementFactory::make("rtspsrc2")
+        .build()
+        .expect("Failed to create rtspsrc2 element");
+
+    // Check that the set-parameter signal exists
+    let signal_query = element
+        .element_class()
+        .list_signals()
+        .iter()
+        .find(|s| s.name() == "set-parameter");
+    assert!(signal_query.is_some(), "set-parameter signal not found");
+
+    // Check signal parameters
+    let signal = signal_query.unwrap();
+    let param_types = signal.param_types();
+    assert_eq!(param_types.len(), 4); // parameter, value, content_type, promise
+    assert_eq!(param_types[0], String::static_type());
+    assert_eq!(param_types[1], String::static_type());
+    assert_eq!(param_types[2], Option::<String>::static_type());
+    assert_eq!(param_types[3], gst::Promise::static_type());
+
+    // Check return type (bool)
+    assert_eq!(signal.return_type(), bool::static_type());
+}
+
+#[test]
+#[serial]
+fn test_nat_method_property() {
+    init();
+
+    let element = gst::ElementFactory::make("rtspsrc2")
+        .build()
+        .expect("Failed to create rtspsrc2 element");
+
+    // Test nat-method property exists
+    assert!(element.property_type("nat-method").is_some());
+
+    // Get default value
+    let nat_method: gst::glib::Value = element.property_value("nat-method");
+    assert!(nat_method.get::<gst::glib::Enum>().is_ok());
+
+    // Test setting different values
+    element.set_property_from_str("nat-method", "none");
+    let nat_method_str: String = element.property::<gst::glib::Value>("nat-method").to_string();
+    assert!(nat_method_str.contains("none") || nat_method_str.contains("0"));
+
+    element.set_property_from_str("nat-method", "dummy");
+    let nat_method_str: String = element.property::<gst::glib::Value>("nat-method").to_string();
+    assert!(nat_method_str.contains("dummy") || nat_method_str.contains("1"));
 }
 
 #[test]

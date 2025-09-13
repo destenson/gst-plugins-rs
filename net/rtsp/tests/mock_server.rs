@@ -313,6 +313,38 @@ async fn handle_client(
                     .header(headers::CSEQ, cseq)
                     .build(Vec::new())
             }
+            Method::GetParameter => {
+                // Handle GET_PARAMETER request
+                let body = request.body();
+                let response_body = if !body.is_empty() {
+                    // Parse requested parameters and return dummy values
+                    let params_str = String::from_utf8_lossy(body);
+                    let mut response_params = Vec::new();
+                    for line in params_str.lines() {
+                        if !line.trim().is_empty() {
+                            // Return dummy values for requested parameters
+                            response_params.push(format!("{}: dummy_value", line.trim()));
+                        }
+                    }
+                    response_params.join("\r\n").into_bytes()
+                } else {
+                    // Empty body for keep-alive
+                    Vec::new()
+                };
+                
+                Response::builder(Version::V1_0, StatusCode::Ok)
+                    .header(headers::CSEQ, cseq)
+                    .header(headers::CONTENT_TYPE, "text/parameters")
+                    .header(headers::CONTENT_LENGTH, response_body.len().to_string())
+                    .build(response_body)
+            }
+            Method::SetParameter => {
+                // Handle SET_PARAMETER request
+                // Just acknowledge the parameters were set
+                Response::builder(Version::V1_0, StatusCode::Ok)
+                    .header(headers::CSEQ, cseq)
+                    .build(Vec::new())
+            }
             _ => {
                 // Method not implemented
                 Response::builder(Version::V1_0, StatusCode::NotImplemented)
