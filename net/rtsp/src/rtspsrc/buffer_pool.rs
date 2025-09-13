@@ -1,3 +1,4 @@
+#![allow(unused)]
 // Buffer pool implementation for efficient memory management
 //
 // This module provides buffer pooling to reduce allocations in hot paths
