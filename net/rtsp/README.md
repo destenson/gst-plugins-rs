@@ -46,13 +46,20 @@ architecture of rtspsrc. There are some major problems with rtspsrc:
   - Metrics collection for monitoring
   - Connection and performance statistics
   - tokio-console support for async debugging
+* Authentication support (NEW!)
+  - HTTP Basic Authentication (RFC 7617)
+  - HTTP Digest Authentication (RFC 7616)
+  - Credentials from URL or properties
+  - Automatic retry on 401 Unauthorized
+* TLS/TCP support (NEW!)
+  - Secure RTSP connections (rtsps://)
+  - Default port 322 for RTSPS
+  - Configurable TLS validation flags
+  - Support for self-signed certificates
 
 ## Missing features
 
 Roughly in order of priority:
-
-* Credentials support
-* TLS/TCP support
 * NAT hole punching
 * Allow ignoring specific streams (SDP medias)
   - Currently all available source pads must be linked
