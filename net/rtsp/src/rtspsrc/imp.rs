@@ -116,6 +116,9 @@ const DEFAULT_TLS_VALIDATION_FLAGS: gio::TlsCertificateFlags =
 // Buffer queue management constants
 const DEFAULT_MAX_BUFFERED_BUFFERS: usize = 100;
 const DEFAULT_MAX_BUFFERED_BYTES: usize = 10 * 1024 * 1024; // 10 MB
+
+// Stream selection defaults
+const DEFAULT_REQUIRE_ALL_STREAMS: bool = false;
 const BUFFER_QUEUE_CLEANUP_THRESHOLD: f32 = 0.8; // Start cleanup at 80% capacity
 
 // Buffer mode enum (matching original rtspsrc)
@@ -293,6 +296,79 @@ pub enum BackchannelType {
     None = 0,
     #[enum_value(name = "ONVIF audio backchannel", nick = "onvif")]
     Onvif = 1,
+}
+
+// Stream selection flags
+bitflags::bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub struct StreamSelection: u32 {
+        const AUDIO = 0b00000001;
+        const VIDEO = 0b00000010;
+        const METADATA = 0b00000100;
+        const APPLICATION = 0b00001000;
+        const ALL = Self::AUDIO.bits() | Self::VIDEO.bits() | Self::METADATA.bits() | Self::APPLICATION.bits();
+    }
+}
+
+impl Default for StreamSelection {
+    fn default() -> Self {
+        StreamSelection::ALL
+    }
+}
+
+impl StreamSelection {
+    fn from_string(s: &str) -> Self {
+        let mut flags = StreamSelection::empty();
+        for part in s.split(',') {
+            match part.trim().to_lowercase().as_str() {
+                "audio" => flags |= StreamSelection::AUDIO,
+                "video" => flags |= StreamSelection::VIDEO,
+                "metadata" => flags |= StreamSelection::METADATA,
+                "application" => flags |= StreamSelection::APPLICATION,
+                "all" => flags = StreamSelection::ALL,
+                "none" => flags = StreamSelection::empty(),
+                _ => {}
+            }
+        }
+        if flags.is_empty() {
+            StreamSelection::ALL
+        } else {
+            flags
+        }
+    }
+
+    fn to_string(&self) -> String {
+        if *self == StreamSelection::ALL {
+            return "all".to_string();
+        }
+        if self.is_empty() {
+            return "none".to_string();
+        }
+        let mut parts = Vec::new();
+        if self.contains(StreamSelection::AUDIO) {
+            parts.push("audio");
+        }
+        if self.contains(StreamSelection::VIDEO) {
+            parts.push("video");
+        }
+        if self.contains(StreamSelection::METADATA) {
+            parts.push("metadata");
+        }
+        if self.contains(StreamSelection::APPLICATION) {
+            parts.push("application");
+        }
+        parts.join(",")
+    }
+
+    fn should_select_media(&self, media_type: &str) -> bool {
+        match media_type.to_lowercase().as_str() {
+            "audio" => self.contains(StreamSelection::AUDIO),
+            "video" => self.contains(StreamSelection::VIDEO),
+            "metadata" => self.contains(StreamSelection::METADATA),
+            "application" => self.contains(StreamSelection::APPLICATION),
+            _ => false,
+        }
+    }
 }
 
 /// Buffer queue entry for handling unlinked pads
@@ -515,6 +591,10 @@ struct Settings {
     // Authentication properties
     user_id: Option<String>,
     user_pw: Option<String>,
+    // Stream selection properties
+    select_streams: StreamSelection,
+    stream_filter: Option<String>,
+    require_all_streams: bool,
     // Jitterbuffer control properties
     latency_ms: u32,
     drop_on_latency: bool,
@@ -620,6 +700,10 @@ impl Default for Settings {
             // Authentication properties
             user_id: None,
             user_pw: None,
+            // Stream selection properties
+            select_streams: StreamSelection::default(),
+            stream_filter: None,
+            require_all_streams: DEFAULT_REQUIRE_ALL_STREAMS,
             // Jitterbuffer control properties
             latency_ms: DEFAULT_LATENCY_MS,
             drop_on_latency: DEFAULT_DROP_ON_LATENCY,
@@ -1914,6 +1998,24 @@ impl ObjectImpl for RtspSrc {
                     .default_value(false)
                     .mutable_ready()
                     .build(),
+                // Stream selection properties (PRP-RTSP-20)
+                glib::ParamSpecString::builder("select-streams")
+                    .nick("Select Streams")
+                    .blurb("Comma-separated list of stream types to select: audio,video,metadata,application,all,none")
+                    .default_value("all")
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecString::builder("stream-filter")
+                    .nick("Stream Filter")
+                    .blurb("Filter expression for selecting streams by codec or other attributes")
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecBoolean::builder("require-all-streams")
+                    .nick("Require All Streams")
+                    .blurb("Fail if not all selected streams can be linked")
+                    .default_value(DEFAULT_REQUIRE_ALL_STREAMS)
+                    .mutable_ready()
+                    .build(),
             ]
         });
 
@@ -2377,6 +2479,25 @@ impl ObjectImpl for RtspSrc {
                 settings.client_managed_mikey = value.get::<bool>().expect("type checked upstream");
                 Ok(())
             }
+            "select-streams" => {
+                let mut settings = self.settings.lock().unwrap();
+                let stream_str = value
+                    .get::<Option<String>>()
+                    .expect("type checked upstream")
+                    .unwrap_or_else(|| "all".to_string());
+                settings.select_streams = StreamSelection::from_string(&stream_str);
+                Ok(())
+            }
+            "stream-filter" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.stream_filter = value.get().expect("type checked upstream");
+                Ok(())
+            }
+            "require-all-streams" => {
+                let mut settings = self.settings.lock().unwrap();
+                settings.require_all_streams = value.get::<bool>().expect("type checked upstream");
+                Ok(())
+            }
             name => unimplemented!("Property '{name}'"),
         };
 
@@ -2742,6 +2863,18 @@ impl ObjectImpl for RtspSrc {
             "client-managed-mikey" => {
                 let settings = self.settings.lock().unwrap();
                 settings.client_managed_mikey.to_value()
+            }
+            "select-streams" => {
+                let settings = self.settings.lock().unwrap();
+                settings.select_streams.to_string().to_value()
+            }
+            "stream-filter" => {
+                let settings = self.settings.lock().unwrap();
+                settings.stream_filter.to_value()
+            }
+            "require-all-streams" => {
+                let settings = self.settings.lock().unwrap();
+                settings.require_all_streams.to_value()
             }
             name => unimplemented!("Property '{name}'"),
         }
@@ -3556,6 +3689,8 @@ impl RtspSrc {
                     settings.port_start,
                     &settings.protocols,
                     TransportMode::Play,
+                    &settings.select_streams,
+                    &settings.stream_filter,
                 )
                 .await?
         };
@@ -4722,6 +4857,8 @@ impl RtspTaskState {
         port_start: u16,
         protocols: &[RtspProtocol],
         mode: TransportMode,
+        select_streams: &StreamSelection,
+        stream_filter: &Option<String>,
     ) -> Result<Vec<RtspSetupParams>, RtspError> {
         // Clone what we need from sdp to avoid borrow conflicts
         let sdp_clone = self.sdp.clone().expect("Must have SDP by now");
@@ -4760,9 +4897,67 @@ impl RtspTaskState {
         let mut stream_num = 0;
         let mut setup_params: Vec<RtspSetupParams> = Vec::new();
         for m in &sdp_clone.medias {
-            if !["audio", "video"].contains(&m.media.as_str()) {
-                gst::info!(CAT, "Ignoring unsupported media {}", m.media);
+            // Check if media type is supported
+            if !["audio", "video", "metadata", "application"].contains(&m.media.as_str()) {
+                gst::info!(CAT, "Ignoring unsupported media type: {}", m.media);
                 continue;
+            }
+
+            // Apply stream selection filter
+            if !select_streams.should_select_media(&m.media) {
+                gst::info!(
+                    CAT,
+                    "Skipping {} stream based on select-streams property",
+                    m.media
+                );
+                continue;
+            }
+
+            // Apply codec filter if specified
+            if let Some(filter) = stream_filter {
+                let mut skip = true;
+
+                // Check if codec matches filter
+                // fmt is a string with space-separated format identifiers
+                for format in m.fmt.split_whitespace() {
+                    if let Ok(_pt) = format.parse::<u8>() {
+                        for attr in &m.attributes {
+                            if attr.attribute == "rtpmap" {
+                                if let Some(val) = &attr.value {
+                                    // Parse rtpmap: "96 H264/90000"
+                                    let parts: Vec<&str> = val.split_whitespace().collect();
+                                    if parts.len() >= 2 {
+                                        let pt_str = parts[0];
+                                        if pt_str == format {
+                                            let codec_info = parts[1];
+                                            let codec_name =
+                                                codec_info.split('/').next().unwrap_or("");
+
+                                            // Check if codec matches filter (case-insensitive)
+                                            if codec_name
+                                                .to_lowercase()
+                                                .contains(&filter.to_lowercase())
+                                            {
+                                                skip = false;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if skip {
+                    gst::info!(
+                        CAT,
+                        "Skipping {} stream - codec doesn't match filter '{}'",
+                        m.media,
+                        filter
+                    );
+                    continue;
+                }
             }
             let media_control = m
                 .get_first_attribute_value("control")
