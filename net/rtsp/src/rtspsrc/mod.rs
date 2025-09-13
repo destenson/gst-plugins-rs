@@ -48,6 +48,10 @@ pub mod error_recovery;
 mod error_migration_example;
 #[cfg(test)]
 mod error_tests;
+#[cfg(test)]
+mod retry_integration_tests;
+#[cfg(test)]
+mod racing_strategy_tests;
 mod http_tunnel;
 mod imp;
 mod proxy;
