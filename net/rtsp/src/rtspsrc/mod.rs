@@ -77,7 +77,7 @@ pub fn register(plugin: &gst::Plugin) -> Result<(), glib::BoolError> {
     gst::Element::register(
         Some(plugin),
         "rtspsrc2",
-        gst::Rank::NONE,
+        gst::Rank::PRIMARY,
         RtspSrc::static_type(),
     )
 }
