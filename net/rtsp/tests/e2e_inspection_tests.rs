@@ -4,6 +4,9 @@
 use std::collections::HashMap;
 use std::process::Command;
 
+#[path = "common/mod.rs"]
+mod common;
+
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ElementInspectionTest {
@@ -484,7 +487,7 @@ impl ElementInspectionTest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::e2e_plugin_tests::{check_gstreamer_available, find_gst_plugin_path};
+    use crate::common::{check_gstreamer_available, find_gst_plugin_path};
 
     #[test]
     fn test_element_exists_check() {

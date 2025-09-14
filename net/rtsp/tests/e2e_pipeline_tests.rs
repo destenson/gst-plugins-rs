@@ -5,6 +5,9 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 use tokio::time::timeout;
 
+#[path = "common/mod.rs"]
+mod common;
+
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct PipelineTestConfig {
@@ -203,6 +206,7 @@ impl E2EPipelineTest {
         .await??;
 
         let execution_time = start_time.elapsed();
+        let output = output?;
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
@@ -375,7 +379,7 @@ pub struct PipelineTestResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::e2e_plugin_tests::{check_gstreamer_available, find_gst_plugin_path};
+    use crate::common::{check_gstreamer_available, find_gst_plugin_path};
 
     #[tokio::test]
     async fn test_basic_pipeline_validation() {

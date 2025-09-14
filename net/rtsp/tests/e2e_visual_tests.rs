@@ -5,6 +5,9 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 use tokio::time::timeout;
 
+#[path = "common/mod.rs"]
+mod common;
+
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct VisualTestConfig {
@@ -499,7 +502,7 @@ pub struct UserFeedback {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::e2e_plugin_tests::{check_gstreamer_available, find_gst_plugin_path};
+    use crate::common::{check_gstreamer_available, find_gst_plugin_path};
 
     #[tokio::test]
     async fn test_visual_test_config_loading() {

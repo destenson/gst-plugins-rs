@@ -145,7 +145,7 @@ impl GstPluginE2ETest {
         .await?;
 
         // We expect this to fail due to invalid URL, but not due to pipeline creation issues
-        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stderr = String::from_utf8_lossy(&output?.stderr);
 
         if stderr.contains("no element \"rtspsrc2\"") {
             return Err("rtspsrc2 element not found in pipeline".into());
@@ -187,6 +187,7 @@ impl GstPluginE2ETest {
         })
         .await?;
 
+        let output = output?;
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
 
@@ -234,7 +235,7 @@ impl GstPluginE2ETest {
         })
         .await?;
 
-        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stderr = String::from_utf8_lossy(&output?.stderr);
 
         // Should fail due to invalid URL, but property setting should work
         if stderr.contains("no property") || stderr.contains("Invalid property") {
