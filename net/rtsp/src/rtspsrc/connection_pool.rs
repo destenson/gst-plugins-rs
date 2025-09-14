@@ -496,8 +496,6 @@ mod tests {
         for _ in 0..3 {
             let stream = TcpStream::connect(server_addr).await.unwrap();
             pool.add_new(stream, server_addr).await.unwrap();
-            // Small delay to ensure connection is accepted
-            tokio::time::sleep(Duration::from_millis(1)).await;
         }
 
         // Concurrent checkouts

@@ -107,10 +107,10 @@ async fn test_nat_hole_punching_dummy_packets() {
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Check that nat-method is properly set
-    let nat_method_value = element.property_value("nat-method");
+    let nat_method_value: String = element.property("nat-method");
     assert!(
-        nat_method_value.to_string().contains("dummy")
-            || nat_method_value.to_string().contains("1")
+        nat_method_value.contains("dummy")
+            || nat_method_value == "1"
     );
 }
 
@@ -156,10 +156,10 @@ async fn test_nat_keepalive_mechanism() {
 
     // In a real test, we would set up a pipeline and start streaming
     // For now, just verify the property is set correctly
-    let nat_method_value = element.property_value("nat-method");
+    let nat_method_value: String = element.property("nat-method");
     assert!(
-        nat_method_value.to_string().contains("dummy")
-            || nat_method_value.to_string().contains("1")
+        nat_method_value.contains("dummy")
+            || nat_method_value == "1"
     );
 
     // Clean up
@@ -180,10 +180,10 @@ fn test_nat_configuration_combinations() {
     element.set_property_from_str("protocols", "tcp");
 
     // NAT method should still be set even with TCP
-    let nat_method_value = element.property_value("nat-method");
+    let nat_method_value: String = element.property("nat-method");
     assert!(
-        nat_method_value.to_string().contains("dummy")
-            || nat_method_value.to_string().contains("1")
+        nat_method_value.contains("dummy")
+            || nat_method_value == "1"
     );
 
     // Test NAT method with UDP
@@ -193,8 +193,8 @@ fn test_nat_configuration_combinations() {
 
     // Test NAT method none
     element.set_property_from_str("nat-method", "none");
-    let nat_method_value = element.property_value("nat-method");
+    let nat_method_value: String = element.property("nat-method");
     assert!(
-        nat_method_value.to_string().contains("none") || nat_method_value.to_string().contains("0")
+        nat_method_value.contains("none") || nat_method_value == "0"
     );
 }
