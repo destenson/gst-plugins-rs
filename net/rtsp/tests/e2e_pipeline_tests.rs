@@ -379,7 +379,7 @@ pub struct PipelineTestResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::{check_gstreamer_available, find_gst_plugin_path};
+    use super::common::{check_gstreamer_available, find_gst_plugin_path};
 
     #[tokio::test]
     async fn test_basic_pipeline_validation() {
