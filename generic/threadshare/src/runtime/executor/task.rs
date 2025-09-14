@@ -127,11 +127,11 @@ impl TaskQueue {
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
-        let tasks_clone = Arc::clone(&self.tasks);
+        let tasks_clone = self.tasks.clone();
         let mut tasks = self.tasks.lock().unwrap();
         let task_id = TaskId(tasks.vacant_entry().key());
 
-        let context_name = Arc::clone(&self.context_name);
+        let context_name = self.context_name.clone();
         let task_fut = async move {
             gst::trace!(
                 RUNTIME_CAT,
@@ -168,7 +168,7 @@ impl TaskQueue {
             .await
         };
 
-        let runnables = Arc::clone(&self.runnables);
+        let runnables = self.runnables.clone();
         let (runnable, task) = async_task::spawn(task_fut, move |runnable| {
             runnables.push(runnable).unwrap();
         });
@@ -191,11 +191,11 @@ impl TaskQueue {
         F: FnOnce() -> O + Send,
         O: Send,
     {
-        let tasks_clone = Arc::clone(&self.tasks);
+        let tasks_clone = self.tasks.clone();
         let mut tasks = self.tasks.lock().unwrap();
         let task_id = TaskId(tasks.vacant_entry().key());
 
-        let context_name = Arc::clone(&self.context_name);
+        let context_name = self.context_name.clone();
         let task_fut = async move {
             gst::trace!(
                 RUNTIME_CAT,
@@ -218,7 +218,7 @@ impl TaskQueue {
             f()
         };
 
-        let runnables = Arc::clone(&self.runnables);
+        let runnables = self.runnables.clone();
         // This is the unsafe call for which the lifetime must hold
         // until the the Future is Ready and its Output retrieved.
         let (runnable, task) = async_task::spawn_unchecked(task_fut, move |runnable| {

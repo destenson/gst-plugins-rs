@@ -51,7 +51,7 @@ impl Scheduler {
 
         let (handle_sender, handle_receiver) = sync_mpsc::channel();
         let context_name = Arc::from(context_name);
-        let thread_ctx_name = Arc::clone(&context_name);
+        let thread_ctx_name = context_name.clone();
         let join = thread
             .spawn(move || {
                 gst::debug!(
@@ -60,8 +60,8 @@ impl Scheduler {
                     thread_ctx_name
                 );
 
-                let handle = Scheduler::init(Arc::clone(&thread_ctx_name), max_throttling);
-                let this = Arc::clone(&handle.0.scheduler);
+                let handle = Scheduler::init(thread_ctx_name.clone(), max_throttling);
+                let this = handle.0.scheduler.clone();
                 let must_shutdown = handle.0.must_shutdown.clone();
                 let handle_weak = handle.downgrade();
                 handle_sender.send(handle).unwrap();
@@ -144,7 +144,7 @@ impl Scheduler {
         );
 
         let handle = Scheduler::init(Scheduler::DUMMY_NAME.into(), Duration::ZERO);
-        let this = Arc::clone(&handle.0.scheduler);
+        let this = handle.0.scheduler.clone();
 
         // Move the (only) handle for this scheduler in the main task.
         let (task_id, task) = this.tasks.add(async move {
@@ -197,7 +197,7 @@ impl Scheduler {
         let cx = &mut std::task::Context::from_waker(&waker);
         pin_mut!(termination_future);
 
-        let _guard = CallOnDrop::new(|| Scheduler::close(Arc::clone(&self.context_name)));
+        let _guard = CallOnDrop::new(|| Scheduler::close(self.context_name.clone()));
 
         let mut now;
         // This is to ensure reactor invocation on the first iteration.

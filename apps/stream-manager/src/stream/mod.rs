@@ -140,8 +140,8 @@ impl StreamManager {
             crate::StreamManagerError::Other("Message receiver already taken".to_string())
         })?;
 
-        let streams_ref = Arc::clone(&self.streams);
-        let sources_ref = Arc::clone(&self.sources);
+        let streams_ref = self.streams.clone();
+        let sources_ref = self.sources.clone();
 
         tokio::spawn(async move {
             Self::handle_source_messages(message_receiver, streams_ref, sources_ref).await;

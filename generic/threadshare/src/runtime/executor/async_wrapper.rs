@@ -434,7 +434,7 @@ impl<T: Send + 'static> Drop for Async<T> {
     fn drop(&mut self) {
         if let Some(io) = self.io.take() {
             if let Some(sched) = self.sched.upgrade() {
-                let source = Arc::clone(&self.source);
+                let source = self.source.clone();
                 sched.spawn_and_unpark(async move {
                     Reactor::with_mut(|reactor| {
                         if let Err(err) = reactor.remove_io(&source) {

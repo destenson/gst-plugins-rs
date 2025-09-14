@@ -150,14 +150,14 @@ impl CircuitBreaker {
 impl Clone for CircuitBreaker {
     fn clone(&self) -> Self {
         Self {
-            state: Arc::clone(&self.state),
-            failure_count: Arc::clone(&self.failure_count),
-            success_count: Arc::clone(&self.success_count),
-            last_failure_time: Arc::clone(&self.last_failure_time),
+            state: self.state.clone(),
+            failure_count: self.failure_count.clone(),
+            success_count: self.success_count.clone(),
+            last_failure_time: self.last_failure_time.clone(),
             failure_threshold: self.failure_threshold,
             success_threshold: self.success_threshold,
             timeout: self.timeout,
-            half_open_requests: Arc::clone(&self.half_open_requests),
+            half_open_requests: self.half_open_requests.clone(),
             max_half_open_requests: self.max_half_open_requests,
         }
     }

@@ -56,7 +56,7 @@ fn run() -> Result<(), Error> {
     hrtf.set_property("spatial-objects", gst::Array::new(objs));
 
     let state_cond = Arc::new((Mutex::new(gst::State::Null), Condvar::new()));
-    let state_cond_clone = Arc::clone(&state_cond);
+    let state_cond_clone = state_cond.clone();
 
     thread::spawn(move || {
         // Wait for the pipeline to start up

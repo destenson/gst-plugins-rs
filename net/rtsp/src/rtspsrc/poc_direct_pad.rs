@@ -176,7 +176,7 @@ impl EnhancedAppSrcManager {
         appsrc.set_property("max-latency", 2000000000i64); // 2 seconds
         
         // Set up callbacks for better flow control
-        let queue_handle = Arc::clone(&self.buffer_queue);
+        let queue_handle = self.buffer_queue.clone();
         let callbacks = gst_app::AppSrcCallbacks::builder()
             .need_data(move |appsrc, _length| {
                 // Flush queued buffers when AppSrc needs data

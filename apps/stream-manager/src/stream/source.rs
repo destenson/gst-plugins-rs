@@ -302,7 +302,7 @@ impl StreamSource {
 
         let sender = self.message_sender.clone();
         let stream_id = self.id.clone();
-        let stats_ref = Arc::clone(&self.statistics);
+        let stats_ref = self.statistics.clone();
 
         // Spawn async task to handle messages
         tokio::spawn(async move {

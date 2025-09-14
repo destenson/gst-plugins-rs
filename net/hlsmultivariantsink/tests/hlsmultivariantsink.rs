@@ -259,7 +259,7 @@ fn setup_signals(
                 .expect("Send multivariant playlist event");
 
             let playlist = MemoryPlaylistFile {
-                handler: Arc::clone(&multivariant_playlist_content),
+                handler: multivariant_playlist_content.clone(),
             };
 
             playlist.clear_content();
@@ -295,7 +295,7 @@ fn setup_signals(
                 .expect("Send playlist event");
 
             let playlist = MemoryPlaylistFile {
-                handler: Arc::clone(&playlist_content),
+                handler: playlist_content.clone(),
             };
 
             playlist.clear_content();
