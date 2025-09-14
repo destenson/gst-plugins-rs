@@ -66,6 +66,7 @@ futures = ["dep:futures"]
 prometheus = ["dep:prometheus"]
 telemetry = ["tracing", "tracing-subscriber", "prometheus"]
 bench = []
+integration-tests = []
 # default = ["futures", "adaptive", "telemetry"]
 default = ["futures"]
 

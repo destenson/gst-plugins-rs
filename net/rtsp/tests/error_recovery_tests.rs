@@ -8,10 +8,16 @@
 //
 // SPDX-License-Identifier: MPL-2.0
 
+// NOTE: These tests require access to private error modules.
+// They are disabled unless a special feature is enabled.
+#![cfg(feature = "test-private-modules")]
+
 use gst::prelude::*;
+#[cfg(feature = "test-private-modules")]
 use gstrsrtsp::rtspsrc::error::{
     ErrorContext, MediaError, NetworkError, ProtocolError, RtspError,
 };
+#[cfg(feature = "test-private-modules")]
 use gstrsrtsp::rtspsrc::error_recovery::{ErrorRecovery, RecoveryAction};
 use std::time::Duration;
 
