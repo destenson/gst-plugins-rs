@@ -338,14 +338,14 @@ impl RecvInstance {
 
             match res {
                 NDIlib_frame_type_e::NDIlib_frame_type_audio => Ok(Some(Frame::Audio(AudioFrame(
-                    AudioFrameInner::BorrowedRecv(audio_frame, Arc::clone(&self.0)),
+                    AudioFrameInner::BorrowedRecv(audio_frame, self.0.clone()),
                 )))),
                 NDIlib_frame_type_e::NDIlib_frame_type_video => Ok(Some(Frame::Video(VideoFrame(
-                    VideoFrameInner::BorrowedRecv(video_frame, Arc::clone(&self.0)),
+                    VideoFrameInner::BorrowedRecv(video_frame, self.0.clone()),
                 )))),
                 NDIlib_frame_type_e::NDIlib_frame_type_metadata => {
                     Ok(Some(Frame::Metadata(MetadataFrame(
-                        MetadataFrameInner::Borrowed(metadata_frame, Arc::clone(&self.0)),
+                        MetadataFrameInner::Borrowed(metadata_frame, self.0.clone()),
                     ))))
                 }
                 NDIlib_frame_type_e::NDIlib_frame_type_error => Err(ReceiveError),

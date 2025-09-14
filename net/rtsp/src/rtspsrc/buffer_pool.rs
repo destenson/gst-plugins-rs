@@ -381,17 +381,17 @@ mod tests {
         let mut handles = vec![];
 
         for _ in 0..num_threads {
-            let pool_clone = Arc::clone(&pool);
+            let pool = pool.clone();
             let handle = thread::spawn(move || {
                 for i in 0..ops_per_thread {
                     // Vary buffer sizes
                     let size = 100 + (i * 100) % 4000;
-                    let buffer = pool_clone.acquire(size);
+                    let buffer = pool.acquire(size);
 
                     // Simulate some work
                     thread::yield_now();
 
-                    pool_clone.release(buffer);
+                    pool.release(buffer);
                 }
             });
             handles.push(handle);

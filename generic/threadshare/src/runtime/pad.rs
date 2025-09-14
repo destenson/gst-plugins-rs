@@ -351,7 +351,7 @@ impl PadSrc {
     }
 
     pub fn as_ref(&self) -> PadSrcRef<'_> {
-        PadSrcRef::new(Arc::clone(&self.0))
+        PadSrcRef::new(self.0.clone())
     }
 
     pub fn check_reconfigure(&self) -> bool {
@@ -714,7 +714,7 @@ impl PadSink {
     }
 
     pub fn as_ref(&self) -> PadSinkRef<'_> {
-        PadSinkRef::new(Arc::clone(&self.0))
+        PadSinkRef::new(self.0.clone())
     }
 }
 

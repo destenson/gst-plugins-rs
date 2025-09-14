@@ -145,7 +145,7 @@ fn test_hlssink3_element_with_video_content() -> Result<(), ()> {
 
             // We need an owned type to pass to `gio::WriteOutputStream`
             let playlist = MemoryPlaylistFile {
-                handler: Arc::clone(&playlist_content),
+                handler: playlist_content.clone(),
             };
             // Since here a new file will be created, the content is cleared
             playlist.clear_content();
@@ -381,7 +381,7 @@ fn test_hlssink3_write_correct_playlist_content() -> Result<(), ()> {
 
             // We need an owned type to pass to `gio::WriteOutputStream`
             let playlist = MemoryPlaylistFile {
-                handler: Arc::clone(&playlist_content),
+                handler: playlist_content.clone(),
             };
             // Since here a new file will be created, the content is cleared
             playlist.clear_content();

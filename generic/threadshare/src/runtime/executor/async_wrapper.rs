@@ -458,35 +458,32 @@ impl<T: Send + 'static> AsRef<T> for Async<T> {
     }
 }
 
+impl<T: Send + 'static> AsMut<T> for Async<T> {
+    fn as_mut(&mut self) -> &mut T {
+        self.get_mut()
+    }
+}
+
 impl<T: Send + 'static> Drop for Async<T> {
     fn drop(&mut self) {
         if let Some(io) = self.io.take() {
-            if let Some(throttling_sched_hdl) = self.throttling_sched_hdl.take() {
-                if let Some(sched) = throttling_sched_hdl.upgrade() {
-                    let source = Arc::clone(&self.source);
-                    sched.spawn_and_unpark(async move {
-                        Reactor::with_mut(|reactor| {
-                            if let Err(err) = reactor.remove_io(&source) {
-                                gst::error!(
-                                    RUNTIME_CAT,
-                                    "Failed to remove fd {:?}: {err}",
-                                    source.registration,
-                                );
-                            }
-                        });
-                        drop(io);
+            if let Some(sched) = self.sched.upgrade() {
+                let source = self.source.clone();
+                sched.spawn_and_unpark(async move {
+                    Reactor::with_mut(|reactor| {
+                        if let Err(err) = reactor.remove_io(&source) {
+                            gst::error!(
+                                RUNTIME_CAT,
+                                "Failed to remove fd {:?}: {}",
+                                source.registration,
+                                err
+                            );
+                        }
                     });
-                }
-            } else {
-                Reactor::with_mut(|reactor| {
-                    if let Err(err) = reactor.remove_io(&self.source) {
-                        gst::error!(
-                            RUNTIME_CAT,
-                            "Failed to remove fd {:?}: {err}",
-                            self.source.registration,
-                        );
-                    }
+                    drop(io);
                 });
+            } else {
+                drop(io);
             }
         }
     }

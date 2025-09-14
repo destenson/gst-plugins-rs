@@ -212,6 +212,81 @@ impl Throttling {
         handle
     }
 
+    fn init(context_name: Arc<str>, max_throttling: Duration) -> Handle {
+        let handle = CURRENT_SCHEDULER.with(|cur_scheduler| {
+            let mut cur_scheduler = cur_scheduler.borrow_mut();
+            if cur_scheduler.is_some() {
+                panic!("Attempt to initialize an Scheduler on thread where another Scheduler is running.");
+            }
+
+            let handle = Handle::new(Arc::new(Scheduler {
+                context_name: context_name.clone(),
+                max_throttling,
+                tasks: TaskQueue::new(context_name),
+                must_unpark: Mutex::new(false),
+                must_unpark_cvar: Condvar::new(),
+                #[cfg(feature = "tuning")]
+                parked_duration: AtomicU64::new(0),
+            }));
+
+            *cur_scheduler = Some(handle.downgrade());
+
+            handle
+        });
+
+        Reactor::init(handle.max_throttling());
+
+        handle
+    }
+
+    pub fn block_on<F>(future: F) -> F::Output
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        assert!(
+            !Scheduler::is_scheduler_thread(),
+            "Attempt to block within an existing Scheduler thread."
+        );
+
+        let handle = Scheduler::init(Scheduler::DUMMY_NAME.into(), Duration::ZERO);
+        let this = handle.0.scheduler.clone();
+
+        // Move the (only) handle for this scheduler in the main task.
+        let (task_id, task) = this.tasks.add(async move {
+            let res = future.await;
+
+            let task_id = TaskId::current().unwrap();
+            let _ = handle.drain_sub_tasks(task_id).await;
+
+            res
+        });
+
+        gst::trace!(RUNTIME_CAT, "Blocking on current thread with {:?}", task_id);
+
+        let _guard = CallOnDrop::new(|| {
+            gst::trace!(
+                RUNTIME_CAT,
+                "Blocking on current thread with {:?} done",
+                task_id,
+            );
+        });
+
+        // Blocking on `task` which is cheap to `poll`.
+        match this.block_on_priv(task) {
+            Ok(res) => res,
+            Err(e) => {
+                gst::error!(
+                    RUNTIME_CAT,
+                    "Panic blocking on Context {}",
+                    &Scheduler::DUMMY_NAME
+                );
+
+                panic::resume_unwind(e);
+            }
+        }
+    }
+
     // Important: the `termination_future` MUST be cheap to poll.
     //
     // Examples of appropriate `termination_future` are:
@@ -227,6 +302,8 @@ impl Throttling {
         let waker = waker_fn(|| ());
         let cx = &mut std::task::Context::from_waker(&waker);
         pin_mut!(termination_future);
+
+        let _guard = CallOnDrop::new(|| Scheduler::close(self.context_name.clone()));
 
         let mut now;
         // This is to ensure reactor invocation on the first iteration.

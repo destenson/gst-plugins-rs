@@ -295,7 +295,7 @@ impl SnapshotManager {
     }
 
     fn start_cleanup_task(&self) {
-        let store = Arc::clone(&self.store);
+        let store = self.store.clone();
         let cleanup_interval = self.cleanup_interval;
         let max_age = self.max_snapshot_age;
         
