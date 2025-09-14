@@ -905,9 +905,21 @@ impl RtspSrc {
             )
         })?;
 
+        // Extract credentials from URI if present
         if uri.password().is_some() || !uri.username().is_empty() {
-            // TODO
-            gst::fixme!(CAT, "URI credentials are currently ignored");
+            let username = uri.username();
+            let password = uri.password();
+            
+            // Extract credentials from URL
+            if !username.is_empty() {
+                gst::debug!(CAT, imp = self, "Setting user-id from URI: {}", username);
+                settings.user_id = Some(username.to_string());
+            }
+            
+            if let Some(password) = password {
+                gst::debug!(CAT, imp = self, "Setting user-pw from URI");
+                settings.user_pw = Some(password.to_string());
+            }
         }
 
         match (uri.host_str(), uri.port()) {
