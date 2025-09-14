@@ -581,4 +581,95 @@ mod tests {
         stats.calculate_mos_score();
         assert!(stats.mos_score > 2.5 && stats.mos_score < 3.5);
     }
+
+    #[test]
+    fn test_rtcp_stats() {
+        let handler = RtcpEnhancedHandler::new(true, true);
+
+        // Create a mock SR packet
+        let sr_packet = vec![
+            0x80, 200, // V=2, P=0, RC=0, PT=SR
+            0x00, 0x06, // Length
+            0x12, 0x34, 0x56, 0x78, // SSRC
+            0x00, 0x00, 0x00, 0x00, // NTP timestamp MSW
+            0x00, 0x00, 0x00, 0x00, // NTP timestamp LSW
+            0x00, 0x00, 0x00, 0x00, // RTP timestamp
+            0x00, 0x00, 0x00, 0x64, // Packet count
+            0x00, 0x00, 0x10, 0x00, // Octet count
+        ];
+
+        handler.process_rtcp_packet(&sr_packet).unwrap();
+
+        let ssrc = 0x12345678;
+        let stats = handler.get_statistics(ssrc);
+        assert!(stats.is_some());
+        assert!(stats.unwrap().last_sr_timestamp.is_some());
+    }
+
+    #[test]
+    fn test_rtcp_xr() {
+        let handler = RtcpEnhancedHandler::new(true, true);
+
+        // Create a VoIP metrics XR block
+        let xr_block = XrReportBlock {
+            block_type: 7, // VoIP Metrics
+            type_specific: 0,
+            block_length: 8,
+            ssrc: 0x12345678,
+            data: vec![
+                10, // loss_rate
+                5,  // discard_rate
+                20, // burst_density
+                10, // gap_density
+                0x00,
+                0x64, // burst_duration
+                0x00,
+                0x32, // gap_duration
+                0x00,
+                0x0A, // round_trip_delay
+                0x00,
+                0x05,        // end_system_delay
+                -60i8 as u8, // signal_level
+                -80i8 as u8, // noise_level
+                35,          // rerl
+                16,          // gmin
+                93,          // r_factor
+                93,          // ext_r_factor
+                40,          // mos_lq
+                45,          // mos_cq
+            ],
+        };
+
+        let metrics = xr_block.parse_voip_metrics().unwrap();
+        assert_eq!(metrics.r_factor, 93);
+        assert_eq!(metrics.loss_rate, 10);
+    }
+
+    #[test]
+    fn test_rtcp_feedback() {
+        // Test NACK creation
+        let nack = FeedbackMessage::create_nack(0x11111111, 0x22222222, &[100, 101, 102]);
+        assert_eq!(nack.message_type, 205); // RTCP_RTPFB
+        assert_eq!(nack.fmt, 1); // RTPFB_NACK
+        assert_eq!(nack.sender_ssrc, 0x11111111);
+        assert_eq!(nack.media_ssrc, 0x22222222);
+        assert!(nack.data.len() >= 6); // At least 3 sequence numbers
+
+        // Test PLI creation
+        let pli = FeedbackMessage::create_pli(0x33333333, 0x44444444);
+        assert_eq!(pli.message_type, 206); // RTCP_PSFB
+        assert_eq!(pli.fmt, 1); // PSFB_PLI
+
+        // Test FIR creation
+        let fir = FeedbackMessage::create_fir(0x55555555, 0x66666666, 42);
+        assert_eq!(fir.message_type, 206); // RTCP_PSFB
+        assert_eq!(fir.fmt, 4); // PSFB_FIR
+        assert_eq!(fir.data[3], 42);
+
+        // Test REMB creation
+        let remb = FeedbackMessage::create_remb(0x77777777, 1_000_000, &[0x88888888, 0x99999999]);
+        assert_eq!(remb.message_type, 206); // RTCP_PSFB
+        assert_eq!(remb.fmt, 15); // PSFB_REMB
+        assert_eq!(&remb.data[0..4], b"REMB");
+    }
 }

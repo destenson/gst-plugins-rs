@@ -44,7 +44,9 @@ fn test_location_with_credentials() {
     let location = "rtsp://user:pass@example.com:554/stream";
     element.set_property("location", location);
 
-    // Credentials should be parsed from URL
+    // BUG: URI credentials are currently ignored (see imp.rs:910)
+    // This test SHOULD pass once the bug is fixed
+    // Credentials should be parsed from URL and set as properties
     let user_id: Option<String> = element.property("user-id");
     let user_pw: Option<String> = element.property("user-pw");
 

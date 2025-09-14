@@ -350,7 +350,10 @@ pub fn connection_pool_stats() -> HashMap<SocketAddr, PoolStats> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::net::TcpListener;
+    use std::net::SocketAddr;
+    use std::time::Duration;
+    use tokio::net::{TcpListener, TcpStream};
+
 
     #[tokio::test]
     async fn test_connection_pool_basic() {
@@ -425,4 +428,138 @@ mod tests {
         let result = pool.add_new(stream, addr).await;
         assert!(result.is_err());
     }
+
+    #[tokio::test]
+    async fn test_connection_pool() {
+        let config = ConnectionPoolConfig {
+            enabled: true,
+            max_connections_per_server: 3,
+            idle_timeout: Duration::from_secs(10),
+        };
+
+        let pool = ConnectionPool::new(config);
+
+        // Start test server
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let server_addr = listener.local_addr().unwrap();
+
+        // Accept connections in background
+        tokio::spawn(async move {
+            loop {
+                if listener.accept().await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        // Test basic checkout/checkin
+        let stream1 = TcpStream::connect(server_addr).await.unwrap();
+        pool.add_new(stream1, server_addr).await.unwrap();
+
+        let checked_out = pool.checkout(server_addr).await;
+        assert!(checked_out.is_some());
+
+        pool.checkin(checked_out.unwrap(), server_addr)
+            .await
+            .unwrap();
+
+        // Verify stats
+        let stats = pool.stats();
+        assert!(stats.contains_key(&server_addr));
+        assert_eq!(stats[&server_addr].total_connections, 1);
+    }
+
+    #[tokio::test]
+    async fn test_pool_concurrent() {
+        let config = ConnectionPoolConfig {
+            enabled: true,
+            max_connections_per_server: 5,
+            idle_timeout: Duration::from_secs(10),
+        };
+
+        let pool = Arc::new(ConnectionPool::new(config));
+
+        // Start test server
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let server_addr = listener.local_addr().unwrap();
+
+        // Accept connections in background
+        tokio::spawn(async move {
+            loop {
+                if listener.accept().await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        // Add multiple connections
+        for _ in 0..3 {
+            let stream = TcpStream::connect(server_addr).await.unwrap();
+            pool.add_new(stream, server_addr).await.unwrap();
+            // Small delay to ensure connection is accepted
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+
+        // Concurrent checkouts
+        let mut handles = vec![];
+        for _ in 0..3 {
+            let pool_clone = Arc::clone(&pool);
+            let handle = tokio::spawn(async move {
+                if let Some(stream) = pool_clone.checkout(server_addr).await {
+                    // Simulate some work
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                    pool_clone.checkin(stream, server_addr).await.unwrap();
+                }
+            });
+            handles.push(handle);
+        }
+
+        for handle in handles {
+            handle.await.unwrap();
+        }
+
+        let stats = pool.stats();
+        assert_eq!(stats[&server_addr].total_connections, 3);
+    }
+
+    #[tokio::test]
+    async fn test_pool_reuse() {
+        let config = ConnectionPoolConfig {
+            enabled: true,
+            max_connections_per_server: 2,
+            idle_timeout: Duration::from_secs(5),
+        };
+
+        let pool = ConnectionPool::new(config);
+
+        // Start test server
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let server_addr = listener.local_addr().unwrap();
+
+        // Accept connections in background
+        tokio::spawn(async move {
+            loop {
+                if listener.accept().await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        // Add and reuse connection multiple times
+        let stream = TcpStream::connect(server_addr).await.unwrap();
+        pool.add_new(stream, server_addr).await.unwrap();
+
+        for _ in 0..5 {
+            let stream = pool.checkout(server_addr).await.unwrap();
+            pool.checkin(stream, server_addr).await.unwrap();
+        }
+
+        // Should still have just one connection
+        let stats = pool.stats();
+        assert_eq!(stats[&server_addr].total_connections, 1);
+        assert!(stats[&server_addr].total_uses >= 5);
+    }
+
+    use std::sync::Arc;
+
 }
