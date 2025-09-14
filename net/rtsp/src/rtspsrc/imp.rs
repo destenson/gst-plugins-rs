@@ -3377,8 +3377,14 @@ impl RtspSrc {
             let _connection_span = super::telemetry::SpanHelper::connection_span(url.as_str());
             #[cfg(feature = "telemetry")]
             task_src.metrics.record_connection_attempt();
+            // Get the appropriate default port based on the URL scheme
+            let default_port = if url.scheme() == "rtsps" { 
+                322  // RTSPS default port
+            } else { 
+                554  // RTSP default port
+            };
             let hostname_port =
-                format!("{}:{}", url.host_str().unwrap(), url.port().unwrap_or(554));
+                format!("{}:{}", url.host_str().unwrap(), url.port().unwrap_or(default_port));
 
             // Get retry configuration from settings
             let settings = task_src.settings.lock().unwrap().clone();
@@ -3485,17 +3491,28 @@ impl RtspSrc {
                 }).await
             } else {
                 // Normal connection using connection racer
+                // Check if we need TLS based on URL scheme
+                let use_tls = url.scheme() == "rtsps";
+                
+                // Create TLS config - for now using defaults with accept_invalid_certs
+                // TODO: Integrate with TLS properties from settings
+                let mut tls_config = super::tls::TlsConfig::default();
+                tls_config.enabled = use_tls;
+                tls_config.accept_invalid_certs = true; // Temporary for testing
+                tls_config.accept_invalid_hostnames = true; // Temporary for testing
+                
                 let racing_config = super::connection_racer::ConnectionRacingConfig {
                     strategy: settings.connection_racing,
                     max_parallel_connections: settings.max_parallel_connections,
                     racing_delay_ms: settings.racing_delay_ms,
                     racing_timeout: std::time::Duration::from_nanos(settings.racing_timeout.nseconds()),
                     proxy_config,
+                    use_tls,
+                    tls_config,
                 };
                 let mut racer = super::connection_racer::ConnectionRacer::new(racing_config);
                 
                 time::timeout(connection_timeout, async {
-                    // TODO: Add TLS support
                     loop {
                         // Update racing strategy based on auto mode recommendations
                         if let Some(recommended_strategy) = retry_calc.get_racing_strategy() {
@@ -3567,13 +3584,20 @@ impl RtspSrc {
                     _ => unreachable!(),
                 }
             } else {
-                // Normal TCP connection
+                // Normal TCP/TLS connection
                 match connection_result {
-                    Ok(Ok(Ok(tcp_stream))) => {
-                        let _ = tcp_stream.set_nodelay(true);
-                        gst::info!(CAT, "Connected via TCP!");
+                    Ok(Ok(Ok(mut rtsp_stream))) => {
+                        // Set TCP nodelay if it's a plain TCP stream
+                        if let super::tls::RtspStream::Plain(ref tcp_stream) = rtsp_stream {
+                            let _ = tcp_stream.set_nodelay(true);
+                            gst::info!(CAT, "Connected via plain TCP!");
+                        } else {
+                            gst::info!(CAT, "Connected via TLS!");
+                        }
                         
-                        let (read, write) = tcp_stream.into_split();
+                        // Use the RtspStream directly which implements AsyncRead + AsyncWrite
+                        // We can use tokio::io::split for both Plain and TLS variants
+                        let (read, write) = tokio::io::split(rtsp_stream);
                         let stream = Box::pin(super::tcp_message::async_read(read, MAX_MESSAGE_SIZE).fuse());
                         let sink = Box::pin(super::tcp_message::async_write(write));
                         (stream, sink)

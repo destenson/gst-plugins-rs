@@ -3,6 +3,7 @@
 // This module implements HTTP CONNECT and SOCKS5 proxy support for RTSP connections
 
 use super::error::{ConfigurationError, NetworkError, Result, RtspError};
+use super::tls::{RtspStream, TlsConfig};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -128,7 +129,9 @@ impl ProxyConnection {
         proxy: &ProxyConfig,
         target_host: &str,
         target_port: u16,
-    ) -> Result<TcpStream> {
+        use_tls: bool,
+        tls_config: &TlsConfig,
+    ) -> Result<RtspStream> {
         let (proxy_host, proxy_port) = proxy.host_port()?;
 
         gst::debug!(
@@ -141,13 +144,13 @@ impl ProxyConnection {
         );
 
         // Connect to proxy server
-        let mut stream = TcpStream::connect((proxy_host.as_str(), proxy_port)).await?;
+        let mut tcp_stream = TcpStream::connect((proxy_host.as_str(), proxy_port)).await?;
 
         // Perform proxy handshake based on type
         match proxy.proxy_type() {
             ProxyType::Http => {
                 Self::http_connect_handshake(
-                    &mut stream,
+                    &mut tcp_stream,
                     target_host,
                     target_port,
                     &proxy.username,
@@ -157,7 +160,7 @@ impl ProxyConnection {
             }
             ProxyType::Socks5 => {
                 Self::socks5_handshake(
-                    &mut stream,
+                    &mut tcp_stream,
                     target_host,
                     target_port,
                     &proxy.username,
@@ -174,7 +177,12 @@ impl ProxyConnection {
             target_port
         );
 
-        Ok(stream)
+        // Upgrade to TLS if needed
+        if use_tls {
+            Self::upgrade_to_tls(tcp_stream, target_host, tls_config).await
+        } else {
+            Ok(RtspStream::Plain(tcp_stream))
+        }
     }
 
     /// Perform HTTP CONNECT handshake
@@ -404,9 +412,55 @@ impl ProxyConnection {
     }
 
     /// Connect directly without proxy
-    pub async fn connect_direct(host: &str, port: u16) -> Result<TcpStream> {
-        gst::debug!(*CAT, "Connecting directly to {}:{}", host, port);
-        Ok(TcpStream::connect((host, port)).await?)
+    pub async fn connect_direct(
+        host: &str, 
+        port: u16,
+        use_tls: bool,
+        tls_config: &TlsConfig,
+    ) -> Result<RtspStream> {
+        gst::debug!(*CAT, "Connecting directly to {}:{} (TLS: {})", host, port, use_tls);
+        let tcp_stream = TcpStream::connect((host, port)).await?;
+        
+        if use_tls {
+            Self::upgrade_to_tls(tcp_stream, host, tls_config).await
+        } else {
+            Ok(RtspStream::Plain(tcp_stream))
+        }
+    }
+
+    /// Upgrade a TCP connection to TLS
+    async fn upgrade_to_tls(
+        tcp_stream: TcpStream,
+        host: &str,
+        tls_config: &TlsConfig,
+    ) -> Result<RtspStream> {
+        use tokio_native_tls::{native_tls, TlsConnector};
+        
+        gst::debug!(*CAT, "Upgrading connection to TLS for host: {}", host);
+        
+        let mut builder = native_tls::TlsConnector::builder();
+        
+        if tls_config.accept_invalid_certs {
+            builder.danger_accept_invalid_certs(true);
+        }
+        
+        if tls_config.accept_invalid_hostnames {
+            builder.danger_accept_invalid_hostnames(true);
+        }
+        
+        if let Some(min_version) = tls_config.min_version {
+            builder.min_protocol_version(Some(min_version));
+        }
+        
+        if let Some(max_version) = tls_config.max_version {
+            builder.max_protocol_version(Some(max_version));
+        }
+        
+        let tls_connector = builder.build()?;
+        let tls_connector = TlsConnector::from(tls_connector);
+        
+        let tls_stream = tls_connector.connect(host, tcp_stream).await?;
+        Ok(RtspStream::Tls(tls_stream))
     }
 }
 
