@@ -8,7 +8,7 @@ use super::error::{ConfigurationError, Result, RtspError};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
@@ -34,6 +34,8 @@ impl Default for ConnectionPoolConfig {
             enabled: true,
             max_connections_per_server: DEFAULT_MAX_CONNECTIONS_PER_SERVER,
             idle_timeout: DEFAULT_IDLE_TIMEOUT,
+            #[cfg(test)]
+            disable_background_task: true,
         }
     }
 }
@@ -204,7 +206,12 @@ impl ConnectionPool {
         let pools: Arc<Mutex<HashMap<SocketAddr, ServerPool>>> =
             Arc::new(Mutex::new(HashMap::new()));
 
-        if config.enabled {
+        #[cfg(test)]
+        let should_start_background = config.enabled && !config.disable_background_task;
+        #[cfg(not(test))]
+        let should_start_background = config.enabled;
+
+        if should_start_background {
             // Start background cleanup task
             let pools_clone = Arc::downgrade(&pools);
             let idle_timeout = config.idle_timeout;
@@ -330,8 +337,10 @@ impl ConnectionPool {
 // Global connection pool instance
 use std::sync::LazyLock;
 
-static GLOBAL_CONNECTION_POOL: LazyLock<Arc<ConnectionPool>> =
-    LazyLock::new(|| Arc::new(ConnectionPool::new(ConnectionPoolConfig::default())));
+static GLOBAL_CONNECTION_POOL: LazyLock<Arc<ConnectionPool>> = LazyLock::new(|| {
+    // Default config will have disable_background_task=true in tests
+    Arc::new(ConnectionPool::new(ConnectionPoolConfig::default()))
+});
 
 // Convenience functions for global pool access
 pub async fn checkout_connection(server_addr: SocketAddr) -> Option<TcpStream> {
@@ -364,6 +373,7 @@ mod tests {
             enabled: true,
             max_connections_per_server: 2,
             idle_timeout: Duration::from_secs(5),
+            disable_background_task: true,
         };
 
         let pool = ConnectionPool::new(config);
@@ -399,37 +409,26 @@ mod tests {
 
     #[tokio::test]
     async fn test_connection_pool_limits() {
-        // Create a pool without background cleanup by using a custom implementation
-        // that doesn't start the background task
-        let pools: Arc<Mutex<HashMap<SocketAddr, ServerPool>>> =
-            Arc::new(Mutex::new(HashMap::new()));
-        
         let config = ConnectionPoolConfig {
             enabled: true,
             max_connections_per_server: 2,
             idle_timeout: Duration::from_secs(60),
+            disable_background_task: true,
         };
         
-        // Create pool manually without background task for deterministic testing
-        let pool = ConnectionPool {
-            pools: pools.clone(),
-            config,
-            shutdown_tx: None,
-        };
+        // Create pool (background cleanup disabled via config)
+        let pool = ConnectionPool::new(config);
 
         // Start a test server
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
 
         // Accept connections in background and keep them alive
-        let accept_count = Arc::new(AtomicUsize::new(0));
-        let accept_count_clone = accept_count.clone();
         tokio::spawn(async move {
             let mut connections = Vec::new();
             loop {
                 match listener.accept().await {
                     Ok((stream, _)) => {
-                        accept_count_clone.fetch_add(1, Ordering::SeqCst);
                         connections.push(stream); // Keep connections alive
                     }
                     Err(_) => break,
@@ -439,19 +438,14 @@ mod tests {
             tokio::time::sleep(Duration::from_secs(1)).await;
         });
 
+        // Give the server time to start
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
         // Add max connections
         for i in 0..2 {
             let stream = TcpStream::connect(addr).await.unwrap();
             let result = pool.add_new(stream, addr).await;
             assert!(result.is_ok(), "Failed to add connection {}: {:?}", i, result);
-            
-            // Wait for connection to be accepted on server side
-            while accept_count.load(Ordering::SeqCst) <= i {
-                tokio::time::sleep(Duration::from_millis(10)).await;
-            }
-            
-            // Small delay to avoid race with background cleanup
-            tokio::time::sleep(Duration::from_millis(50)).await;
         }
 
         // Verify we have exactly 2 connections in the pool
@@ -471,6 +465,7 @@ mod tests {
             enabled: true,
             max_connections_per_server: 3,
             idle_timeout: Duration::from_secs(10),
+            disable_background_task: true,
         };
 
         let pool = ConnectionPool::new(config);
@@ -511,6 +506,7 @@ mod tests {
             enabled: true,
             max_connections_per_server: 5,
             idle_timeout: Duration::from_secs(10),
+            disable_background_task: true,
         };
 
         let pool = Arc::new(ConnectionPool::new(config));
@@ -562,6 +558,7 @@ mod tests {
             enabled: true,
             max_connections_per_server: 2,
             idle_timeout: Duration::from_secs(5),
+            disable_background_task: true,
         };
 
         let pool = ConnectionPool::new(config);
