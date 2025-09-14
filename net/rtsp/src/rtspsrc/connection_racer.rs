@@ -10,10 +10,10 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use crate::rtspsrc::proxy::{ProxyConfig, ProxyConnection};
+use crate::rtspsrc::tls::{RtspStream, TlsConfig};
 use futures::future::select_all;
 use std::sync::LazyLock;
 use std::time::Duration;
-use tokio::net::TcpStream;
 use tokio::time::{sleep, timeout};
 use gst::prelude::*;
 use super::debug::{DecisionHistory, DecisionType, CAT_RACING};
@@ -69,6 +69,8 @@ pub struct ConnectionRacingConfig {
     pub racing_delay_ms: u32,
     pub racing_timeout: Duration,
     pub proxy_config: Option<ProxyConfig>,
+    pub use_tls: bool,
+    pub tls_config: TlsConfig,
 }
 
 impl Default for ConnectionRacingConfig {
@@ -79,6 +81,8 @@ impl Default for ConnectionRacingConfig {
             racing_delay_ms: 250,
             racing_timeout: Duration::from_secs(5),
             proxy_config: None,
+            use_tls: false,
+            tls_config: TlsConfig::default(),
         }
     }
 }
@@ -135,7 +139,7 @@ impl ConnectionRacer {
     }
 
     /// Attempt to connect using the configured racing strategy
-    pub async fn connect(&self, hostname_port: &str) -> Result<TcpStream, std::io::Error> {
+    pub async fn connect(&self, hostname_port: &str) -> Result<RtspStream, std::io::Error> {
         match self.config.strategy {
             ConnectionRacingStrategy::None => {
                 // Simple single connection attempt
@@ -160,7 +164,7 @@ impl ConnectionRacer {
 
     /// First-wins strategy (Happy Eyeballs)
     /// Launch multiple connections with staggered delays, use first successful
-    async fn connect_first_wins(&self, hostname_port: &str) -> Result<TcpStream, std::io::Error> {
+    async fn connect_first_wins(&self, hostname_port: &str) -> Result<RtspStream, std::io::Error> {
         gst::debug!(
             CAT,
             "Using first-wins racing strategy with {} parallel connections",
@@ -176,6 +180,8 @@ impl ConnectionRacer {
             let racing_timeout = self.config.racing_timeout;
 
             let proxy_config = self.config.proxy_config.clone();
+            let use_tls = self.config.use_tls;
+            let tls_config = self.config.tls_config.clone();
             let handle = tokio::spawn(async move {
                 if i > 0 {
                     sleep(delay).await;
@@ -188,7 +194,7 @@ impl ConnectionRacer {
                 );
                 timeout(
                     racing_timeout,
-                    Self::connect_with_proxy_static(&hostname_port, &proxy_config),
+                    Self::connect_with_proxy_static(&hostname_port, &proxy_config, use_tls, &tls_config),
                 )
                 .await
             });
@@ -241,7 +247,7 @@ impl ConnectionRacer {
 
     /// Last-wins strategy
     /// For devices that drop older connections, use the newest successful connection
-    async fn connect_last_wins(&self, hostname_port: &str) -> Result<TcpStream, std::io::Error> {
+    async fn connect_last_wins(&self, hostname_port: &str) -> Result<RtspStream, std::io::Error> {
         gst::debug!(
             CAT,
             "Using last-wins racing strategy with {} parallel connections",
@@ -257,6 +263,8 @@ impl ConnectionRacer {
             let racing_timeout = self.config.racing_timeout;
 
             let proxy_config = self.config.proxy_config.clone();
+            let use_tls = self.config.use_tls;
+            let tls_config = self.config.tls_config.clone();
             let handle = tokio::spawn(async move {
                 if i > 0 {
                     sleep(delay).await;
@@ -269,7 +277,7 @@ impl ConnectionRacer {
                 );
                 timeout(
                     racing_timeout,
-                    Self::connect_with_proxy_static(&hostname_port, &proxy_config),
+                    Self::connect_with_proxy_static(&hostname_port, &proxy_config, use_tls, &tls_config),
                 )
                 .await
             });
@@ -282,7 +290,7 @@ impl ConnectionRacer {
             futures.push(handle);
         }
 
-        let mut last_successful: Option<TcpStream> = None;
+        let mut last_successful: Option<RtspStream> = None;
 
         // Collect all results, keeping the last successful one
         while !futures.is_empty() {
@@ -325,15 +333,22 @@ impl ConnectionRacer {
     }
 
     /// Connect with proxy support
-    async fn connect_with_proxy(&self, hostname_port: &str) -> Result<TcpStream, std::io::Error> {
-        Self::connect_with_proxy_static(hostname_port, &self.config.proxy_config).await
+    async fn connect_with_proxy(&self, hostname_port: &str) -> Result<RtspStream, std::io::Error> {
+        Self::connect_with_proxy_static(
+            hostname_port, 
+            &self.config.proxy_config,
+            self.config.use_tls,
+            &self.config.tls_config
+        ).await
     }
 
     /// Static version for use in spawned tasks
     async fn connect_with_proxy_static(
         hostname_port: &str,
         proxy_config: &Option<ProxyConfig>,
-    ) -> Result<TcpStream, std::io::Error> {
+        use_tls: bool,
+        tls_config: &TlsConfig,
+    ) -> Result<RtspStream, std::io::Error> {
         // Parse hostname and port from "host:port" string
         let parts: Vec<&str> = hostname_port.split(':').collect();
         if parts.len() != 2 {
@@ -349,11 +364,11 @@ impl ConnectionRacer {
 
         // Connect through proxy if configured, otherwise direct connection
         if let Some(proxy) = proxy_config {
-            ProxyConnection::connect(proxy, host, port)
+            ProxyConnection::connect(proxy, host, port, use_tls, tls_config)
                 .await
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
         } else {
-            ProxyConnection::connect_direct(host, port)
+            ProxyConnection::connect_direct(host, port, use_tls, tls_config)
                 .await
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
         }

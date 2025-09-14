@@ -123,10 +123,23 @@ impl HttpTunnel {
         let port = self.url.port().unwrap_or(80);
 
         // Connect through proxy if configured, otherwise direct connection
-        let stream = if let Some(ref proxy) = self.proxy_config {
-            ProxyConnection::connect(proxy, host, port).await?
+        // HTTP tunneling is always over plain HTTP, not HTTPS
+        let tls_config = super::tls::TlsConfig::default();
+        let rtsp_stream = if let Some(ref proxy) = self.proxy_config {
+            ProxyConnection::connect(proxy, host, port, false, &tls_config).await?
         } else {
-            ProxyConnection::connect_direct(host, port).await?
+            ProxyConnection::connect_direct(host, port, false, &tls_config).await?
+        };
+        
+        // Extract the plain TCP stream (HTTP tunneling doesn't use TLS)
+        let stream = match rtsp_stream {
+            super::tls::RtspStream::Plain(tcp_stream) => tcp_stream,
+            super::tls::RtspStream::Tls(_) => {
+                return Err(RtspError::Protocol(ProtocolError::InvalidUrl {
+                    url: self.url.to_string(),
+                    reason: "HTTP tunneling cannot use TLS connections".to_string(),
+                }));
+            }
         };
 
         // Send HTTP GET request with x-sessioncookie header
@@ -170,10 +183,23 @@ impl HttpTunnel {
         let port = self.url.port().unwrap_or(80);
 
         // Connect through proxy if configured, otherwise direct connection
-        let stream = if let Some(ref proxy) = self.proxy_config {
-            ProxyConnection::connect(proxy, host, port).await?
+        // HTTP tunneling is always over plain HTTP, not HTTPS
+        let tls_config = super::tls::TlsConfig::default();
+        let rtsp_stream = if let Some(ref proxy) = self.proxy_config {
+            ProxyConnection::connect(proxy, host, port, false, &tls_config).await?
         } else {
-            ProxyConnection::connect_direct(host, port).await?
+            ProxyConnection::connect_direct(host, port, false, &tls_config).await?
+        };
+        
+        // Extract the plain TCP stream (HTTP tunneling doesn't use TLS)
+        let stream = match rtsp_stream {
+            super::tls::RtspStream::Plain(tcp_stream) => tcp_stream,
+            super::tls::RtspStream::Tls(_) => {
+                return Err(RtspError::Protocol(ProtocolError::InvalidUrl {
+                    url: self.url.to_string(),
+                    reason: "HTTP tunneling cannot use TLS connections".to_string(),
+                }));
+            }
         };
 
         // Send HTTP POST request with x-sessioncookie header
