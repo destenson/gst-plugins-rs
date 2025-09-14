@@ -826,4 +826,115 @@ mod tests {
         assert_eq!(context.retry_count, 3);
         assert_eq!(context.details.len(), 1);
     }
+
+    #[test]
+    fn test_network_error_classification() {
+        // Test connection refused - should be retryable with backoff
+        let err = NetworkError::ConnectionRefused {
+            host: "192.168.1.100".to_string(),
+            port: 554,
+        };
+        assert_eq!(err.classify(), ErrorClass::RetryableWithBackoff);
+        assert!(err.is_retryable());
+        assert!(err.suggested_retry_strategy().is_some());
+
+        // Test connection timeout - should be transient
+        let err = NetworkError::ConnectionTimeout {
+            host: "camera.local".to_string(),
+            port: 554,
+            timeout: Duration::from_secs(10),
+        };
+        assert_eq!(err.classify(), ErrorClass::Transient);
+        assert!(err.is_retryable());
+
+        // Test TLS handshake failure - should be permanent
+        let err = NetworkError::TlsHandshakeFailed {
+            details: "Certificate verification failed".to_string(),
+        };
+        assert_eq!(err.classify(), ErrorClass::Permanent);
+        assert!(!err.is_retryable());
+    }
+
+    #[test]
+    fn test_protocol_error_classification() {
+        // Test 401 Unauthorized - requires intervention
+        let err = ProtocolError::AuthenticationFailed {
+            method: "Digest".to_string(),
+            details: "Invalid credentials".to_string(),
+        };
+        assert_eq!(err.classify(), ErrorClass::RequiresIntervention);
+        assert!(!err.is_retryable());
+
+        // Test 404 Not Found - permanent
+        let err = ProtocolError::StatusError {
+            code: 404,
+            message: "Stream not found".to_string(),
+        };
+        assert_eq!(err.classify(), ErrorClass::Permanent);
+        assert!(!err.is_retryable());
+
+        // Test invalid session - retryable with backoff
+        let err = ProtocolError::InvalidSessionId {
+            session_id: "12345".to_string(),
+        };
+        assert_eq!(err.classify(), ErrorClass::RetryableWithBackoff);
+        assert!(err.is_retryable());
+    }
+
+    #[test]
+    fn test_media_error_classification() {
+        // Test stream sync lost - transient
+        let err = MediaError::StreamSyncLost;
+        assert_eq!(err.classify(), ErrorClass::Transient);
+        assert!(err.is_retryable());
+
+        // Test buffer overflow - transient
+        let err = MediaError::BufferOverflow;
+        assert_eq!(err.classify(), ErrorClass::Transient);
+        assert!(err.is_retryable());
+    }
+
+    #[test]
+    fn test_configuration_error_classification() {
+        // All configuration errors should be permanent
+        let err = ConfigurationError::InvalidParameter {
+            parameter: "proxy-url".to_string(),
+            reason: "Invalid URL format".to_string(),
+        };
+        assert_eq!(err.classify(), ErrorClass::Permanent);
+        assert!(!err.is_retryable());
+
+        let err = ConfigurationError::MissingParameter {
+            parameter: "location".to_string(),
+        };
+        assert_eq!(err.classify(), ErrorClass::Permanent);
+        assert!(!err.is_retryable());
+    }
+
+    #[test]
+    fn test_rtsp_error_conversion_to_gst_error() {
+        // Test network error conversion
+        let err = RtspError::Network(NetworkError::ConnectionRefused {
+            host: "camera.local".to_string(),
+            port: 554,
+        });
+        let gst_err = err.to_gst_error();
+        assert!(gst_err.to_string().contains("Connection refused"));
+
+        // Test protocol error conversion
+        let err = RtspError::Protocol(ProtocolError::AuthenticationFailed {
+            method: "Basic".to_string(),
+            details: "Invalid username or password".to_string(),
+        });
+        let gst_err = err.to_gst_error();
+        assert!(gst_err.to_string().contains("Authentication failed"));
+
+        // Test configuration error conversion
+        let err = RtspError::Configuration(ConfigurationError::InvalidParameter {
+            parameter: "timeout".to_string(),
+            reason: "Must be positive".to_string(),
+        });
+        let gst_err = err.to_gst_error();
+        assert!(gst_err.to_string().contains("Invalid configuration"));
+    }
 }
