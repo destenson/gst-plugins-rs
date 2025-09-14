@@ -244,6 +244,7 @@ use std::sync::LazyLock;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bytes::BytesMut;
 
     #[test]
     fn test_buffer_pool_acquire_release() {
@@ -304,4 +305,106 @@ mod tests {
             .clone();
         assert!(bucket_stats.reuses > 0);
     }
+
+    #[test]
+    fn test_memory_usage_tests() {
+        let pool = BufferPool::new(10 * 1024 * 1024); // 10MB limit
+
+        // Acquire buffers of different sizes
+        let buf1 = pool.acquire(512);
+        assert!(buf1.capacity() >= 512);
+
+        let buf2 = pool.acquire(1024);
+        assert!(buf2.capacity() >= 1024);
+
+        let buf3 = pool.acquire(1500);
+        assert!(buf3.capacity() >= 1500);
+
+        // Release them back
+        pool.release(buf1);
+        pool.release(buf2);
+        pool.release(buf3);
+
+        // Check memory usage
+        assert!(pool.memory_usage() > 0);
+
+        // Clear and verify
+        pool.clear();
+        assert_eq!(pool.memory_usage(), 0);
+    }
+
+    #[test]
+    fn test_buffer_perf() {
+        let pool = BufferPool::new(64 * 1024 * 1024);
+        let iterations = 1000;
+
+        // Benchmark allocation and release
+        let start = std::time::Instant::now();
+
+        for _ in 0..iterations {
+            let buffer = pool.acquire(1500);
+            // Simulate some work
+            let mut _data = vec![0u8; 100];
+            pool.release(buffer);
+        }
+
+        let duration = start.elapsed();
+        let avg_time_us = duration.as_micros() / iterations;
+
+        // Should be very fast (< 10 microseconds per operation)
+        assert!(
+            avg_time_us < 10,
+            "Buffer pool operations too slow: {}us",
+            avg_time_us
+        );
+
+        // Check reuse efficiency
+        let stats = pool.stats();
+        let mtu_stats = stats
+            .iter()
+            .find(|(size, _)| *size == 1500 || *size == 2048)
+            .unwrap()
+            .1
+            .clone();
+        assert!(mtu_stats.reuses > 0, "Buffer pool should reuse buffers");
+    }
+
+    #[test]
+    fn test_stress_buffers() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let pool = Arc::new(BufferPool::new(128 * 1024 * 1024));
+        let num_threads = 10;
+        let ops_per_thread = 100;
+
+        let mut handles = vec![];
+
+        for _ in 0..num_threads {
+            let pool_clone = Arc::clone(&pool);
+            let handle = thread::spawn(move || {
+                for i in 0..ops_per_thread {
+                    // Vary buffer sizes
+                    let size = 100 + (i * 100) % 4000;
+                    let buffer = pool_clone.acquire(size);
+
+                    // Simulate some work
+                    thread::yield_now();
+
+                    pool_clone.release(buffer);
+                }
+            });
+            handles.push(handle);
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        // Verify pool is still functional
+        let final_buffer = pool.acquire(1000);
+        assert!(final_buffer.capacity() >= 1000);
+    }
+
+
 }
