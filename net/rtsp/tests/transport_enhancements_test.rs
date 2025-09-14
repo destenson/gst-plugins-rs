@@ -52,8 +52,7 @@ fn test_uri_protocol_variants() {
 
     for uri in test_uris {
         // Setting the location should succeed for all valid protocol variants
-        let result = element.set_property("location", uri);
-        assert!(result.is_ok(), "Failed to set location with URI: {}", uri);
+        element.set_property("location", uri);
 
         // Verify the location was set
         let location: Option<String> = element.property("location");
@@ -163,7 +162,7 @@ fn test_protocol_specific_behaviors() {
 
     for protocol in tcp_only_protocols {
         let uri = format!("{}://example.com/stream", protocol);
-        element.set_property("location", &uri).unwrap();
+        element.set_property("location", &uri);
 
         // These protocols should force TCP transport
         // The actual transport negotiation happens during connection,
@@ -177,7 +176,7 @@ fn test_protocol_specific_behaviors() {
 
     for protocol in udp_protocols {
         let uri = format!("{}://example.com/stream", protocol);
-        element.set_property("location", &uri).unwrap();
+        element.set_property("location", &uri);
 
         // These protocols should allow UDP transport
         let location: Option<String> = element.property("location");

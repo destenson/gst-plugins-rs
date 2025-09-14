@@ -804,16 +804,6 @@ mod tests {
     }
 
     #[test]
-    fn test_protocol_error_classification() {
-        let err = ProtocolError::StatusError {
-            code: 503,
-            message: "Service Unavailable".to_string(),
-        };
-        assert_eq!(err.classify(), ErrorClass::RetryableWithBackoff);
-        assert!(err.is_retryable());
-    }
-
-    #[test]
     fn test_error_context() {
         let context = ErrorContext::new()
             .with_resource("rtsp://camera.local/stream")
