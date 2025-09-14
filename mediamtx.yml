@@ -4,8 +4,11 @@
 # Log level: debug, info, warn, error
 logLevel: info
 
+rtspEncryption: "optional"      # or "strict", "no"
+
 # Listen on all interfaces
-rtspAddress: :8554
+rtspAddress: :8554          # Needed when encryption is "no" or "optional"
+rtspsAddress: :8322         # Needed when encryption is "strict" or "optional"
 
 # Global path defaults
 pathDefaults:
