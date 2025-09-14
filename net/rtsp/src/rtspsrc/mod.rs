@@ -44,6 +44,7 @@ mod buffer_mode;
 mod buffer_pool;
 mod connection_pool;
 mod connection_racer;
+mod debug;
 pub mod error;
 pub mod error_recovery;
 mod error_migration_example;
@@ -53,6 +54,8 @@ mod error_tests;
 mod retry_integration_tests;
 #[cfg(test)]
 mod racing_strategy_tests;
+#[cfg(test)]
+mod debug_tests;
 mod http_tunnel;
 #[cfg(test)]
 mod http_tunnel_tests;
@@ -68,6 +71,7 @@ mod tcp_message;
 mod telemetry;
 mod tls;
 mod transport;
+mod version_detection;
 
 glib::wrapper! {
     pub struct RtspSrc(ObjectSubclass<imp::RtspSrc>) @extends gst::Bin, gst::Element, gst::Object, @implements gst::URIHandler;

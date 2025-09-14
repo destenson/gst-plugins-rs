@@ -1993,6 +1993,13 @@ impl ObjectImpl for RtspSrc {
                     .default_value(DEFAULT_REQUIRE_ALL_STREAMS)
                     .mutable_ready()
                     .build(),
+                // Debug observability property  
+                glib::ParamSpecString::builder("decision-history")
+                    .nick("Decision History")
+                    .blurb("JSON-formatted history of recent retry and connection decisions for debugging")
+                    .default_value("")
+                    .read_only()
+                    .build(),
             ]
         });
 
@@ -2881,6 +2888,12 @@ impl ObjectImpl for RtspSrc {
             "require-all-streams" => {
                 let settings = self.settings.lock().unwrap();
                 settings.require_all_streams.to_value()
+            }
+            "decision-history" => {
+                // Get decision history from task if available
+                // For now, return empty JSON array as we need to access the retry calculator from the task
+                // TODO: Store reference to retry calculator or decision history in RtspSrc
+                "[]".to_value()
             }
             name => unimplemented!("Property '{name}'"),
         }

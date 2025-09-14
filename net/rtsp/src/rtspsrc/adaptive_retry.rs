@@ -13,8 +13,11 @@ use std::time::{Duration, Instant, SystemTime};
 
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use gst::prelude::*;
 
 use super::retry::RetryStrategy;
+use super::debug::{DecisionHistory, DecisionType, CAT_ADAPTIVE};
+use crate::debug_decision;
 
 const CACHE_TTL_DAYS: u64 = 7;
 const DISCOVERY_DURATION_SECS: u64 = 30;
@@ -276,6 +279,7 @@ pub struct AdaptiveRetryManager {
     exploration_rate: f32,
     last_save_time: Arc<Mutex<Instant>>,
     save_counter: Arc<Mutex<u64>>,
+    decision_history: Option<DecisionHistory>,
 }
 
 impl AdaptiveRetryManager {
@@ -299,6 +303,7 @@ impl AdaptiveRetryManager {
             exploration_rate: DEFAULT_EXPLORATION_RATE,
             last_save_time: Arc::new(Mutex::new(Instant::now())),
             save_counter: Arc::new(Mutex::new(0)),
+            decision_history: Some(DecisionHistory::default()),
         }
     }
 
@@ -314,6 +319,30 @@ impl AdaptiveRetryManager {
         };
 
         self.current_strategy = Some(strategy);
+        
+        // Log the selected strategy and confidence
+        let confidence = self.get_confidence_score();
+        let phase_str = match self.phase {
+            Phase::Discovery => "discovery",
+            Phase::Exploitation => "exploitation",
+            Phase::Exploration => "exploration",
+            Phase::MiniDiscovery(_) => "mini-discovery",
+        };
+        
+        debug_decision!(
+            CAT_ADAPTIVE,
+            self.decision_history.as_ref(),
+            DecisionType::AdaptiveLearning {
+                strategy: format!("{:?}", strategy),
+                confidence,
+                phase: phase_str.to_string(),
+            },
+            "Adaptive strategy selected: {:?}, confidence={:.2}, phase={}",
+            strategy,
+            confidence,
+            phase_str
+        );
+        
         strategy
     }
 
@@ -408,8 +437,16 @@ impl AdaptiveRetryManager {
     fn adapt_to_change(&mut self) {
         let mut metrics = self.metrics.lock().unwrap();
 
+        let old_confidence = metrics.confidence_score;
         // Reduce confidence in current model
         metrics.confidence_score *= 0.5;
+        
+        gst::debug!(
+            CAT_ADAPTIVE,
+            "Network change detected! Reducing confidence from {:.2} to {:.2}, entering mini-discovery",
+            old_confidence,
+            metrics.confidence_score
+        );
 
         // Increase exploration rate temporarily
         self.exploration_rate = 0.3;
@@ -426,12 +463,34 @@ impl AdaptiveRetryManager {
         let mut metrics = self.metrics.lock().unwrap();
 
         if let Some(stats) = metrics.strategies.get_mut(&strategy) {
+            let old_score = stats.score;
             stats.record_attempt(success, recovery_time);
+            
+            gst::trace!(
+                CAT_ADAPTIVE,
+                "Recorded attempt for {:?}: success={}, recovery_time={}ms, score: {:.3} -> {:.3}",
+                strategy,
+                success,
+                recovery_time.as_millis(),
+                old_score,
+                stats.score
+            );
         }
 
         metrics.total_attempts += 1;
         metrics.last_updated = SystemTime::now();
+        let old_confidence = metrics.confidence_score;
         metrics.update_confidence();
+        
+        if (metrics.confidence_score - old_confidence).abs() > 0.05 {
+            gst::debug!(
+                CAT_ADAPTIVE,
+                "Confidence updated: {:.2} -> {:.2} (total attempts: {})",
+                old_confidence,
+                metrics.confidence_score,
+                metrics.total_attempts
+            );
+        }
         
         // Increment save counter
         {
@@ -444,6 +503,7 @@ impl AdaptiveRetryManager {
             let _ = self.persist_metrics(&metrics);
             *self.last_save_time.lock().unwrap() = Instant::now();
             *self.save_counter.lock().unwrap() = 0;
+            gst::trace!(CAT_ADAPTIVE, "Metrics persisted to cache");
         }
     }
 

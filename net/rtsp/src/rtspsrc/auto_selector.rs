@@ -15,6 +15,9 @@ use super::connection_racer::ConnectionRacingStrategy;
 use super::retry::RetryStrategy;
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
+use gst::prelude::*;
+use super::debug::{DecisionHistory, DecisionType, CAT_AUTO};
+use crate::debug_decision;
 
 const AUTO_DETECTION_ATTEMPTS: usize = 3;
 const CONNECTION_DROP_THRESHOLD: Duration = Duration::from_secs(30);
@@ -73,6 +76,8 @@ pub struct AutoRetrySelector {
     auto_fallback_enabled: bool,
     /// Number of attempts to analyze before making a decision
     detection_attempts: usize,
+    /// Decision history for observability
+    decision_history: Option<DecisionHistory>,
 }
 
 impl AutoRetrySelector {
@@ -84,6 +89,7 @@ impl AutoRetrySelector {
             fallback_index: 0,
             auto_fallback_enabled: true,
             detection_attempts: AUTO_DETECTION_ATTEMPTS,
+            decision_history: Some(DecisionHistory::default()),
         }
     }
 
@@ -111,10 +117,46 @@ impl AutoRetrySelector {
             .take(self.detection_attempts)
             .collect();
 
+        let old_pattern = self.current_pattern;
+        let old_strategy = self.current_strategy;
+
         // Check for connection-limited device pattern
         if self.is_connection_limited(&recent) {
             self.current_pattern = NetworkPattern::ConnectionLimited;
             self.current_strategy = RetryStrategy::Linear; // Use linear for predictable retry
+            
+            let evidence = format!(
+                "Short connections detected: {} of {} attempts dropped quickly",
+                recent.iter().filter(|a| a.success && a.connection_duration.map_or(false, |d| d < CONNECTION_DROP_THRESHOLD)).count(),
+                recent.len()
+            );
+            
+            debug_decision!(
+                CAT_AUTO,
+                self.decision_history.as_ref(),
+                DecisionType::PatternDetected {
+                    pattern: "connection-limited".to_string(),
+                    confidence: 0.8,
+                    evidence: evidence.clone(),
+                },
+                "Pattern detected: Connection-limited device. Evidence: {}",
+                evidence
+            );
+            
+            if old_strategy != self.current_strategy {
+                debug_decision!(
+                    CAT_AUTO,
+                    self.decision_history.as_ref(),
+                    DecisionType::StrategyChanged {
+                        from: old_strategy.as_str().to_string(),
+                        to: self.current_strategy.as_str().to_string(),
+                        reason: "Connection-limited pattern detected".to_string(),
+                    },
+                    "Strategy changed from {} to {} due to connection-limited pattern",
+                    old_strategy.as_str(),
+                    self.current_strategy.as_str()
+                );
+            }
             return;
         }
 
@@ -122,18 +164,80 @@ impl AutoRetrySelector {
         if self.is_high_packet_loss(&recent) {
             self.current_pattern = NetworkPattern::HighPacketLoss;
             self.current_strategy = RetryStrategy::Immediate; // Retry quickly
+            
+            let failures = recent.iter().filter(|a| !a.success).count();
+            let failure_rate = failures as f32 / recent.len() as f32;
+            let evidence = format!(
+                "High failure rate: {}/{} attempts failed ({:.1}%)",
+                failures,
+                recent.len(),
+                failure_rate * 100.0
+            );
+            
+            debug_decision!(
+                CAT_AUTO,
+                self.decision_history.as_ref(),
+                DecisionType::PatternDetected {
+                    pattern: "high-packet-loss".to_string(),
+                    confidence: failure_rate,
+                    evidence: evidence.clone(),
+                },
+                "Pattern detected: High packet loss. Evidence: {}",
+                evidence
+            );
+            
+            if old_strategy != self.current_strategy {
+                debug_decision!(
+                    CAT_AUTO,
+                    self.decision_history.as_ref(),
+                    DecisionType::StrategyChanged {
+                        from: old_strategy.as_str().to_string(),
+                        to: self.current_strategy.as_str().to_string(),
+                        reason: "High packet loss detected".to_string(),
+                    },
+                    "Strategy changed from {} to {} due to high packet loss",
+                    old_strategy.as_str(),
+                    self.current_strategy.as_str()
+                );
+            }
             return;
         }
 
         // Check if current strategy is working well
         if self.is_stable(&recent) {
             self.current_pattern = NetworkPattern::Stable;
+            
+            let successes = recent.iter().filter(|a| a.success).count();
+            let success_rate = successes as f32 / recent.len() as f32;
+            let evidence = format!(
+                "Stable network: {}/{} attempts succeeded ({:.1}%)",
+                successes,
+                recent.len(),
+                success_rate * 100.0
+            );
+            
+            debug_decision!(
+                CAT_AUTO,
+                self.decision_history.as_ref(),
+                DecisionType::PatternDetected {
+                    pattern: "stable".to_string(),
+                    confidence: success_rate,
+                    evidence: evidence.clone(),
+                },
+                "Pattern detected: Stable network. Evidence: {}",
+                evidence
+            );
+            
+            if old_pattern != self.current_pattern {
+                gst::debug!(CAT_AUTO, "Network pattern changed from {} to {}", old_pattern, self.current_pattern);
+            }
             // Keep current strategy if it's working
             return;
         }
 
         // If nothing specific detected, try next fallback
         if self.auto_fallback_enabled && !self.is_working(&recent) {
+            gst::debug!(CAT_AUTO, "No specific pattern detected, trying next fallback strategy");
             self.try_next_fallback();
         }
     }
@@ -181,9 +285,24 @@ impl AutoRetrySelector {
 
     /// Try next fallback strategy
     fn try_next_fallback(&mut self) {
+        let old_strategy = self.current_strategy;
         self.fallback_index = (self.fallback_index + 1) % FALLBACK_STRATEGIES.len();
         self.current_strategy = FALLBACK_STRATEGIES[self.fallback_index];
         self.current_pattern = NetworkPattern::Unknown;
+        
+        debug_decision!(
+            CAT_AUTO,
+            self.decision_history.as_ref(),
+            DecisionType::StrategyChanged {
+                from: old_strategy.as_str().to_string(),
+                to: self.current_strategy.as_str().to_string(),
+                reason: format!("Fallback to strategy index {}", self.fallback_index),
+            },
+            "Fallback strategy change: {} -> {} (index {})",
+            old_strategy.as_str(),
+            self.current_strategy.as_str(),
+            self.fallback_index
+        );
     }
 
     /// Get the current recommended retry strategy

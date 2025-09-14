@@ -11,6 +11,9 @@
 
 use rand::Rng;
 use std::time::{Duration, Instant};
+use gst::prelude::*;
+use super::debug::{DecisionHistory, DecisionType, CAT_RETRY};
+use crate::debug_decision;
 
 #[cfg(feature = "adaptive")]
 use super::adaptive_retry::{AdaptiveRetryConfig, AdaptiveRetryManager};
@@ -103,6 +106,7 @@ pub struct RetryCalculator {
     #[cfg(feature = "telemetry")]
     telemetry: Option<super::telemetry::RtspMetrics>,
     first_failure_time: Option<Instant>,
+    decision_history: Option<DecisionHistory>,
 }
 
 impl RetryCalculator {
@@ -125,6 +129,7 @@ impl RetryCalculator {
             #[cfg(feature = "telemetry")]
             telemetry: None,
             first_failure_time: None,
+            decision_history: Some(DecisionHistory::default()),
         }
     }
 
@@ -146,15 +151,26 @@ impl RetryCalculator {
 
     pub fn should_retry(&self) -> bool {
         if self.config.strategy == RetryStrategy::None {
+            gst::debug!(CAT_RETRY, "Retry disabled by strategy=None");
             return false;
         }
 
-        if self.config.max_attempts < 0 {
+        let should_retry = if self.config.max_attempts < 0 {
             // Infinite retries
             true
         } else {
             self.attempt < self.config.max_attempts as u32
-        }
+        };
+        
+        gst::debug!(
+            CAT_RETRY,
+            "Should retry check: attempt={}/{}, will_retry={}",
+            self.attempt,
+            if self.config.max_attempts < 0 { "infinite".to_string() } else { self.config.max_attempts.to_string() },
+            should_retry
+        );
+        
+        should_retry
     }
 
     pub fn next_delay(&mut self) -> Option<Duration> {
@@ -163,22 +179,44 @@ impl RetryCalculator {
         }
 
         let current_strategy = if self.config.strategy == RetryStrategy::Auto {
-            self.auto_selector.as_ref().map(|s| s.get_strategy()).unwrap_or(self.config.strategy)
+            let strategy = self.auto_selector.as_ref().map(|s| s.get_strategy()).unwrap_or(self.config.strategy);
+            gst::debug!(CAT_RETRY, "Auto mode selected strategy: {}", strategy.as_str());
+            strategy
         } else {
             self.config.strategy
         };
 
-        let delay = match current_strategy {
+        let (delay, reason) = match current_strategy {
             RetryStrategy::None => return None,
-            RetryStrategy::Immediate => Duration::ZERO,
-            RetryStrategy::Linear => self.calculate_linear_delay(),
-            RetryStrategy::Exponential => self.calculate_exponential_delay(false),
-            RetryStrategy::ExponentialJitter => self.calculate_exponential_delay(true),
-            RetryStrategy::FirstWins | RetryStrategy::LastWins => Duration::from_millis(250),
-            RetryStrategy::Auto => self.calculate_auto_delay(),
+            RetryStrategy::Immediate => (Duration::ZERO, "immediate retry"),
+            RetryStrategy::Linear => (self.calculate_linear_delay(), "linear backoff"),
+            RetryStrategy::Exponential => (self.calculate_exponential_delay(false), "exponential backoff"),
+            RetryStrategy::ExponentialJitter => (self.calculate_exponential_delay(true), "exponential with jitter"),
+            RetryStrategy::FirstWins | RetryStrategy::LastWins => (Duration::from_millis(250), "racing mode"),
+            RetryStrategy::Auto => (self.calculate_auto_delay(), "auto-calculated delay"),
             #[cfg(feature = "adaptive")]
-            RetryStrategy::Adaptive => self.calculate_adaptive_delay(),
+            RetryStrategy::Adaptive => (self.calculate_adaptive_delay(), "adaptive learning"),
         };
+
+        // Cap at max_delay
+        let final_delay = delay.min(self.config.max_delay);
+        
+        // Log the retry decision
+        debug_decision!(
+            CAT_RETRY,
+            self.decision_history.as_ref(),
+            DecisionType::RetryDelay {
+                attempt: self.attempt,
+                strategy: current_strategy.as_str().to_string(),
+                delay_ms: final_delay.as_millis() as u64,
+                reason: reason.to_string(),
+            },
+            "Retry attempt {} using {} strategy: delay={}ms ({})",
+            self.attempt + 1,
+            current_strategy.as_str(),
+            final_delay.as_millis(),
+            reason
+        );
 
         self.attempt += 1;
         self.last_attempt_time = Some(Instant::now());
@@ -189,8 +227,7 @@ impl RetryCalculator {
             telemetry.record_retry(current_strategy.as_str());
         }
 
-        // Cap at max_delay
-        Some(delay.min(self.config.max_delay))
+        Some(final_delay)
     }
 
     pub fn reset(&mut self) {
@@ -230,6 +267,23 @@ impl RetryCalculator {
             }
             self.first_failure_time = None;
         }
+        
+        // Log connection result
+        let duration_ms = self.last_connection_start.map(|start| start.elapsed().as_millis() as u64);
+        debug_decision!(
+            CAT_RETRY,
+            self.decision_history.as_ref(),
+            DecisionType::ConnectionResult {
+                success,
+                duration_ms,
+                retry_count: self.attempt,
+            },
+            "Connection result: success={}, dropped={}, duration={}ms, retry_count={}",
+            success,
+            connection_dropped,
+            duration_ms.map_or("N/A".to_string(), |d| d.to_string()),
+            self.attempt
+        );
         
         if let Some(ref mut selector) = self.auto_selector {
             let connection_duration = if success && !connection_dropped {
@@ -369,6 +423,21 @@ impl RetryCalculator {
         self.adaptive_manager
             .as_ref()
             .map(|m| m.get_stats_summary())
+    }
+    
+    /// Get the decision history as JSON
+    pub fn get_decision_history_json(&self) -> String {
+        self.decision_history
+            .as_ref()
+            .map(|h| h.get_history_json())
+            .unwrap_or_else(|| "[]".to_string())
+    }
+    
+    /// Clear the decision history
+    pub fn clear_decision_history(&mut self) {
+        if let Some(ref history) = self.decision_history {
+            history.clear();
+        }
     }
 }
 
