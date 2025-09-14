@@ -1,3 +1,4 @@
+#![allow(unused)]
 
 // Buffer mode enum (matching original rtspsrc)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

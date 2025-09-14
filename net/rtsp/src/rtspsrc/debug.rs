@@ -1,3 +1,4 @@
+#![allow(unused)]
 // GStreamer RTSP Debug and Observability Module
 //
 // This module provides debug categories and decision history tracking

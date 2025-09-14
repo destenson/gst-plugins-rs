@@ -1,3 +1,4 @@
+#![allow(unused)]
 // SRTP Support Module
 //
 // Copyright (C) 2024
