@@ -14,6 +14,10 @@ use std::sync::LazyLock;
 use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::time::{sleep, timeout};
+use gst::prelude::*;
+use super::debug::{DecisionHistory, DecisionType, CAT_RACING};
+use crate::debug_decision;
+
 static CAT: LazyLock<gst::DebugCategory> = LazyLock::new(|| {
     gst::DebugCategory::new(
         "rtspsrc2-racer",
@@ -80,16 +84,40 @@ impl Default for ConnectionRacingConfig {
 
 pub struct ConnectionRacer {
     config: ConnectionRacingConfig,
+    decision_history: Option<DecisionHistory>,
 }
 
 impl ConnectionRacer {
     pub fn new(config: ConnectionRacingConfig) -> Self {
-        Self { config }
+        Self { 
+            config,
+            decision_history: Some(DecisionHistory::default()),
+        }
     }
 
     /// Update the racing strategy dynamically
     pub fn update_strategy(&mut self, strategy: ConnectionRacingStrategy) {
         if self.config.strategy != strategy {
+            let reason = match strategy {
+                ConnectionRacingStrategy::FirstWins => "High packet loss detected",
+                ConnectionRacingStrategy::LastWins => "Connection-limited device detected",
+                ConnectionRacingStrategy::Hybrid => "Mixed network conditions",
+                ConnectionRacingStrategy::None => "Stable network detected",
+            };
+            
+            debug_decision!(
+                CAT_RACING,
+                self.decision_history.as_ref(),
+                DecisionType::RacingModeUpdate {
+                    mode: strategy.as_str().to_string(),
+                    reason: reason.to_string(),
+                },
+                "Racing strategy updated: {} -> {} ({})",
+                self.config.strategy.as_str(),
+                strategy.as_str(),
+                reason
+            );
+            
             gst::info!(
                 CAT,
                 "Racing strategy changed from {:?} to {:?}",
