@@ -1,3 +1,4 @@
+#![allow(unused)]
 // HTTP Tunneling Support for RTSP
 //
 // This module implements RTSP-over-HTTP tunneling to bypass firewalls

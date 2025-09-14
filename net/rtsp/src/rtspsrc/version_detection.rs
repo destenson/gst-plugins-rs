@@ -1,3 +1,4 @@
+#![allow(unused)]
 // version_detection.rs - RTSP version detection and negotiation
 //
 // This module provides functionality for detecting and negotiating RTSP protocol versions

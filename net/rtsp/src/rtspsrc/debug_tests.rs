@@ -1,3 +1,4 @@
+#![allow(unused)]
 // GStreamer RTSP Debug Observability Tests
 //
 // Tests for verifying debug logging and decision history functionality

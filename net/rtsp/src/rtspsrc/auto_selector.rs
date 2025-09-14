@@ -1,3 +1,4 @@
+#![allow(unused)]
 // GStreamer RTSP Simple Auto Retry Mode
 //
 // This module implements a simple "auto" retry mode that uses basic heuristics 

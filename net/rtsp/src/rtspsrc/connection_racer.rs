@@ -1,3 +1,4 @@
+#![allow(unused)]
 // GStreamer RTSP plugin parallel connection racing implementation
 //
 // Copyright (C) 2025 GStreamer developers

@@ -1,3 +1,4 @@
+#![allow(unused)]
 // GStreamer RTSP Error Recovery Module
 //
 // Copyright (C) 2025 GStreamer developers
