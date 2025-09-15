@@ -7,8 +7,8 @@
 use super::error::{ConfigurationError, Result, RtspError};
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicUsize;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
@@ -119,17 +119,21 @@ impl ServerPool {
             Ok(())
         } else {
             // Pool is full, don't accept the connection
-            Err(RtspError::Configuration(ConfigurationError::ResourceAllocationFailed {
-                resource: "Connection pool full for server".to_string(),
-            }))
+            Err(RtspError::Configuration(
+                ConfigurationError::ResourceAllocationFailed {
+                    resource: "Connection pool full for server".to_string(),
+                },
+            ))
         }
     }
 
     fn add_new(&mut self, stream: TcpStream, server_addr: SocketAddr) -> Result<()> {
         if self.connections.len() >= self.max_connections {
-            return Err(RtspError::Configuration(ConfigurationError::ResourceAllocationFailed {
-                resource: "Connection pool full for server".to_string(),
-            }));
+            return Err(RtspError::Configuration(
+                ConfigurationError::ResourceAllocationFailed {
+                    resource: "Connection pool full for server".to_string(),
+                },
+            ));
         }
         self.connections
             .push(PooledConnection::new(stream, server_addr));
@@ -366,7 +370,6 @@ mod tests {
     use std::time::Duration;
     use tokio::net::{TcpListener, TcpStream};
 
-
     #[tokio::test]
     async fn test_connection_pool_basic() {
         let config = ConnectionPoolConfig {
@@ -415,7 +418,7 @@ mod tests {
             idle_timeout: Duration::from_secs(60),
             disable_background_task: true,
         };
-        
+
         // Create pool (background cleanup disabled via config)
         let pool = ConnectionPool::new(config);
 
@@ -445,18 +448,29 @@ mod tests {
         for i in 0..2 {
             let stream = TcpStream::connect(addr).await.unwrap();
             let result = pool.add_new(stream, addr).await;
-            assert!(result.is_ok(), "Failed to add connection {}: {:?}", i, result);
+            assert!(
+                result.is_ok(),
+                "Failed to add connection {}: {:?}",
+                i,
+                result
+            );
         }
 
         // Verify we have exactly 2 connections in the pool
         let stats = pool.stats();
-        assert_eq!(stats.get(&addr).map(|s| s.total_connections), Some(2),
-                   "Pool should have exactly 2 connections before trying to add third");
+        assert_eq!(
+            stats.get(&addr).map(|s| s.total_connections),
+            Some(2),
+            "Pool should have exactly 2 connections before trying to add third"
+        );
 
         // Adding one more should fail
         let stream = TcpStream::connect(addr).await.unwrap();
         let result = pool.add_new(stream, addr).await;
-        assert!(result.is_err(), "Adding third connection should fail when limit is 2");
+        assert!(
+            result.is_err(),
+            "Adding third connection should fail when limit is 2"
+        );
     }
 
     #[tokio::test]
@@ -592,5 +606,4 @@ mod tests {
     }
 
     use std::sync::Arc;
-
 }

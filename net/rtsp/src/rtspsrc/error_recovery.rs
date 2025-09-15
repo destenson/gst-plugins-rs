@@ -11,9 +11,7 @@
 
 use std::time::Duration;
 
-use super::error::{
-    ErrorClass, ErrorContext, NetworkError, ProtocolError, RtspError,
-};
+use super::error::{ErrorClass, ErrorContext, NetworkError, ProtocolError, RtspError};
 use super::retry::{RetryConfig, RetryStrategy};
 
 /// Recovery action to take for an error
@@ -42,9 +40,7 @@ pub enum RecoveryAction {
     /// Fatal error, stop the pipeline
     Fatal,
     /// Wait for user intervention
-    WaitForIntervention {
-        message: String,
-    },
+    WaitForIntervention { message: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -152,11 +148,7 @@ impl ErrorRecovery {
         action
     }
 
-    fn handle_network_error(
-        &self,
-        error: &NetworkError,
-        context: &ErrorContext,
-    ) -> RecoveryAction {
+    fn handle_network_error(&self, error: &NetworkError, context: &ErrorContext) -> RecoveryAction {
         match error {
             NetworkError::ConnectionRefused { .. } | NetworkError::ConnectionTimeout { .. } => {
                 if context.retry_count < 3 {
@@ -344,12 +336,7 @@ pub async fn execute_recovery_action(
             Ok(())
         }
         RecoveryAction::FallbackTransport { from, to } => {
-            gst::info!(
-                *cat,
-                "Switching transport from {:?} to {:?}",
-                from,
-                to
-            );
+            gst::info!(*cat, "Switching transport from {:?} to {:?}", from, to);
             Ok(())
         }
         RecoveryAction::ResetPipeline => {

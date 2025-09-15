@@ -14,8 +14,8 @@ use std::io;
 use std::time::Duration;
 use thiserror::Error;
 
-use crate::rtspsrc;
 use super::retry::RetryStrategy;
+use crate::rtspsrc;
 
 /// Main RTSP error type with comprehensive error categories
 #[derive(Debug, Error)]
@@ -391,13 +391,26 @@ impl RtspError {
                 NetworkError::ConnectionRefused { host, port } => {
                     gst::error_msg!(
                         gst::ResourceError::OpenRead,
-                        ["Connection refused to {}:{} - server may be down or unreachable", host, port]
+                        [
+                            "Connection refused to {}:{} - server may be down or unreachable",
+                            host,
+                            port
+                        ]
                     )
                 }
-                NetworkError::ConnectionTimeout { host, port, timeout } => {
+                NetworkError::ConnectionTimeout {
+                    host,
+                    port,
+                    timeout,
+                } => {
                     gst::error_msg!(
                         gst::ResourceError::OpenRead,
-                        ["Connection timeout after {:?} to {}:{}", timeout, host, port]
+                        [
+                            "Connection timeout after {:?} to {}:{}",
+                            timeout,
+                            host,
+                            port
+                        ]
                     )
                 }
                 NetworkError::DnsResolutionFailed { host, details } => {
@@ -407,10 +420,7 @@ impl RtspError {
                     )
                 }
                 NetworkError::SocketError { message, .. } => {
-                    gst::error_msg!(
-                        gst::ResourceError::OpenRead,
-                        ["Socket error: {}", message]
-                    )
+                    gst::error_msg!(gst::ResourceError::OpenRead, ["Socket error: {}", message])
                 }
                 NetworkError::TlsHandshakeFailed { details } => {
                     gst::error_msg!(
@@ -425,10 +435,7 @@ impl RtspError {
                     )
                 }
                 NetworkError::ConnectionReset => {
-                    gst::error_msg!(
-                        gst::ResourceError::Read,
-                        ["Connection reset by peer"]
-                    )
+                    gst::error_msg!(gst::ResourceError::Read, ["Connection reset by peer"])
                 }
                 NetworkError::NatTraversalFailed { reason } => {
                     gst::error_msg!(
@@ -469,10 +476,7 @@ impl RtspError {
                     )
                 }
                 ProtocolError::SessionError { details } => {
-                    gst::error_msg!(
-                        gst::ResourceError::Failed,
-                        ["Session error: {}", details]
-                    )
+                    gst::error_msg!(gst::ResourceError::Failed, ["Session error: {}", details])
                 }
                 ProtocolError::InvalidSessionId { session_id } => {
                     gst::error_msg!(
@@ -496,10 +500,7 @@ impl RtspError {
                     } else {
                         gst::ResourceError::Failed
                     };
-                    gst::error_msg!(
-                        error_type,
-                        ["RTSP error {}: {}", code, message]
-                    )
+                    gst::error_msg!(error_type, ["RTSP error {}: {}", code, message])
                 }
                 ProtocolError::MissingHeader { header } => {
                     gst::error_msg!(
@@ -534,10 +535,7 @@ impl RtspError {
                     )
                 }
                 MediaError::StreamSyncLost => {
-                    gst::error_msg!(
-                        gst::StreamError::Failed,
-                        ["Stream synchronization lost"]
-                    )
+                    gst::error_msg!(gst::StreamError::Failed, ["Stream synchronization lost"])
                 }
                 MediaError::BufferOverflow => {
                     gst::error_msg!(
@@ -558,23 +556,21 @@ impl RtspError {
                     )
                 }
                 MediaError::RtcpError { details } => {
-                    gst::error_msg!(
-                        gst::StreamError::Failed,
-                        ["RTCP error: {}", details]
-                    )
+                    gst::error_msg!(gst::StreamError::Failed, ["RTCP error: {}", details])
                 }
                 MediaError::RtpPacketError { details } => {
-                    gst::error_msg!(
-                        gst::StreamError::Failed,
-                        ["RTP packet error: {}", details]
-                    )
+                    gst::error_msg!(gst::StreamError::Failed, ["RTP packet error: {}", details])
                 }
             },
             RtspError::Configuration(e) => match e {
                 ConfigurationError::InvalidParameter { parameter, reason } => {
                     gst::error_msg!(
                         gst::ResourceError::Settings,
-                        ["Invalid configuration parameter '{}': {}", parameter, reason]
+                        [
+                            "Invalid configuration parameter '{}': {}",
+                            parameter,
+                            reason
+                        ]
                     )
                 }
                 ConfigurationError::MissingParameter { parameter } => {
@@ -597,10 +593,7 @@ impl RtspError {
                 }
             },
             RtspError::Internal { message, .. } => {
-                gst::error_msg!(
-                    gst::CoreError::Failed,
-                    ["Internal error: {}", message]
-                )
+                gst::error_msg!(gst::CoreError::Failed, ["Internal error: {}", message])
             }
         }
     }
@@ -800,7 +793,10 @@ mod tests {
         };
         assert_eq!(err.classify(), ErrorClass::Transient);
         assert!(err.is_retryable());
-        assert_eq!(err.suggested_retry_strategy(), Some(RetryStrategy::FirstWins));
+        assert_eq!(
+            err.suggested_retry_strategy(),
+            Some(RetryStrategy::FirstWins)
+        );
     }
 
     #[test]
@@ -811,7 +807,10 @@ mod tests {
             .with_retry_count(3)
             .add_detail("transport", "TCP");
 
-        assert_eq!(context.resource, Some("rtsp://camera.local/stream".to_string()));
+        assert_eq!(
+            context.resource,
+            Some("rtsp://camera.local/stream".to_string())
+        );
         assert_eq!(context.operation, Some("SETUP".to_string()));
         assert_eq!(context.retry_count, 3);
         assert_eq!(context.details.len(), 1);

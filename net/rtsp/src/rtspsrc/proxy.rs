@@ -45,10 +45,14 @@ impl ProxyConfig {
         // Validate proxy scheme
         match parsed_url.scheme() {
             "http" | "https" | "socks5" | "socks" => {}
-            scheme => return Err(RtspError::Configuration(ConfigurationError::InvalidParameter {
-                parameter: "proxy_url".to_string(),
-                reason: format!("Unsupported proxy scheme: {}", scheme),
-            })),
+            scheme => {
+                return Err(RtspError::Configuration(
+                    ConfigurationError::InvalidParameter {
+                        parameter: "proxy_url".to_string(),
+                        reason: format!("Unsupported proxy scheme: {}", scheme),
+                    },
+                ))
+            }
         }
 
         Ok(Self {
@@ -103,10 +107,12 @@ impl ProxyConfig {
         let host = self
             .url
             .host_str()
-            .ok_or_else(|| RtspError::Configuration(ConfigurationError::InvalidParameter {
-                parameter: "proxy_url".to_string(),
-                reason: "No host in proxy URL".to_string(),
-            }))?
+            .ok_or_else(|| {
+                RtspError::Configuration(ConfigurationError::InvalidParameter {
+                    parameter: "proxy_url".to_string(),
+                    reason: "No host in proxy URL".to_string(),
+                })
+            })?
             .to_string();
 
         let port = self.url.port().unwrap_or_else(|| match self.url.scheme() {
@@ -296,7 +302,9 @@ impl ProxyConnection {
                     }
                 } else {
                     return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
-                        details: "SOCKS5 server requires authentication but no credentials provided".to_string(),
+                        details:
+                            "SOCKS5 server requires authentication but no credentials provided"
+                                .to_string(),
                     }));
                 }
             }
@@ -355,33 +363,51 @@ impl ProxyConnection {
         // Check reply code
         match conn_response[1] {
             0x00 => {} // Success
-            0x01 => return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
-                details: "SOCKS5: General SOCKS server failure".to_string(),
-            })),
-            0x02 => return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
-                details: "SOCKS5: Connection not allowed by ruleset".to_string(),
-            })),
-            0x03 => return Err(RtspError::Network(NetworkError::NetworkUnreachable {
-                details: "SOCKS5: Network unreachable".to_string(),
-            })),
-            0x04 => return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
-                details: "SOCKS5: Host unreachable".to_string(),
-            })),
-            0x05 => return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
-                details: "SOCKS5: Connection refused".to_string(),
-            })),
-            0x06 => return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
-                details: "SOCKS5: TTL expired".to_string(),
-            })),
-            0x07 => return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
-                details: "SOCKS5: Command not supported".to_string(),
-            })),
-            0x08 => return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
-                details: "SOCKS5: Address type not supported".to_string(),
-            })),
-            code => return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
-                details: format!("SOCKS5: Unknown error code: {}", code),
-            })),
+            0x01 => {
+                return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
+                    details: "SOCKS5: General SOCKS server failure".to_string(),
+                }))
+            }
+            0x02 => {
+                return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
+                    details: "SOCKS5: Connection not allowed by ruleset".to_string(),
+                }))
+            }
+            0x03 => {
+                return Err(RtspError::Network(NetworkError::NetworkUnreachable {
+                    details: "SOCKS5: Network unreachable".to_string(),
+                }))
+            }
+            0x04 => {
+                return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
+                    details: "SOCKS5: Host unreachable".to_string(),
+                }))
+            }
+            0x05 => {
+                return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
+                    details: "SOCKS5: Connection refused".to_string(),
+                }))
+            }
+            0x06 => {
+                return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
+                    details: "SOCKS5: TTL expired".to_string(),
+                }))
+            }
+            0x07 => {
+                return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
+                    details: "SOCKS5: Command not supported".to_string(),
+                }))
+            }
+            0x08 => {
+                return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
+                    details: "SOCKS5: Address type not supported".to_string(),
+                }))
+            }
+            code => {
+                return Err(RtspError::Network(NetworkError::ProxyConnectionFailed {
+                    details: format!("SOCKS5: Unknown error code: {}", code),
+                }))
+            }
         }
 
         // Skip the rest of the response (bound address)
@@ -413,14 +439,20 @@ impl ProxyConnection {
 
     /// Connect directly without proxy
     pub async fn connect_direct(
-        host: &str, 
+        host: &str,
         port: u16,
         use_tls: bool,
         tls_config: &TlsConfig,
     ) -> Result<RtspStream> {
-        gst::debug!(*CAT, "Connecting directly to {}:{} (TLS: {})", host, port, use_tls);
+        gst::debug!(
+            *CAT,
+            "Connecting directly to {}:{} (TLS: {})",
+            host,
+            port,
+            use_tls
+        );
         let tcp_stream = TcpStream::connect((host, port)).await?;
-        
+
         if use_tls {
             Self::upgrade_to_tls(tcp_stream, host, tls_config).await
         } else {
@@ -435,30 +467,30 @@ impl ProxyConnection {
         tls_config: &TlsConfig,
     ) -> Result<RtspStream> {
         use tokio_native_tls::{native_tls, TlsConnector};
-        
+
         gst::debug!(*CAT, "Upgrading connection to TLS for host: {}", host);
-        
+
         let mut builder = native_tls::TlsConnector::builder();
-        
+
         if tls_config.accept_invalid_certs {
             builder.danger_accept_invalid_certs(true);
         }
-        
+
         if tls_config.accept_invalid_hostnames {
             builder.danger_accept_invalid_hostnames(true);
         }
-        
+
         if let Some(min_version) = tls_config.min_version {
             builder.min_protocol_version(Some(min_version));
         }
-        
+
         if let Some(max_version) = tls_config.max_version {
             builder.max_protocol_version(Some(max_version));
         }
-        
+
         let tls_connector = builder.build()?;
         let tls_connector = TlsConnector::from(tls_connector);
-        
+
         let tls_stream = tls_connector.connect(host, tcp_stream).await?;
         Ok(RtspStream::Tls(tls_stream))
     }

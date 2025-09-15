@@ -88,7 +88,7 @@ pub enum DecisionType {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Decision {
-    pub timestamp: String,  // ISO 8601 format
+    pub timestamp: String, // ISO 8601 format
     pub decision_type: DecisionType,
     pub context: Option<String>,
 }
@@ -119,7 +119,7 @@ impl DecisionHistory {
             .unwrap_or_default()
             .as_secs();
         let decision = Decision {
-            timestamp: format!("{}Z", timestamp),  // Simple timestamp format
+            timestamp: format!("{}Z", timestamp), // Simple timestamp format
             decision_type,
             context,
         };
@@ -235,7 +235,7 @@ mod tests {
     #[test]
     fn test_decision_history() {
         let history = DecisionHistory::new(3);
-        
+
         // Record some decisions
         history.record(
             DecisionType::RetryDelay {
@@ -246,7 +246,7 @@ mod tests {
             },
             None,
         );
-        
+
         history.record(
             DecisionType::PatternDetected {
                 pattern: "lossy".to_string(),
@@ -255,7 +255,7 @@ mod tests {
             },
             Some("Network analysis".to_string()),
         );
-        
+
         history.record(
             DecisionType::StrategyChanged {
                 from: "exponential".to_string(),
@@ -264,7 +264,7 @@ mod tests {
             },
             None,
         );
-        
+
         // Should keep only last 3
         history.record(
             DecisionType::RacingModeUpdate {
@@ -273,10 +273,10 @@ mod tests {
             },
             None,
         );
-        
+
         let decisions = history.get_history();
         assert_eq!(decisions.len(), 3);
-        
+
         // Check JSON serialization
         let json = history.get_history_json();
         assert!(json.contains("\"pattern\": \"lossy\""));
@@ -289,7 +289,7 @@ mod tests {
         let _ = &*CAT_AUTO;
         let _ = &*CAT_ADAPTIVE;
         let _ = &*CAT_RACING;
-        
+
         assert_eq!(CAT_RETRY.name(), "rtspsrc2-retry");
         assert_eq!(CAT_AUTO.name(), "rtspsrc2-auto");
         assert_eq!(CAT_ADAPTIVE.name(), "rtspsrc2-adaptive");

@@ -1,3 +1,4 @@
+#![allow(unused)]
 // GStreamer RTSP Source VOD Seeking Tests
 // Tests for Basic VOD Seeking Support (PRP-RTSP-18)
 

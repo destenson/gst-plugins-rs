@@ -1,3 +1,4 @@
+#![allow(unused)]
 // End-to-End Visual Pipeline Tests
 // Tests with autovideosink for visual verification and real video output
 
@@ -501,8 +502,8 @@ pub struct UserFeedback {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::common::{check_gstreamer_available, find_gst_plugin_path};
+    use super::*;
 
     #[tokio::test]
     async fn test_visual_test_config_loading() {

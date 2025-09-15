@@ -81,7 +81,7 @@ fn test_invalid_uri_protocol() {
         // Note: set_property doesn't return a Result, so we just set it
         // The element should handle invalid URIs internally
         element.set_property("location", uri);
-        
+
         // Verify the location was set (even if it's invalid)
         let location: Option<String> = element.property("location");
         assert_eq!(location, Some(uri.to_string()));

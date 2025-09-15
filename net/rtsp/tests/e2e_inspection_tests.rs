@@ -486,8 +486,8 @@ impl ElementInspectionTest {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::common::{check_gstreamer_available, find_gst_plugin_path};
+    use super::*;
 
     #[test]
     fn test_element_exists_check() {

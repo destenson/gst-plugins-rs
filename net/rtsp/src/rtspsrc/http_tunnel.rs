@@ -4,11 +4,11 @@
 // This module implements RTSP-over-HTTP tunneling to bypass firewalls
 // and proxies that block RTSP traffic.
 
+use super::body::Body;
+use super::error::{NetworkError, ProtocolError, Result, RtspError};
+use super::tcp_message::ReadError;
 use crate::rtspsrc::imp::HttpTunnelMode;
 use crate::rtspsrc::proxy::{ProxyConfig, ProxyConnection};
-use super::error::{NetworkError, ProtocolError, Result, RtspError};
-use super::body::Body;
-use super::tcp_message::ReadError;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use bytes::{Bytes, BytesMut};
 use futures::{Sink, Stream};
@@ -58,23 +58,32 @@ impl HttpTunnel {
     ) -> Result<Self> {
         // Generate a unique session cookie using timestamp
         use std::time::{SystemTime, UNIX_EPOCH};
-        let session_cookie = format!("{:x}", SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos());
+        let session_cookie = format!(
+            "{:x}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
 
         // Build HTTP URL for tunneling
-        let host = rtsp_url.host_str()
-            .ok_or_else(|| RtspError::Network(NetworkError::HttpTunnelError {
+        let host = rtsp_url.host_str().ok_or_else(|| {
+            RtspError::Network(NetworkError::HttpTunnelError {
                 details: "No host in URL".to_string(),
-            }))?;
-        let port = rtsp_url.port().unwrap_or(if rtsp_url.scheme() == "rtsps" { 443 } else { 80 });
+            })
+        })?;
+        let port = rtsp_url.port().unwrap_or(if rtsp_url.scheme() == "rtsps" {
+            443
+        } else {
+            80
+        });
         let path = rtsp_url.path();
-        
-        let tunnel_url = Url::parse(&format!("http://{}:{}{}", host, port, path))
-            .map_err(|e| RtspError::Network(NetworkError::HttpTunnelError {
+
+        let tunnel_url = Url::parse(&format!("http://{}:{}{}", host, port, path)).map_err(|e| {
+            RtspError::Network(NetworkError::HttpTunnelError {
                 details: format!("Failed to create HTTP URL: {}", e),
-            }))?;
+            })
+        })?;
 
         let (response_tx, response_rx) = mpsc::channel(100);
 
@@ -113,13 +122,12 @@ impl HttpTunnel {
 
     /// Establish GET connection for receiving RTSP responses
     async fn establish_get_connection(&mut self) -> Result<()> {
-        let host = self
-            .url
-            .host_str()
-            .ok_or_else(|| RtspError::Protocol(ProtocolError::InvalidUrl {
+        let host = self.url.host_str().ok_or_else(|| {
+            RtspError::Protocol(ProtocolError::InvalidUrl {
                 url: self.url.to_string(),
                 reason: "No host in URL".to_string(),
-            }))?;
+            })
+        })?;
         let port = self.url.port().unwrap_or(80);
 
         // Connect through proxy if configured, otherwise direct connection
@@ -130,7 +138,7 @@ impl HttpTunnel {
         } else {
             ProxyConnection::connect_direct(host, port, false, &tls_config).await?
         };
-        
+
         // Extract the plain TCP stream (HTTP tunneling doesn't use TLS)
         let stream = match rtsp_stream {
             super::tls::RtspStream::Plain(tcp_stream) => tcp_stream,
@@ -173,13 +181,12 @@ impl HttpTunnel {
 
     /// Establish POST connection for sending RTSP requests
     async fn establish_post_connection(&mut self) -> Result<()> {
-        let host = self
-            .url
-            .host_str()
-            .ok_or_else(|| RtspError::Protocol(ProtocolError::InvalidUrl {
+        let host = self.url.host_str().ok_or_else(|| {
+            RtspError::Protocol(ProtocolError::InvalidUrl {
                 url: self.url.to_string(),
                 reason: "No host in URL".to_string(),
-            }))?;
+            })
+        })?;
         let port = self.url.port().unwrap_or(80);
 
         // Connect through proxy if configured, otherwise direct connection
@@ -190,7 +197,7 @@ impl HttpTunnel {
         } else {
             ProxyConnection::connect_direct(host, port, false, &tls_config).await?
         };
-        
+
         // Extract the plain TCP stream (HTTP tunneling doesn't use TLS)
         let stream = match rtsp_stream {
             super::tls::RtspStream::Plain(tcp_stream) => tcp_stream,
@@ -294,11 +301,11 @@ impl HttpTunnel {
     /// Receive RTSP response from GET connection
     pub async fn receive_response(&mut self) -> Result<Bytes> {
         let mut rx = self.response_rx.lock().await;
-        rx.recv()
-            .await
-            .ok_or_else(|| RtspError::Network(NetworkError::HttpTunnelError {
+        rx.recv().await.ok_or_else(|| {
+            RtspError::Network(NetworkError::HttpTunnelError {
                 details: "Response channel closed".to_string(),
-            }))
+            })
+        })
     }
 
     /// Check if tunnel is connected
@@ -345,7 +352,7 @@ impl HttpTunnelStream {
             read_buffer: BytesMut::with_capacity(4096),
         }
     }
-    
+
     pub fn split(self) -> (HttpTunnelReader, HttpTunnelWriter) {
         let reader = HttpTunnelReader {
             tunnel: self.tunnel.clone(),
@@ -382,7 +389,7 @@ impl HttpTunnelMessageStream {
 
 impl Stream for HttpTunnelMessageStream {
     type Item = std::result::Result<Message<Body>, ReadError>;
-    
+
     fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         // TODO: Implement proper async polling for RTSP messages from tunnel
         // For now, return pending
@@ -403,24 +410,36 @@ impl HttpTunnelMessageSink {
 
 impl Sink<Message<Body>> for HttpTunnelMessageSink {
     type Error = std::io::Error;
-    
-    fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<std::result::Result<(), Self::Error>> {
+
+    fn poll_ready(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+    ) -> Poll<std::result::Result<(), Self::Error>> {
         // Tunnel is always ready to accept messages
         Poll::Ready(Ok(()))
     }
-    
-    fn start_send(self: Pin<&mut Self>, _item: Message<Body>) -> std::result::Result<(), Self::Error> {
+
+    fn start_send(
+        self: Pin<&mut Self>,
+        _item: Message<Body>,
+    ) -> std::result::Result<(), Self::Error> {
         // Convert message to bytes and send through tunnel
         // TODO: Implement proper message serialization
         Ok(())
     }
-    
-    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<std::result::Result<(), Self::Error>> {
+
+    fn poll_flush(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+    ) -> Poll<std::result::Result<(), Self::Error>> {
         // No buffering, always flushed
         Poll::Ready(Ok(()))
     }
-    
-    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<std::result::Result<(), Self::Error>> {
+
+    fn poll_close(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+    ) -> Poll<std::result::Result<(), Self::Error>> {
         // Close the tunnel
         Poll::Ready(Ok(()))
     }
@@ -439,7 +458,7 @@ mod tests {
         // Just test that both can be created
         assert!(tunnel1.is_ok());
         assert!(tunnel2.is_ok());
-        
+
         // Session cookies should be unique (they're based on timestamp)
         // This is guaranteed by the implementation
     }

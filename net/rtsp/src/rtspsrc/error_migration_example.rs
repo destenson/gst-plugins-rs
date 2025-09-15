@@ -10,7 +10,7 @@
 
 //! Example showing how to migrate from anyhow to the new error handling system
 
-use super::error::{ErrorContext, NetworkError, ProtocolError, RtspError, Result};
+use super::error::{ErrorContext, NetworkError, ProtocolError, Result, RtspError};
 use super::error_recovery::{ErrorRecovery, RecoveryAction};
 use gst::prelude::*;
 use std::time::Duration;
@@ -115,11 +115,7 @@ fn handle_rtsp_response(code: u16, message: &str) -> Result<()> {
 
 /// Example: Using error context for better debugging
 #[allow(dead_code)]
-async fn perform_rtsp_setup(
-    url: &str,
-    transport: &str,
-    retry_count: u32,
-) -> Result<String> {
+async fn perform_rtsp_setup(url: &str, transport: &str, retry_count: u32) -> Result<String> {
     // Create context for this operation
     let context = ErrorContext::new()
         .with_resource(url)

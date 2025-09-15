@@ -2,12 +2,12 @@
 // Telemetry module for RTSP source element
 // Provides structured logging, metrics collection, and performance tracking
 
+use parking_lot::RwLock;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use tracing::{event, info_span, span, Level, Span};
-use parking_lot::RwLock;
-use std::collections::HashMap;
 
 #[cfg(feature = "prometheus")]
 use prometheus::{
@@ -290,7 +290,12 @@ impl RtspMetrics {
         }
     }
 
-    pub fn record_retry_strategy_change(&self, old_strategy: &str, new_strategy: &str, reason: Option<&str>) {
+    pub fn record_retry_strategy_change(
+        &self,
+        old_strategy: &str,
+        new_strategy: &str,
+        reason: Option<&str>,
+    ) {
         self.inner
             .retry_strategy_changes
             .fetch_add(1, Ordering::Relaxed);
@@ -302,13 +307,13 @@ impl RtspMetrics {
             new_strategy = new_strategy,
             reason = reason_str
         );
-        
+
         // Track attempts per strategy
         {
             let mut attempts = self.inner.retry_attempts_by_strategy.write();
             *attempts.entry(new_strategy.to_string()).or_insert(0) += 1;
         }
-        
+
         #[cfg(feature = "prometheus")]
         if let Some(ref prom) = self.prometheus {
             prom.retry_strategy_changes
@@ -316,7 +321,7 @@ impl RtspMetrics {
                 .inc();
         }
     }
-    
+
     /// Record connection recovery time (time from first failure to successful reconnection)
     pub fn record_connection_recovery(&self, recovery_time_ms: u64) {
         self.inner
@@ -327,7 +332,7 @@ impl RtspMetrics {
             metric = "connection_recovery",
             recovery_time_ms = recovery_time_ms
         );
-        
+
         #[cfg(feature = "prometheus")]
         if let Some(ref prom) = self.prometheus {
             prom.connection_recovery_time
@@ -335,7 +340,7 @@ impl RtspMetrics {
                 .observe(recovery_time_ms as f64 / 1000.0);
         }
     }
-    
+
     /// Record auto mode pattern detection
     pub fn record_auto_mode_pattern(&self, pattern: &str) {
         let pattern_value = match pattern {
@@ -352,7 +357,7 @@ impl RtspMetrics {
             metric = "auto_mode_pattern",
             pattern = pattern
         );
-        
+
         #[cfg(feature = "prometheus")]
         if let Some(ref prom) = self.prometheus {
             prom.auto_mode_pattern
@@ -360,7 +365,7 @@ impl RtspMetrics {
                 .set(pattern_value as f64);
         }
     }
-    
+
     /// Record adaptive learning confidence score
     pub fn record_adaptive_confidence(&self, confidence: f64) {
         // Store as integer (confidence * 100)
@@ -373,7 +378,7 @@ impl RtspMetrics {
             metric = "adaptive_confidence",
             confidence = confidence
         );
-        
+
         #[cfg(feature = "prometheus")]
         if let Some(ref prom) = self.prometheus {
             prom.adaptive_confidence
@@ -381,12 +386,12 @@ impl RtspMetrics {
                 .set(confidence);
         }
     }
-    
+
     /// Get retry attempts by strategy
     pub fn get_retry_attempts_by_strategy(&self) -> HashMap<String, u64> {
         self.inner.retry_attempts_by_strategy.read().clone()
     }
-    
+
     /// Get current auto mode pattern
     pub fn get_auto_mode_pattern(&self) -> String {
         match self.inner.auto_mode_pattern.load(Ordering::Relaxed) {
@@ -396,7 +401,7 @@ impl RtspMetrics {
             _ => "unknown".to_string(),
         }
     }
-    
+
     /// Get adaptive confidence score as float
     pub fn get_adaptive_confidence(&self) -> f64 {
         self.inner.adaptive_confidence_score.load(Ordering::Relaxed) as f64 / 100.0

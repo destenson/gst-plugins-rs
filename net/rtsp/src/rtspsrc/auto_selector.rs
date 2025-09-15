@@ -1,7 +1,7 @@
 #![allow(unused)]
 // GStreamer RTSP Simple Auto Retry Mode
 //
-// This module implements a simple "auto" retry mode that uses basic heuristics 
+// This module implements a simple "auto" retry mode that uses basic heuristics
 // to quickly select an appropriate retry strategy without requiring user configuration.
 //
 // Copyright (C) 2025 GStreamer developers
@@ -13,12 +13,12 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::connection_racer::ConnectionRacingStrategy;
+use super::debug::{DecisionHistory, DecisionType, CAT_AUTO};
 use super::retry::RetryStrategy;
+use crate::debug_decision;
+use gst::prelude::*;
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
-use gst::prelude::*;
-use super::debug::{DecisionHistory, DecisionType, CAT_AUTO};
-use crate::debug_decision;
 
 const AUTO_DETECTION_ATTEMPTS: usize = 3;
 const CONNECTION_DROP_THRESHOLD: Duration = Duration::from_secs(30);
@@ -27,9 +27,9 @@ const HIGH_FAILURE_THRESHOLD: f32 = 0.5;
 /// Fallback strategy list for auto mode
 const FALLBACK_STRATEGIES: [RetryStrategy; 4] = [
     RetryStrategy::ExponentialJitter, // Good default for most networks
-    RetryStrategy::Linear,             // Conservative fallback
-    RetryStrategy::Exponential,        // Standard exponential
-    RetryStrategy::Immediate,          // Last resort
+    RetryStrategy::Linear,            // Conservative fallback
+    RetryStrategy::Exponential,       // Standard exponential
+    RetryStrategy::Immediate,         // Last resort
 ];
 
 #[derive(Debug, Clone)]
@@ -97,7 +97,7 @@ impl AutoRetrySelector {
     /// Record a connection attempt result
     pub fn record_attempt(&mut self, result: ConnectionAttemptResult) {
         self.recent_attempts.push_back(result);
-        
+
         // Keep only recent attempts
         while self.recent_attempts.len() > 10 {
             self.recent_attempts.pop_front();
@@ -125,13 +125,18 @@ impl AutoRetrySelector {
         if self.is_connection_limited(&recent) {
             self.current_pattern = NetworkPattern::ConnectionLimited;
             self.current_strategy = RetryStrategy::Linear; // Use linear for predictable retry
-            
+
             let evidence = format!(
                 "Short connections detected: {} of {} attempts dropped quickly",
-                recent.iter().filter(|a| a.success && a.connection_duration.map_or(false, |d| d < CONNECTION_DROP_THRESHOLD)).count(),
+                recent
+                    .iter()
+                    .filter(|a| a.success
+                        && a.connection_duration
+                            .map_or(false, |d| d < CONNECTION_DROP_THRESHOLD))
+                    .count(),
                 recent.len()
             );
-            
+
             debug_decision!(
                 CAT_AUTO,
                 self.decision_history.as_ref(),
@@ -143,7 +148,7 @@ impl AutoRetrySelector {
                 "Pattern detected: Connection-limited device. Evidence: {}",
                 evidence
             );
-            
+
             if old_strategy != self.current_strategy {
                 debug_decision!(
                     CAT_AUTO,
@@ -165,7 +170,7 @@ impl AutoRetrySelector {
         if self.is_high_packet_loss(&recent) {
             self.current_pattern = NetworkPattern::HighPacketLoss;
             self.current_strategy = RetryStrategy::Immediate; // Retry quickly
-            
+
             let failures = recent.iter().filter(|a| !a.success).count();
             let failure_rate = failures as f32 / recent.len() as f32;
             let evidence = format!(
@@ -174,7 +179,7 @@ impl AutoRetrySelector {
                 recent.len(),
                 failure_rate * 100.0
             );
-            
+
             debug_decision!(
                 CAT_AUTO,
                 self.decision_history.as_ref(),
@@ -186,7 +191,7 @@ impl AutoRetrySelector {
                 "Pattern detected: High packet loss. Evidence: {}",
                 evidence
             );
-            
+
             if old_strategy != self.current_strategy {
                 debug_decision!(
                     CAT_AUTO,
@@ -207,7 +212,7 @@ impl AutoRetrySelector {
         // Check if current strategy is working well
         if self.is_stable(&recent) {
             self.current_pattern = NetworkPattern::Stable;
-            
+
             let successes = recent.iter().filter(|a| a.success).count();
             let success_rate = successes as f32 / recent.len() as f32;
             let evidence = format!(
@@ -216,7 +221,7 @@ impl AutoRetrySelector {
                 recent.len(),
                 success_rate * 100.0
             );
-            
+
             debug_decision!(
                 CAT_AUTO,
                 self.decision_history.as_ref(),
@@ -228,9 +233,14 @@ impl AutoRetrySelector {
                 "Pattern detected: Stable network. Evidence: {}",
                 evidence
             );
-            
+
             if old_pattern != self.current_pattern {
-                gst::debug!(CAT_AUTO, "Network pattern changed from {} to {}", old_pattern, self.current_pattern);
+                gst::debug!(
+                    CAT_AUTO,
+                    "Network pattern changed from {} to {}",
+                    old_pattern,
+                    self.current_pattern
+                );
             }
             // Keep current strategy if it's working
             return;
@@ -238,7 +248,10 @@ impl AutoRetrySelector {
 
         // If nothing specific detected, try next fallback
         if self.auto_fallback_enabled && !self.is_working(&recent) {
-            gst::debug!(CAT_AUTO, "No specific pattern detected, trying next fallback strategy");
+            gst::debug!(
+                CAT_AUTO,
+                "No specific pattern detected, trying next fallback strategy"
+            );
             self.try_next_fallback();
         }
     }
@@ -246,7 +259,7 @@ impl AutoRetrySelector {
     /// Check if connection-limited device pattern
     fn is_connection_limited(&self, attempts: &[&ConnectionAttemptResult]) -> bool {
         let mut short_connections = 0;
-        
+
         for attempt in attempts {
             if attempt.success {
                 if let Some(duration) = attempt.connection_duration {
@@ -265,7 +278,7 @@ impl AutoRetrySelector {
     fn is_high_packet_loss(&self, attempts: &[&ConnectionAttemptResult]) -> bool {
         let failures = attempts.iter().filter(|a| !a.success).count();
         let failure_rate = failures as f32 / attempts.len() as f32;
-        
+
         // High failure rate indicates packet loss
         failure_rate > HIGH_FAILURE_THRESHOLD
     }
@@ -274,7 +287,7 @@ impl AutoRetrySelector {
     fn is_stable(&self, attempts: &[&ConnectionAttemptResult]) -> bool {
         let successes = attempts.iter().filter(|a| a.success).count();
         let success_rate = successes as f32 / attempts.len() as f32;
-        
+
         // High success rate indicates stability
         success_rate > 0.8
     }
@@ -290,7 +303,7 @@ impl AutoRetrySelector {
         self.fallback_index = (self.fallback_index + 1) % FALLBACK_STRATEGIES.len();
         self.current_strategy = FALLBACK_STRATEGIES[self.fallback_index];
         self.current_pattern = NetworkPattern::Unknown;
-        
+
         debug_decision!(
             CAT_AUTO,
             self.decision_history.as_ref(),
@@ -325,7 +338,7 @@ impl AutoRetrySelector {
     pub fn get_pattern(&self) -> NetworkPattern {
         self.current_pattern
     }
-    
+
     /// Get current network pattern as string
     pub fn get_network_pattern(&self) -> NetworkPattern {
         self.current_pattern
@@ -376,7 +389,10 @@ mod tests {
         }
 
         assert_eq!(selector.get_pattern(), NetworkPattern::ConnectionLimited);
-        assert_eq!(selector.get_racing_strategy(), ConnectionRacingStrategy::LastWins);
+        assert_eq!(
+            selector.get_racing_strategy(),
+            ConnectionRacingStrategy::LastWins
+        );
     }
 
     #[test]
@@ -406,7 +422,10 @@ mod tests {
         });
 
         assert_eq!(selector.get_pattern(), NetworkPattern::HighPacketLoss);
-        assert_eq!(selector.get_racing_strategy(), ConnectionRacingStrategy::FirstWins);
+        assert_eq!(
+            selector.get_racing_strategy(),
+            ConnectionRacingStrategy::FirstWins
+        );
     }
 
     #[test]
@@ -424,7 +443,10 @@ mod tests {
         }
 
         assert_eq!(selector.get_pattern(), NetworkPattern::Stable);
-        assert_eq!(selector.get_racing_strategy(), ConnectionRacingStrategy::None);
+        assert_eq!(
+            selector.get_racing_strategy(),
+            ConnectionRacingStrategy::None
+        );
     }
 
     #[test]
@@ -441,11 +463,11 @@ mod tests {
                     retry_count: 0,
                 });
             }
-            
+
             // After detection, should try next fallback
             let prev_strategy = selector.get_strategy();
             selector.analyze_pattern();
-            
+
             if selector.fallback_index > 0 {
                 // Should have moved to a different strategy
                 assert_ne!(selector.get_strategy(), prev_strategy);

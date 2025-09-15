@@ -26,20 +26,16 @@ fn test_backchannel_signals_exist() {
     // Test that signals exist by trying to emit them
     // Note: We can't use find_signal as it's not available in current glib bindings
     // These tests just verify the signals are registered, not their functionality
-    
+
     // Test push-backchannel-buffer signal
     let buffer = gst::Buffer::new();
-    let _result: gst::FlowReturn = element.emit_by_name(
-        "push-backchannel-buffer",
-        &[&0u32, &buffer]
-    );
-    
-    // Test push-backchannel-sample signal  
+    let _result: gst::FlowReturn =
+        element.emit_by_name("push-backchannel-buffer", &[&0u32, &buffer]);
+
+    // Test push-backchannel-sample signal
     let sample = gst::Sample::builder().buffer(&buffer).build();
-    let _result: gst::FlowReturn = element.emit_by_name(
-        "push-backchannel-sample",
-        &[&0u32, &sample]
-    );
+    let _result: gst::FlowReturn =
+        element.emit_by_name("push-backchannel-sample", &[&0u32, &sample]);
 }
 
 #[test]

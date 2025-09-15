@@ -8,8 +8,8 @@
 //
 // SPDX-License-Identifier: MPL-2.0
 
-pub mod connection_limited;
-pub mod lossy_network;
-pub mod http_tunneling;
 pub mod adaptive_persistence;
+pub mod connection_limited;
+pub mod http_tunneling;
+pub mod lossy_network;
 pub mod rtsps_tls;

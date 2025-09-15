@@ -405,6 +405,4 @@ mod tests {
         let final_buffer = pool.acquire(1000);
         assert!(final_buffer.capacity() >= 1000);
     }
-
-
 }

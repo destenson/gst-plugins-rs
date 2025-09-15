@@ -12,8 +12,8 @@
 
 mod integration;
 
-use integration::{MediaMtxServer, RtspTestHarness};
 use integration::server_helper::TestMode;
+use integration::{MediaMtxServer, RtspTestHarness};
 
 /// Run integration tests with:
 /// cargo test -p gst-plugin-rtsp --features integration-tests integration -- --nocapture
@@ -35,11 +35,14 @@ use integration::server_helper::TestMode;
 fn test_integration_suite_available() {
     // Basic test to verify the integration test infrastructure is available
     gst::init().unwrap();
-    
+
     // Try to create a server (will use existing if available)
     match MediaMtxServer::new(TestMode::Normal) {
         Ok(server) => {
-            println!("Integration test server available on port {}", server.port());
+            println!(
+                "Integration test server available on port {}",
+                server.port()
+            );
             assert!(server.port() > 0);
         }
         Err(e) => {
@@ -53,7 +56,7 @@ fn test_integration_suite_available() {
 fn test_basic_rtsp_connection() {
     // Basic end-to-end test
     gst::init().unwrap();
-    
+
     let server = match MediaMtxServer::new(TestMode::Normal) {
         Ok(s) => s,
         Err(e) => {
@@ -61,17 +64,18 @@ fn test_basic_rtsp_connection() {
             return;
         }
     };
-    
+
     let url = server.url("videotestsrc");
-    
-    let mut harness = RtspTestHarness::new(&url)
-        .expect("Failed to create test harness");
-    
+
+    let mut harness = RtspTestHarness::new(&url).expect("Failed to create test harness");
+
     harness.start().unwrap();
-    
-    let connected = harness.wait_for_connection(std::time::Duration::from_secs(15)).unwrap();
+
+    let connected = harness
+        .wait_for_connection(std::time::Duration::from_secs(15))
+        .unwrap();
     assert!(connected, "Should establish basic RTSP connection");
-    
+
     assert!(harness.is_playing(), "Pipeline should be in playing state");
 }
 
@@ -79,7 +83,7 @@ fn test_basic_rtsp_connection() {
 fn test_basic_rtsps_connection() {
     // Basic RTSPS (secure) end-to-end test
     gst::init().unwrap();
-    
+
     let server = match MediaMtxServer::new(TestMode::Normal) {
         Ok(s) => s,
         Err(e) => {
@@ -87,25 +91,29 @@ fn test_basic_rtsps_connection() {
             return;
         }
     };
-    
+
     // Check if RTSPS is available
     if !MediaMtxServer::is_server_running(8322) {
         eprintln!("Skipping RTSPS test: No RTSPS server on port 8322");
         return;
     }
-    
+
     let url = server.rtsps_url("videotestsrc");
-    
-    let mut harness = RtspTestHarness::new(&url)
-        .expect("Failed to create test harness");
-    
+
+    let mut harness = RtspTestHarness::new(&url).expect("Failed to create test harness");
+
     // Allow self-signed certificates for testing
     harness.set_property("tls-validation-flags", 0u32).unwrap();
-    
+
     harness.start().unwrap();
-    
-    let connected = harness.wait_for_connection(std::time::Duration::from_secs(15)).unwrap();
+
+    let connected = harness
+        .wait_for_connection(std::time::Duration::from_secs(15))
+        .unwrap();
     assert!(connected, "Should establish basic RTSPS/TLS connection");
-    
-    assert!(harness.is_playing(), "Pipeline should be in playing state with RTSPS");
+
+    assert!(
+        harness.is_playing(),
+        "Pipeline should be in playing state with RTSPS"
+    );
 }
