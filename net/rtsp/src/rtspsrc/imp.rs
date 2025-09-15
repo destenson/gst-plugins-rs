@@ -3377,14 +3377,6 @@ impl RtspSrc {
             let _connection_span = super::telemetry::SpanHelper::connection_span(url.as_str());
             #[cfg(feature = "telemetry")]
             task_src.metrics.record_connection_attempt();
-            // Get the appropriate default port based on the URL scheme
-            let default_port = if url.scheme() == "rtsps" { 
-                322  // RTSPS default port
-            } else { 
-                554  // RTSP default port
-            };
-            let hostname_port =
-                format!("{}:{}", url.host_str().unwrap(), url.port().unwrap_or(default_port));
 
             // Get retry configuration from settings
             let settings = task_src.settings.lock().unwrap().clone();
@@ -3491,24 +3483,12 @@ impl RtspSrc {
                 }).await
             } else {
                 // Normal connection using connection racer
-                // Check if we need TLS based on URL scheme
-                let use_tls = url.scheme() == "rtsps";
-                
-                // Create TLS config - for now using defaults with accept_invalid_certs
-                // TODO: Integrate with TLS properties from settings
-                let mut tls_config = super::tls::TlsConfig::default();
-                tls_config.enabled = use_tls;
-                tls_config.accept_invalid_certs = true; // Temporary for testing
-                tls_config.accept_invalid_hostnames = true; // Temporary for testing
-                
                 let racing_config = super::connection_racer::ConnectionRacingConfig {
                     strategy: settings.connection_racing,
                     max_parallel_connections: settings.max_parallel_connections,
                     racing_delay_ms: settings.racing_delay_ms,
                     racing_timeout: std::time::Duration::from_nanos(settings.racing_timeout.nseconds()),
                     proxy_config,
-                    use_tls,
-                    tls_config,
                 };
                 let mut racer = super::connection_racer::ConnectionRacer::new(racing_config);
                 
@@ -3522,7 +3502,7 @@ impl RtspSrc {
                         // Mark connection attempt start
                         retry_calc.mark_connection_start();
                         
-                        match racer.connect(&hostname_port).await {
+                        match racer.connect(&url).await {
                             Ok(s) => {
                                 // Record successful connection
                                 retry_calc.record_connection_result(true, false);
