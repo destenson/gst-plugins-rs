@@ -45,23 +45,23 @@ mod buffer_pool;
 mod connection_pool;
 mod connection_racer;
 mod debug;
-pub mod error;
-pub mod error_recovery;
-mod error_migration_example;
-#[cfg(test)]
-mod error_tests;
-#[cfg(test)]
-mod retry_integration_tests;
-#[cfg(test)]
-mod racing_strategy_tests;
 #[cfg(test)]
 mod debug_tests;
+pub mod error;
+mod error_migration_example;
+pub mod error_recovery;
+#[cfg(test)]
+mod error_tests;
 mod http_tunnel;
 #[cfg(test)]
 mod http_tunnel_tests;
 mod imp;
 mod proxy;
+#[cfg(test)]
+mod racing_strategy_tests;
 pub mod retry;
+#[cfg(test)]
+mod retry_integration_tests;
 mod rtcp_enhanced;
 mod sdp;
 mod session_manager;

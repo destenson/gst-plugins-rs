@@ -200,8 +200,14 @@ mod tests {
         assert_eq!(context.operation, Some("SETUP".to_string()));
         assert_eq!(context.retry_count, 3);
         assert_eq!(context.details.len(), 2);
-        assert_eq!(context.details[0], ("transport".to_string(), "TCP".to_string()));
-        assert_eq!(context.details[1], ("session".to_string(), "12345".to_string()));
+        assert_eq!(
+            context.details[0],
+            ("transport".to_string(), "TCP".to_string())
+        );
+        assert_eq!(
+            context.details[1],
+            ("session".to_string(), "12345".to_string())
+        );
     }
 
     #[test]

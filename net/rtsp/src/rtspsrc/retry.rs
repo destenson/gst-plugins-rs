@@ -9,11 +9,11 @@
 //
 // SPDX-License-Identifier: MPL-2.0
 
-use rand::Rng;
-use std::time::{Duration, Instant};
-use gst::prelude::*;
 use super::debug::{DecisionHistory, DecisionType, CAT_RETRY};
 use crate::debug_decision;
+use gst::prelude::*;
+use rand::Rng;
+use std::time::{Duration, Instant};
 
 #[cfg(feature = "adaptive")]
 use super::adaptive_retry::{AdaptiveRetryConfig, AdaptiveRetryManager};
@@ -30,8 +30,8 @@ pub enum RetryStrategy {
     Linear,
     Exponential,
     ExponentialJitter,
-    FirstWins,  // Connection racing strategy integrated with retry
-    LastWins,   // Connection racing strategy integrated with retry
+    FirstWins, // Connection racing strategy integrated with retry
+    LastWins,  // Connection racing strategy integrated with retry
 }
 
 impl Default for RetryStrategy {
@@ -142,7 +142,7 @@ impl RetryCalculator {
         }
         self
     }
-    
+
     #[cfg(feature = "telemetry")]
     pub fn with_telemetry(mut self, telemetry: super::telemetry::RtspMetrics) -> Self {
         self.telemetry = Some(telemetry);
@@ -161,15 +161,19 @@ impl RetryCalculator {
         } else {
             self.attempt < self.config.max_attempts as u32
         };
-        
+
         gst::debug!(
             CAT_RETRY,
             "Should retry check: attempt={}/{}, will_retry={}",
             self.attempt,
-            if self.config.max_attempts < 0 { "infinite".to_string() } else { self.config.max_attempts.to_string() },
+            if self.config.max_attempts < 0 {
+                "infinite".to_string()
+            } else {
+                self.config.max_attempts.to_string()
+            },
             should_retry
         );
-        
+
         should_retry
     }
 
@@ -179,8 +183,16 @@ impl RetryCalculator {
         }
 
         let current_strategy = if self.config.strategy == RetryStrategy::Auto {
-            let strategy = self.auto_selector.as_ref().map(|s| s.get_strategy()).unwrap_or(self.config.strategy);
-            gst::debug!(CAT_RETRY, "Auto mode selected strategy: {}", strategy.as_str());
+            let strategy = self
+                .auto_selector
+                .as_ref()
+                .map(|s| s.get_strategy())
+                .unwrap_or(self.config.strategy);
+            gst::debug!(
+                CAT_RETRY,
+                "Auto mode selected strategy: {}",
+                strategy.as_str()
+            );
             strategy
         } else {
             self.config.strategy
@@ -190,9 +202,17 @@ impl RetryCalculator {
             RetryStrategy::None => return None,
             RetryStrategy::Immediate => (Duration::ZERO, "immediate retry"),
             RetryStrategy::Linear => (self.calculate_linear_delay(), "linear backoff"),
-            RetryStrategy::Exponential => (self.calculate_exponential_delay(false), "exponential backoff"),
-            RetryStrategy::ExponentialJitter => (self.calculate_exponential_delay(true), "exponential with jitter"),
-            RetryStrategy::FirstWins | RetryStrategy::LastWins => (Duration::from_millis(250), "racing mode"),
+            RetryStrategy::Exponential => (
+                self.calculate_exponential_delay(false),
+                "exponential backoff",
+            ),
+            RetryStrategy::ExponentialJitter => (
+                self.calculate_exponential_delay(true),
+                "exponential with jitter",
+            ),
+            RetryStrategy::FirstWins | RetryStrategy::LastWins => {
+                (Duration::from_millis(250), "racing mode")
+            }
             RetryStrategy::Auto => (self.calculate_auto_delay(), "auto-calculated delay"),
             #[cfg(feature = "adaptive")]
             RetryStrategy::Adaptive => (self.calculate_adaptive_delay(), "adaptive learning"),
@@ -200,7 +220,7 @@ impl RetryCalculator {
 
         // Cap at max_delay
         let final_delay = delay.min(self.config.max_delay);
-        
+
         // Log the retry decision
         debug_decision!(
             CAT_RETRY,
@@ -220,7 +240,7 @@ impl RetryCalculator {
 
         self.attempt += 1;
         self.last_attempt_time = Some(Instant::now());
-        
+
         // Record retry in telemetry
         #[cfg(feature = "telemetry")]
         if let Some(ref telemetry) = self.telemetry {
@@ -255,7 +275,7 @@ impl RetryCalculator {
         if !success && self.first_failure_time.is_none() {
             self.first_failure_time = Some(Instant::now());
         }
-        
+
         // If successful, record recovery time
         if success {
             #[cfg(feature = "telemetry")]
@@ -267,9 +287,11 @@ impl RetryCalculator {
             }
             self.first_failure_time = None;
         }
-        
+
         // Log connection result
-        let duration_ms = self.last_connection_start.map(|start| start.elapsed().as_millis() as u64);
+        let duration_ms = self
+            .last_connection_start
+            .map(|start| start.elapsed().as_millis() as u64);
         debug_decision!(
             CAT_RETRY,
             self.decision_history.as_ref(),
@@ -284,7 +306,7 @@ impl RetryCalculator {
             duration_ms.map_or("N/A".to_string(), |d| d.to_string()),
             self.attempt
         );
-        
+
         if let Some(ref mut selector) = self.auto_selector {
             let connection_duration = if success && !connection_dropped {
                 // Connection is still alive
@@ -296,7 +318,7 @@ impl RetryCalculator {
                 // Connection failed
                 None
             };
-            
+
             let old_strategy = selector.get_strategy();
             selector.record_attempt(ConnectionAttemptResult {
                 success,
@@ -305,7 +327,7 @@ impl RetryCalculator {
                 retry_count: self.attempt,
             });
             let new_strategy = selector.get_strategy();
-            
+
             // Record strategy change in telemetry
             #[cfg(feature = "telemetry")]
             if old_strategy != new_strategy {
@@ -313,11 +335,11 @@ impl RetryCalculator {
                     telemetry.record_retry_strategy_change(
                         old_strategy.as_str(),
                         new_strategy.as_str(),
-                        Some("auto-mode")
+                        Some("auto-mode"),
                     );
                 }
             }
-            
+
             // Record auto mode pattern
             #[cfg(feature = "telemetry")]
             if let Some(ref telemetry) = self.telemetry {
@@ -325,7 +347,7 @@ impl RetryCalculator {
                 telemetry.record_auto_mode_pattern(&pattern.to_string());
             }
         }
-        
+
         // Record adaptive confidence if using adaptive strategy
         #[cfg(all(feature = "adaptive", feature = "telemetry"))]
         if let Some(ref manager) = self.adaptive_manager {
@@ -424,7 +446,7 @@ impl RetryCalculator {
             .as_ref()
             .map(|m| m.get_stats_summary())
     }
-    
+
     /// Get the decision history as JSON
     pub fn get_decision_history_json(&self) -> String {
         self.decision_history
@@ -432,7 +454,7 @@ impl RetryCalculator {
             .map(|h| h.get_history_json())
             .unwrap_or_else(|| "[]".to_string())
     }
-    
+
     /// Clear the decision history
     pub fn clear_decision_history(&mut self) {
         if let Some(ref history) = self.decision_history {
@@ -462,8 +484,14 @@ mod tests {
             RetryStrategy::ExponentialJitter
         );
         assert_eq!(RetryStrategy::from_string("auto"), RetryStrategy::Auto);
-        assert_eq!(RetryStrategy::from_string("first-wins"), RetryStrategy::FirstWins);
-        assert_eq!(RetryStrategy::from_string("last-wins"), RetryStrategy::LastWins);
+        assert_eq!(
+            RetryStrategy::from_string("first-wins"),
+            RetryStrategy::FirstWins
+        );
+        assert_eq!(
+            RetryStrategy::from_string("last-wins"),
+            RetryStrategy::LastWins
+        );
         #[cfg(feature = "adaptive")]
         assert_eq!(
             RetryStrategy::from_string("adaptive"),

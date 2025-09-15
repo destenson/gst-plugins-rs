@@ -1,3 +1,4 @@
+#![allow(unused)]
 // ONVIF Discovery Module
 // Discovers ONVIF-compliant IP cameras on the network
 

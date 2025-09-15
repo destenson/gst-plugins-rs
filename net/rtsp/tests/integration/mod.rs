@@ -8,9 +8,9 @@
 //
 // SPDX-License-Identifier: MPL-2.0
 
+pub mod scenarios;
 pub mod server_helper;
 pub mod test_harness;
-pub mod scenarios;
 
 #[cfg(feature = "integration-tests")]
 pub use server_helper::MediaMtxServer;

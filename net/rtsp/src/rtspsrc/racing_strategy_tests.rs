@@ -24,21 +24,20 @@ mod tests {
             max_delay: Duration::from_secs(5),
             linear_step: Duration::from_millis(200),
         };
-        
-        let mut calc = RetryCalculator::new(config)
-            .with_server_url("rtsp://test.local");
-        
+
+        let mut calc = RetryCalculator::new(config).with_server_url("rtsp://test.local");
+
         // Initial strategy should be None
         let initial = calc.get_racing_strategy();
         assert!(initial.is_none() || initial == Some(ConnectionRacingStrategy::None));
-        
+
         // Simulate multiple failures to trigger pattern detection
         for _ in 0..10 {
             calc.mark_connection_start();
             calc.record_connection_result(false, false);
             let _ = calc.next_delay();
         }
-        
+
         // Should recommend a racing strategy after failures
         let recommended = calc.get_racing_strategy();
         assert!(recommended.is_some());
@@ -47,7 +46,7 @@ mod tests {
     #[test]
     fn test_racing_strategy_change_on_pattern() {
         let mut selector = AutoRetrySelector::new();
-        
+
         // Simulate connection-limited pattern (connections succeed but drop quickly)
         // The selector only looks at the last 3 attempts, so ensure those show the pattern
         for i in 0..5 {
@@ -58,7 +57,7 @@ mod tests {
                 retry_count: i,
             });
         }
-        
+
         // Should recommend LastWins for connection-limited
         let pattern = selector.get_pattern();
         assert_eq!(pattern, NetworkPattern::ConnectionLimited);
@@ -69,7 +68,7 @@ mod tests {
     #[test]
     fn test_racing_strategy_transitions() {
         let mut selector = AutoRetrySelector::new();
-        
+
         // Start with stable pattern
         for _ in 0..5 {
             selector.record_attempt(ConnectionAttemptResult {
@@ -79,24 +78,24 @@ mod tests {
                 retry_count: 0,
             });
         }
-        
+
         let initial = selector.get_racing_strategy();
         assert_eq!(initial, ConnectionRacingStrategy::None);
-        
+
         // Transition to lossy pattern
         for i in 0..10 {
             selector.record_attempt(ConnectionAttemptResult {
                 success: i % 3 == 0, // 33% success rate
-                connection_duration: if i % 3 == 0 { 
-                    Some(Duration::from_secs(5)) 
-                } else { 
-                    None 
+                connection_duration: if i % 3 == 0 {
+                    Some(Duration::from_secs(5))
+                } else {
+                    None
                 },
                 timestamp: Instant::now(),
                 retry_count: i,
             });
         }
-        
+
         let after_loss = selector.get_racing_strategy();
         assert_eq!(after_loss, ConnectionRacingStrategy::FirstWins);
     }
@@ -110,20 +109,23 @@ mod tests {
             racing_timeout: Duration::from_secs(5),
             proxy_config: None,
         };
-        
+
         let mut racer = ConnectionRacer::new(config);
-        
+
         // Initial strategy
         assert_eq!(racer.current_strategy(), ConnectionRacingStrategy::None);
-        
+
         // Update to FirstWins
         racer.update_strategy(ConnectionRacingStrategy::FirstWins);
-        assert_eq!(racer.current_strategy(), ConnectionRacingStrategy::FirstWins);
-        
+        assert_eq!(
+            racer.current_strategy(),
+            ConnectionRacingStrategy::FirstWins
+        );
+
         // Update to LastWins
         racer.update_strategy(ConnectionRacingStrategy::LastWins);
         assert_eq!(racer.current_strategy(), ConnectionRacingStrategy::LastWins);
-        
+
         // Update to Hybrid
         racer.update_strategy(ConnectionRacingStrategy::Hybrid);
         assert_eq!(racer.current_strategy(), ConnectionRacingStrategy::Hybrid);
@@ -132,22 +134,25 @@ mod tests {
     #[test]
     fn test_strategy_mapping_patterns() {
         let mut selector = AutoRetrySelector::new();
-        
+
         // Test ConnectionLimited → LastWins
         // Need successful connections that drop quickly
         for i in 0..10 {
             selector.record_attempt(ConnectionAttemptResult {
-                success: true, // Connections succeed
+                success: true,                                     // Connections succeed
                 connection_duration: Some(Duration::from_secs(2)), // But drop quickly
                 timestamp: Instant::now(),
                 retry_count: i,
             });
         }
         assert_eq!(selector.get_pattern(), NetworkPattern::ConnectionLimited);
-        assert_eq!(selector.get_racing_strategy(), ConnectionRacingStrategy::LastWins);
-        
+        assert_eq!(
+            selector.get_racing_strategy(),
+            ConnectionRacingStrategy::LastWins
+        );
+
         selector.reset();
-        
+
         // Test HighPacketLoss → FirstWins
         for i in 0..12 {
             selector.record_attempt(ConnectionAttemptResult {
@@ -162,10 +167,13 @@ mod tests {
             });
         }
         assert_eq!(selector.get_pattern(), NetworkPattern::HighPacketLoss);
-        assert_eq!(selector.get_racing_strategy(), ConnectionRacingStrategy::FirstWins);
-        
+        assert_eq!(
+            selector.get_racing_strategy(),
+            ConnectionRacingStrategy::FirstWins
+        );
+
         selector.reset();
-        
+
         // Test Stable → None
         for _ in 0..5 {
             selector.record_attempt(ConnectionAttemptResult {
@@ -176,7 +184,10 @@ mod tests {
             });
         }
         assert_eq!(selector.get_pattern(), NetworkPattern::Stable);
-        assert_eq!(selector.get_racing_strategy(), ConnectionRacingStrategy::None);
+        assert_eq!(
+            selector.get_racing_strategy(),
+            ConnectionRacingStrategy::None
+        );
     }
 
     #[test]
@@ -188,28 +199,27 @@ mod tests {
             max_delay: Duration::from_secs(5),
             linear_step: Duration::from_millis(200),
         };
-        
-        let mut calc = RetryCalculator::new(config)
-            .with_server_url("rtsp://test.local");
-        
+
+        let mut calc = RetryCalculator::new(config).with_server_url("rtsp://test.local");
+
         // Build up a pattern
         for _ in 0..10 {
             calc.mark_connection_start();
             calc.record_connection_result(false, false);
             let _ = calc.next_delay();
         }
-        
+
         let strategy1 = calc.get_racing_strategy();
-        
+
         // Continue with more attempts
         for _ in 0..5 {
             calc.mark_connection_start();
             calc.record_connection_result(false, false);
             let _ = calc.next_delay();
         }
-        
+
         let strategy2 = calc.get_racing_strategy();
-        
+
         // Strategy should be consistent or evolve predictably
         assert!(strategy1.is_some());
         assert!(strategy2.is_some());
@@ -218,7 +228,7 @@ mod tests {
     #[test]
     fn test_smooth_strategy_transitions() {
         let mut selector = AutoRetrySelector::new();
-        
+
         // Gradual transition from stable to lossy
         for i in 0..20 {
             let success = if i < 5 {
@@ -228,7 +238,7 @@ mod tests {
             } else {
                 i % 4 == 0 // End with 25% success
             };
-            
+
             selector.record_attempt(ConnectionAttemptResult {
                 success,
                 connection_duration: if success {
@@ -240,15 +250,19 @@ mod tests {
                 retry_count: if success { 0 } else { 1 },
             });
         }
-        
+
         // Should detect high packet loss pattern
         let pattern = selector.get_pattern();
-        assert!(pattern == NetworkPattern::HighPacketLoss || 
-                pattern == NetworkPattern::ConnectionLimited);
-        
+        assert!(
+            pattern == NetworkPattern::HighPacketLoss
+                || pattern == NetworkPattern::ConnectionLimited
+        );
+
         // Should recommend appropriate racing strategy
         let strategy = selector.get_racing_strategy();
-        assert!(strategy == ConnectionRacingStrategy::FirstWins || 
-                strategy == ConnectionRacingStrategy::LastWins);
+        assert!(
+            strategy == ConnectionRacingStrategy::FirstWins
+                || strategy == ConnectionRacingStrategy::LastWins
+        );
     }
 }

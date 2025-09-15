@@ -11,12 +11,12 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
+use gst::prelude::*;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use gst::prelude::*;
 
-use super::retry::RetryStrategy;
 use super::debug::{DecisionHistory, DecisionType, CAT_ADAPTIVE};
+use super::retry::RetryStrategy;
 use crate::debug_decision;
 
 const CACHE_TTL_DAYS: u64 = 7;
@@ -319,7 +319,7 @@ impl AdaptiveRetryManager {
         };
 
         self.current_strategy = Some(strategy);
-        
+
         // Log the selected strategy and confidence
         let confidence = self.get_confidence_score();
         let phase_str = match self.phase {
@@ -328,7 +328,7 @@ impl AdaptiveRetryManager {
             Phase::Exploration => "exploration",
             Phase::MiniDiscovery(_) => "mini-discovery",
         };
-        
+
         debug_decision!(
             CAT_ADAPTIVE,
             self.decision_history.as_ref(),
@@ -342,7 +342,7 @@ impl AdaptiveRetryManager {
             confidence,
             phase_str
         );
-        
+
         strategy
     }
 
@@ -440,7 +440,7 @@ impl AdaptiveRetryManager {
         let old_confidence = metrics.confidence_score;
         // Reduce confidence in current model
         metrics.confidence_score *= 0.5;
-        
+
         gst::debug!(
             CAT_ADAPTIVE,
             "Network change detected! Reducing confidence from {:.2} to {:.2}, entering mini-discovery",
@@ -465,7 +465,7 @@ impl AdaptiveRetryManager {
         if let Some(stats) = metrics.strategies.get_mut(&strategy) {
             let old_score = stats.score;
             stats.record_attempt(success, recovery_time);
-            
+
             gst::trace!(
                 CAT_ADAPTIVE,
                 "Recorded attempt for {:?}: success={}, recovery_time={}ms, score: {:.3} -> {:.3}",
@@ -481,7 +481,7 @@ impl AdaptiveRetryManager {
         metrics.last_updated = SystemTime::now();
         let old_confidence = metrics.confidence_score;
         metrics.update_confidence();
-        
+
         if (metrics.confidence_score - old_confidence).abs() > 0.05 {
             gst::debug!(
                 CAT_ADAPTIVE,
@@ -491,7 +491,7 @@ impl AdaptiveRetryManager {
                 metrics.total_attempts
             );
         }
-        
+
         // Increment save counter
         {
             let mut counter = self.save_counter.lock().unwrap();
@@ -510,7 +510,7 @@ impl AdaptiveRetryManager {
     pub fn get_current_confidence(&self) -> f32 {
         self.metrics.lock().unwrap().confidence_score
     }
-    
+
     /// Get confidence score as f64 (alias for compatibility)
     pub fn get_confidence_score(&self) -> f64 {
         self.get_current_confidence() as f64
@@ -531,13 +531,13 @@ impl AdaptiveRetryManager {
     fn should_save(&self) -> bool {
         const SAVE_INTERVAL: Duration = Duration::from_secs(300); // 5 minutes
         const SAVE_FREQUENCY: u64 = 100; // Every 100 attempts
-        
+
         let counter = *self.save_counter.lock().unwrap();
         let last_save = *self.last_save_time.lock().unwrap();
-        
+
         counter >= SAVE_FREQUENCY || last_save.elapsed() > SAVE_INTERVAL
     }
-    
+
     /// Force save current metrics (e.g., on shutdown)
     pub fn save_now(&self) -> Result<(), std::io::Error> {
         if self.config.persistence {
@@ -547,22 +547,22 @@ impl AdaptiveRetryManager {
             Ok(())
         }
     }
-    
+
     /// Clean up old cache entries
     pub fn cleanup_cache() -> Result<(), std::io::Error> {
         let cache_dir = Self::cache_dir().ok_or_else(|| {
             std::io::Error::new(std::io::ErrorKind::NotFound, "Cache directory not found")
         })?;
-        
+
         if !cache_dir.exists() {
             return Ok(());
         }
-        
+
         let now = SystemTime::now();
         for entry in fs::read_dir(&cache_dir)? {
             let entry = entry?;
             let metadata = entry.metadata()?;
-            
+
             if let Ok(modified) = metadata.modified() {
                 if let Ok(age) = now.duration_since(modified) {
                     if age > Duration::from_secs(CACHE_TTL_DAYS * 24 * 3600) {
@@ -571,10 +571,10 @@ impl AdaptiveRetryManager {
                 }
             }
         }
-        
+
         Ok(())
     }
-    
+
     fn cache_dir() -> Option<PathBuf> {
         dirs::cache_dir().map(|d| d.join("gstreamer").join("rtspsrc2"))
     }

@@ -4,9 +4,9 @@
 // This module provides functionality for detecting and negotiating RTSP protocol versions
 // in preparation for future RTSP 2.0 support.
 
-use rtsp_types::{Method, Request, Response, StatusCode, Version, HeaderName};
-use std::fmt;
 use gst::glib;
+use rtsp_types::{HeaderName, Method, Request, Response, StatusCode, Version};
+use std::fmt;
 
 /// Supported RTSP protocol versions
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,15 +78,16 @@ impl VersionNegotiator {
     pub fn detect_server_version(&mut self, response: &Response<Vec<u8>>) -> ProtocolVersion {
         let version = ProtocolVersion::from_rtsp_version(response.version());
         self.server_version = Some(version);
-        
+
         // Check for RTSP 2.0 specific headers
         let require_header = HeaderName::from_static_str("Require").unwrap();
         let proxy_require_header = HeaderName::from_static_str("Proxy-Require").unwrap();
         let supported_header = HeaderName::from_static_str("Supported").unwrap();
-        
-        if response.header(&require_header).is_some() 
-            || response.header(&proxy_require_header).is_some() 
-            || response.header(&supported_header).is_some() {
+
+        if response.header(&require_header).is_some()
+            || response.header(&proxy_require_header).is_some()
+            || response.header(&supported_header).is_some()
+        {
             // Server has RTSP 2.0 feature negotiation headers
             if let Some(supported) = response.header(&supported_header) {
                 let supported_str = supported.as_str();
@@ -96,7 +97,7 @@ impl VersionNegotiator {
                     .collect();
             }
         }
-        
+
         version
     }
 
@@ -107,7 +108,10 @@ impl VersionNegotiator {
             (ProtocolVersion::V2_0, Some(ProtocolVersion::V2_0)) => ProtocolVersion::V2_0,
             // Client wants 2.0 but server only supports 1.0
             (ProtocolVersion::V2_0, Some(ProtocolVersion::V1_0)) => {
-                glib::g_warning!("rtspsrc", "Server doesn't support RTSP 2.0, falling back to 1.0");
+                glib::g_warning!(
+                    "rtspsrc",
+                    "Server doesn't support RTSP 2.0, falling back to 1.0"
+                );
                 ProtocolVersion::V1_0
             }
             // Server supports 2.0 but client prefers 1.0
@@ -118,7 +122,7 @@ impl VersionNegotiator {
             // Default to 1.0
             _ => ProtocolVersion::V1_0,
         };
-        
+
         self.negotiated_version = Some(negotiated);
         negotiated
     }
@@ -135,16 +139,20 @@ impl VersionNegotiator {
 
     /// Build request with appropriate version
     pub fn build_request(&self, method: Method, _uri: &str) -> Request<Vec<u8>> {
-        let version = self.negotiated_version
+        let version = self
+            .negotiated_version
             .unwrap_or(self.preferred_version)
             .to_rtsp_version();
-        
-        Request::builder(method, version)
-            .build(Vec::new())
+
+        Request::builder(method, version).build(Vec::new())
     }
 
     /// Add RTSP 2.0 feature requirements to request
-    pub fn add_v2_features(&self, mut request: Request<Vec<u8>>, features: &[&str]) -> Request<Vec<u8>> {
+    pub fn add_v2_features(
+        &self,
+        mut request: Request<Vec<u8>>,
+        features: &[&str],
+    ) -> Request<Vec<u8>> {
         if self.negotiated_version == Some(ProtocolVersion::V2_0) && !features.is_empty() {
             let require_header_name = HeaderName::from_static_str("Require").unwrap();
             let require_header_value = features.join(", ");
@@ -191,10 +199,9 @@ mod tests {
     #[test]
     fn test_version_detection() {
         let mut negotiator = VersionNegotiator::new(ProtocolVersion::V1_0);
-        
+
         // Test detecting 1.0 server
-        let response_v1 = Response::builder(Version::V1_0, StatusCode::Ok)
-            .build(Vec::new());
+        let response_v1 = Response::builder(Version::V1_0, StatusCode::Ok).build(Vec::new());
         let detected = negotiator.detect_server_version(&response_v1);
         assert_eq!(detected, ProtocolVersion::V1_0);
     }
@@ -220,13 +227,12 @@ mod tests {
     #[test]
     fn test_v2_feature_detection() {
         let mut negotiator = VersionNegotiator::new(ProtocolVersion::V2_0);
-        
+
         // Test response with Supported header (RTSP 2.0 feature)
         let supported_header = HeaderName::from_static_str("Supported").unwrap();
-        let mut response = Response::builder(Version::V2_0, StatusCode::Ok)
-            .build(Vec::new());
+        let mut response = Response::builder(Version::V2_0, StatusCode::Ok).build(Vec::new());
         response.insert_header(supported_header, "play.basic, play.scale, play.speed");
-        
+
         negotiator.detect_server_version(&response);
         assert!(negotiator.supports_feature("play.scale"));
         assert!(negotiator.supports_feature("play.speed"));
@@ -236,25 +242,29 @@ mod tests {
     #[test]
     fn test_version_error_detection() {
         // Test 505 Version Not Supported
-        let response = Response::builder(Version::V1_0, StatusCode::from(505))
-            .build(Vec::new());
+        let response = Response::builder(Version::V1_0, StatusCode::from(505)).build(Vec::new());
         assert!(check_version_error(&response));
 
         // Test 501 Not Implemented
-        let response = Response::builder(Version::V1_0, StatusCode::NotImplemented)
-            .build(Vec::new());
+        let response =
+            Response::builder(Version::V1_0, StatusCode::NotImplemented).build(Vec::new());
         assert!(check_version_error(&response));
 
         // Test 200 OK (not a version error)
-        let response = Response::builder(Version::V1_0, StatusCode::Ok)
-            .build(Vec::new());
+        let response = Response::builder(Version::V1_0, StatusCode::Ok).build(Vec::new());
         assert!(!check_version_error(&response));
     }
 
     #[test]
     fn test_parse_version_string() {
-        assert_eq!(parse_version_string("RTSP/1.0"), Some(ProtocolVersion::V1_0));
-        assert_eq!(parse_version_string("RTSP/2.0"), Some(ProtocolVersion::V2_0));
+        assert_eq!(
+            parse_version_string("RTSP/1.0"),
+            Some(ProtocolVersion::V1_0)
+        );
+        assert_eq!(
+            parse_version_string("RTSP/2.0"),
+            Some(ProtocolVersion::V2_0)
+        );
         assert_eq!(parse_version_string("RTSP/3.0"), None);
         assert_eq!(parse_version_string("HTTP/1.1"), None);
     }
@@ -263,7 +273,7 @@ mod tests {
     fn test_build_request_with_version() {
         let negotiator = VersionNegotiator::new(ProtocolVersion::V2_0);
         let request = negotiator.build_request(Method::Options, "rtsp://example.com/test");
-        
+
         assert_eq!(request.version(), Version::V2_0);
         assert_eq!(request.method(), &Method::Options);
     }
@@ -272,10 +282,11 @@ mod tests {
     fn test_add_v2_features_to_request() {
         let mut negotiator = VersionNegotiator::new(ProtocolVersion::V2_0);
         negotiator.negotiated_version = Some(ProtocolVersion::V2_0);
-        
+
         let request = negotiator.build_request(Method::Setup, "rtsp://example.com/test");
-        let request_with_features = negotiator.add_v2_features(request, &["play.scale", "play.speed"]);
-        
+        let request_with_features =
+            negotiator.add_v2_features(request, &["play.scale", "play.speed"]);
+
         let require_header = HeaderName::from_static_str("Require").unwrap();
         let header_value = request_with_features.header(&require_header);
         assert!(header_value.is_some());

@@ -40,10 +40,12 @@ pub enum RtspStream {
 
 impl RtspStream {
     pub async fn connect(url: &Url, tls_config: &TlsConfig) -> Result<Self> {
-        let host = url.host_str().ok_or_else(|| RtspError::Protocol(ProtocolError::InvalidUrl {
-            url: url.to_string(),
-            reason: "No host in URL".to_string(),
-        }))?;
+        let host = url.host_str().ok_or_else(|| {
+            RtspError::Protocol(ProtocolError::InvalidUrl {
+                url: url.to_string(),
+                reason: "No host in URL".to_string(),
+            })
+        })?;
 
         let is_tls = url.scheme() == "rtsps";
         let default_port = if is_tls {

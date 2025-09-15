@@ -124,7 +124,6 @@ const DEFAULT_MAX_BUFFERED_BYTES: usize = 10 * 1024 * 1024; // 10 MB
 const DEFAULT_REQUIRE_ALL_STREAMS: bool = false;
 const BUFFER_QUEUE_CLEANUP_THRESHOLD: f32 = 0.8; // Start cleanup at 80% capacity
 
-
 const MAX_MESSAGE_SIZE: usize = 1024 * 1024;
 const MAX_BIND_PORT_RETRY: u16 = 100;
 const UDP_PACKET_MAX_SIZE: u32 = 65535 - 8;
@@ -909,13 +908,13 @@ impl RtspSrc {
         if uri.password().is_some() || !uri.username().is_empty() {
             let username = uri.username();
             let password = uri.password();
-            
+
             // Extract credentials from URL
             if !username.is_empty() {
                 gst::debug!(CAT, imp = self, "Setting user-id from URI: {}", username);
                 settings.user_id = Some(username.to_string());
             }
-            
+
             if let Some(password) = password {
                 gst::debug!(CAT, imp = self, "Setting user-pw from URI");
                 settings.user_pw = Some(password.to_string());
@@ -3390,7 +3389,7 @@ impl RtspSrc {
 
             let mut retry_calc = super::retry::RetryCalculator::new(retry_config)
                 .with_server_url(&url.to_string());
-            
+
             #[cfg(feature = "telemetry")]
             {
                 retry_calc = retry_calc.with_telemetry(task_src.metrics.clone());
@@ -3416,18 +3415,18 @@ impl RtspSrc {
 
             // Check if HTTP tunneling should be used
             let use_tunneling = super::http_tunnel::should_use_tunneling(&url, settings.http_tunnel_mode);
-            
+
             // Apply timeout to entire connection process
             let connection_timeout = std::time::Duration::from_nanos(settings.timeout.nseconds());
             let connection_result = if use_tunneling {
                 gst::info!(CAT, "Using HTTP tunneling for connection");
-                
+
                 // HTTP tunneling connection logic
                 time::timeout(connection_timeout, async {
                     loop {
                         // Mark connection attempt start
                         retry_calc.mark_connection_start();
-                        
+
                         // Create HTTP tunnel
                         let mut tunnel = match super::http_tunnel::HttpTunnel::new(
                             &url,
@@ -3440,7 +3439,7 @@ impl RtspSrc {
                                 return Err(format!("Failed to create HTTP tunnel: {}", e));
                             }
                         };
-                        
+
                         match tunnel.connect().await {
                             Ok(_) => {
                                 // Record successful connection
@@ -3451,7 +3450,7 @@ impl RtspSrc {
                             Err(err) => {
                                 // Record failed connection
                                 retry_calc.record_connection_result(false, false);
-                                
+
                                 if let Some(delay) = retry_calc.next_delay() {
                                     let attempt = retry_calc.current_attempt();
                                     let auto_summary = retry_calc.get_auto_summary().unwrap_or_default();
@@ -3460,7 +3459,7 @@ impl RtspSrc {
                                         "HTTP tunnel connection to '{}' failed (attempt {attempt}): {err:#?}. Retrying in {} ms... Auto mode: {}",
                                         url, delay.as_millis(), auto_summary
                                     );
-                                    
+
                                     // Post a message about the retry attempt
                                     let msg = gst::message::Element::builder(
                                         gst::Structure::builder("rtsp-connection-retry")
@@ -3472,7 +3471,7 @@ impl RtspSrc {
                                     .src(&*task_src.obj())
                                     .build();
                                     let _ = task_src.obj().post_message(msg);
-                                    
+
                                     tokio::time::sleep(delay).await;
                                 } else {
                                     return Err(format!("Failed to establish HTTP tunnel to '{}' after {} attempts: {err:#?}", url, retry_calc.current_attempt()));
@@ -3491,17 +3490,17 @@ impl RtspSrc {
                     proxy_config,
                 };
                 let mut racer = super::connection_racer::ConnectionRacer::new(racing_config);
-                
+
                 time::timeout(connection_timeout, async {
                     loop {
                         // Update racing strategy based on auto mode recommendations
                         if let Some(recommended_strategy) = retry_calc.get_racing_strategy() {
                             racer.update_strategy(recommended_strategy);
                         }
-                        
+
                         // Mark connection attempt start
                         retry_calc.mark_connection_start();
-                        
+
                         match racer.connect(&url).await {
                             Ok(s) => {
                                 // Record successful connection
@@ -3545,13 +3544,13 @@ impl RtspSrc {
 
             // Handle both tunneled and normal connections
             let is_tunneled = matches!(connection_result, Ok(Ok(Err(_))));
-            
+
             let (stream, sink) = if is_tunneled {
                 // HTTP tunneled connection
                 match connection_result {
                     Ok(Ok(Err(tunnel))) => {
                         gst::info!(CAT, "Connected via HTTP tunnel!");
-                        
+
                         // For now, we'll need to properly implement the tunnel stream/sink conversion
                         // This is a placeholder implementation
                         gst::element_imp_error!(
@@ -3574,7 +3573,7 @@ impl RtspSrc {
                         } else {
                             gst::info!(CAT, "Connected via TLS!");
                         }
-                        
+
                         // Use the RtspStream directly which implements AsyncRead + AsyncWrite
                         // We can use tokio::io::split for both Plain and TLS variants
                         let (read, write) = tokio::io::split(rtsp_stream);
@@ -3734,7 +3733,8 @@ impl RtspSrc {
         #[cfg(feature = "v1_20")]
         appsrc.set_property("max-time", 2_000_000_000u64); // 2 seconds in nanoseconds
         let obj = self.obj();
-        obj.add(&appsrc).map_err(|e| glib::Error::new(gst::ResourceError::Failed, &e.to_string()))?;
+        obj.add(&appsrc)
+            .map_err(|e| glib::Error::new(gst::ResourceError::Failed, &e.to_string()))?;
         appsrc
             .static_pad("src")
             .unwrap()
@@ -3747,7 +3747,9 @@ impl RtspSrc {
         gst::info!(CAT, "Adding ghost srcpad {}", ghostpad.name());
         obj.add_pad(&ghostpad)
             .expect("Adding a ghostpad should never fail");
-        appsrc.sync_state_with_parent().map_err(|e| glib::Error::new(gst::ResourceError::Failed, &e.to_string()))?;
+        appsrc
+            .sync_state_with_parent()
+            .map_err(|e| glib::Error::new(gst::ResourceError::Failed, &e.to_string()))?;
         Ok(appsrc)
     }
 
@@ -3768,13 +3770,17 @@ impl RtspSrc {
             .stream_type(gst_app::AppStreamType::Stream)
             .is_live(true)
             .build();
-        self.obj().add(&appsrc).map_err(|e| glib::Error::new(gst::ResourceError::Failed, &e.to_string()))?;
+        self.obj()
+            .add(&appsrc)
+            .map_err(|e| glib::Error::new(gst::ResourceError::Failed, &e.to_string()))?;
         appsrc
             .static_pad("src")
             .unwrap()
             .link(&manager.rtcp_recv_sinkpad(rtpsession_n).unwrap())
             .map_err(|_| glib::Error::new(gst::ResourceError::Failed, "Failed to link pads"))?;
-        appsrc.sync_state_with_parent().map_err(|e| glib::Error::new(gst::ResourceError::Failed, &e.to_string()))?;
+        appsrc
+            .sync_state_with_parent()
+            .map_err(|e| glib::Error::new(gst::ResourceError::Failed, &e.to_string()))?;
         Ok(appsrc)
     }
 
@@ -3803,7 +3809,9 @@ impl RtspSrc {
             .async_(false)
             .callbacks(cbs)
             .build();
-        self.obj().add(&rtcp_appsink).map_err(|e| glib::Error::new(gst::ResourceError::Failed, &e.to_string()))?;
+        self.obj()
+            .add(&rtcp_appsink)
+            .map_err(|e| glib::Error::new(gst::ResourceError::Failed, &e.to_string()))?;
         manager
             .rtcp_send_srcpad(rtpsession_n)
             .unwrap()
@@ -4522,7 +4530,11 @@ impl RtspManager {
         Ok(())
     }
 
-    fn configure_session(&self, session_id: u32, probation: u32) -> Result<(), super::error::RtspError> {
+    fn configure_session(
+        &self,
+        session_id: u32,
+        probation: u32,
+    ) -> Result<(), super::error::RtspError> {
         // Configure probation on the RTP session (similar to original rtspsrc)
         if !self.using_rtp2 {
             // Use get-internal-session signal to get the rtpsession object
@@ -4550,7 +4562,7 @@ impl RtspManager {
                 buffer_mode.as_int(),
                 mode_str
             );
-            
+
             // Log property details for debugging
             gst::debug!(
                 CAT,
@@ -4570,7 +4582,7 @@ impl RtspManager {
 
             // Use set_property_from_str which handles enum conversion automatically
             rtpbin.set_property_from_str("buffer-mode", mode_to_set);
-            
+
             // Verify it was set correctly by reading back the property
             let actual_value = rtpbin.property_value("buffer-mode");
             gst::debug!(
@@ -4579,7 +4591,7 @@ impl RtspManager {
                 mode_to_set,
                 actual_value
             );
-            
+
             // For None mode, log additional debug info about jitterbuffer config
             if buffer_mode == BufferMode::None {
                 gst::debug!(
@@ -4807,9 +4819,11 @@ impl RtspTaskState {
 
         let rsp = match self.stream.next().await {
             Some(Ok(rtsp_types::Message::Response(rsp))) => Ok(rsp),
-            Some(Ok(m)) => Err(RtspError::Protocol(super::error::ProtocolError::InvalidResponse {
-                details: format!("Expected authentication response, got: {:?}", m),
-            })),
+            Some(Ok(m)) => Err(RtspError::Protocol(
+                super::error::ProtocolError::InvalidResponse {
+                    details: format!("Expected authentication response, got: {:?}", m),
+                },
+            )),
             Some(Err(e)) => Err(e.into()),
             None => Err(std::io::Error::new(
                 std::io::ErrorKind::UnexpectedEof,
@@ -4862,9 +4876,14 @@ impl RtspTaskState {
 
                 let retry_rsp = match self.stream.next().await {
                     Some(Ok(rtsp_types::Message::Response(rsp))) => Ok(rsp),
-                    Some(Ok(m)) => Err(RtspError::Protocol(super::error::ProtocolError::InvalidResponse {
-                        details: format!("Expected authentication retry response, got: {:?}", m),
-                    })),
+                    Some(Ok(m)) => Err(RtspError::Protocol(
+                        super::error::ProtocolError::InvalidResponse {
+                            details: format!(
+                                "Expected authentication retry response, got: {:?}",
+                                m
+                            ),
+                        },
+                    )),
                     Some(Err(e)) => Err(e.into()),
                     None => Err(std::io::Error::new(
                         std::io::ErrorKind::UnexpectedEof,
@@ -5313,9 +5332,7 @@ impl RtspTaskState {
                 if transports.len() == 1 {
                     Self::parse_setup_transports(&transports, &mut s, &protocols, &mode)
                 } else {
-                    Err(RtspError::internal(
-                        "No transport header in SETUP response",
-                    ))
+                    Err(RtspError::internal("No transport header in SETUP response"))
                 }
             }?;
             match &mut parsed_transport {
