@@ -4542,23 +4542,56 @@ impl RtspManager {
     fn apply_buffer_mode(rtpbin: &gst::Element, buffer_mode: BufferMode) {
         // Apply buffer mode to rtpbin (similar to original rtspsrc)
         // Check if rtpbin supports buffer-mode property
-        if let Some(_property) = rtpbin.find_property("buffer-mode") {
-            let mode_int = buffer_mode.as_int();
+        if let Some(property) = rtpbin.find_property("buffer-mode") {
+            let mode_str = buffer_mode.as_str();
             gst::debug!(
                 CAT,
                 "Setting buffer-mode={} ({}) on rtpbin",
-                mode_int,
-                buffer_mode.as_str()
+                buffer_mode.as_int(),
+                mode_str
+            );
+            
+            // Log property details for debugging
+            gst::debug!(
+                CAT,
+                "buffer-mode property type: {:?}, default: {:?}",
+                property.type_(),
+                property.default_value()
             );
 
-            if buffer_mode != BufferMode::Auto {
-                // Direct mode setting (non-auto modes)
-                rtpbin.set_property_from_str("buffer-mode", buffer_mode.as_str());
+            // Determine the mode string to set
+            let mode_to_set = if buffer_mode == BufferMode::Auto {
+                // Auto mode - default to Buffer mode for now
+                gst::debug!(CAT, "Auto buffer mode - using 'buffer' as default");
+                "buffer"
             } else {
-                // Auto mode - let rtpbin decide based on conditions
-                // For now, default to Buffer mode for auto
-                gst::debug!(CAT, "Auto buffer mode - using buffer(2) as default");
-                rtpbin.set_property_from_str("buffer-mode", "buffer"); // Buffer mode
+                mode_str
+            };
+
+            // Use set_property_from_str which handles enum conversion automatically
+            rtpbin.set_property_from_str("buffer-mode", mode_to_set);
+            
+            // Verify it was set correctly by reading back the property
+            let actual_value = rtpbin.property_value("buffer-mode");
+            gst::debug!(
+                CAT,
+                "Set buffer-mode to '{}', actual value: {:?}",
+                mode_to_set,
+                actual_value
+            );
+            
+            // For None mode, log additional debug info about jitterbuffer config
+            if buffer_mode == BufferMode::None {
+                gst::debug!(
+                    CAT,
+                    "Buffer mode None selected - using RTP timestamps only, no buffering"
+                );
+                gst::warning!(
+                    CAT,
+                    "Note: buffer-mode=none may not display frames properly. Consider using 'slave' mode for minimal buffering."
+                );
+                // Note: Mode 0 (None) means rtpjitterbuffer will only use RTP timestamps
+                // This often causes issues with frame display as no synchronization/buffering occurs
             }
         } else {
             gst::warning!(CAT, "rtpbin does not support buffer-mode property");
