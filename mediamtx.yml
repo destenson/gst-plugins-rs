@@ -71,8 +71,8 @@ paths:
   #   runOnDemandStartTimeout: 10s
   #   runOnDemandCloseAfter: 10s
   
-  test-rod:
-    runOnDemand: ffmpeg -re -f lavfi -i testsrc=size=1280x720:rate=30 -vcodec libx264 -preset ultrafast -tune zerolatency -b:v 1000k -f rtsp rtsp://localhost:$RTSP_PORT/$MTX_PATH
+  test-h264:
+    runOnDemand: ffmpeg -re -f lavfi -i testsrc=size=1280x720:rate=30 -vcodec libx264 -preset ultrafast -tune zerolatency -b:v 1000k -f rtsp rtsp://myuser:mypass@localhost:$RTSP_PORT/$MTX_PATH
     runOnDemandRestart: yes
 
   # # UDP source for FFmpeg test stream
