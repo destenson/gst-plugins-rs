@@ -3708,8 +3708,13 @@ impl RtspSrc {
                                         let stream = Box::pin(super::tcp_message::async_read(read, MAX_MESSAGE_SIZE).fuse());
                                         let sink = Box::pin(super::tcp_message::async_write(write));
                                         
-                                        // Update state with new connection
-                                        state = RtspTaskState::new(url.clone(), stream, sink, user_id.clone(), user_pw.clone());
+                                        // Update only the connection in the existing state, preserving setup_params
+                                        state.stream = stream;
+                                        state.sink = sink;
+                                        // Reset connection-specific state
+                                        state.cseq = 0;
+                                        state.session_manager = super::session_manager::SessionManager::new();
+                                        state.auth_state = AuthState::default();
                                         
                                         // Post reconnection success message
                                         let msg = gst::message::Element::builder(
@@ -3827,13 +3832,27 @@ impl RtspSrc {
         caps: &gst::Caps,
         manager: &RtspManager,
     ) -> std::result::Result<gst_app::AppSrc, glib::Error> {
+        let obj = self.obj();
+        let appsrc_name = format!("rtp_appsrc_{rtpsession_n}");
+        
+        // Check if the element already exists
+        if let Some(existing) = obj.by_name(&appsrc_name) {
+            gst::info!(CAT, "Reusing existing appsrc: {}", appsrc_name);
+            if let Ok(appsrc) = existing.downcast::<gst_app::AppSrc>() {
+                // Update caps if needed
+                appsrc.set_caps(Some(caps));
+                return Ok(appsrc);
+            }
+        }
+        
+        // Create new element if it doesn't exist
         let callbacks = gst_app::AppSrcCallbacks::builder()
             .enough_data(|appsrc| {
                 gst::warning!(CAT, "appsrc {} is overrunning: enough data!", appsrc.name());
             })
             .build();
         let builder = gst_app::AppSrc::builder()
-            .name(format!("rtp_appsrc_{rtpsession_n}"))
+            .name(appsrc_name)
             .format(gst::Format::Time);
 
         #[cfg(feature = "v1_18")]
@@ -3852,7 +3871,6 @@ impl RtspSrc {
         appsrc.set_property_from_str("leaky-type", "downstream"); // 2 = downstream
         #[cfg(feature = "v1_20")]
         appsrc.set_property("max-time", 2_000_000_000u64); // 2 seconds in nanoseconds
-        let obj = self.obj();
         obj.add(&appsrc)
             .map_err(|e| glib::Error::new(gst::ResourceError::Failed, &e.to_string()))?;
         appsrc
@@ -3864,9 +3882,15 @@ impl RtspSrc {
         let ghostpad = gst::GhostPad::builder_from_template(&templ)
             .name(format!("stream_{rtpsession_n}"))
             .build();
-        gst::info!(CAT, "Adding ghost srcpad {}", ghostpad.name());
-        obj.add_pad(&ghostpad)
-            .expect("Adding a ghostpad should never fail");
+        // Check if ghost pad already exists before adding
+        let ghost_name = format!("stream_{}", rtpsession_n);
+        if obj.static_pad(&ghost_name).is_none() {
+            gst::info!(CAT, "Adding ghost srcpad {}", ghostpad.name());
+            obj.add_pad(&ghostpad)
+                .expect("Adding a ghostpad should never fail");
+        } else {
+            gst::info!(CAT, "Ghost pad {} already exists, skipping", ghost_name);
+        }
         appsrc
             .sync_state_with_parent()
             .map_err(|e| glib::Error::new(gst::ResourceError::Failed, &e.to_string()))?;
@@ -3996,15 +4020,38 @@ impl RtspSrc {
 
         // Punch NAT holes for UDP transport after SETUP
         RtspTaskState::punch_nat_holes(&state.setup_params, settings.nat_method).await;
-        let manager = RtspManager::new_with_settings(
-            std::env::var("USE_RTP2").is_ok_and(|s| s == "1"),
-            Some(&settings),
-        );
-
+        
         let obj = self.obj();
-        manager
-            .add_to(obj.upcast_ref::<gst::Bin>())
-            .expect("Adding the manager cannot fail");
+        
+        // Check if rtpbin/rtpbin2 already exists
+        let using_rtp2 = std::env::var("USE_RTP2").is_ok_and(|s| s == "1");
+        let rtpbin_name = if using_rtp2 { "rtpbin2" } else { "rtpbin" };
+        
+        let manager = if obj.by_name(rtpbin_name).is_some() {
+            gst::info!(CAT, "Reusing existing RTP manager: {}", rtpbin_name);
+            // Extract existing manager - we'll need to recreate it from existing elements
+            let recv = obj.by_name(rtpbin_name).expect("rtpbin should exist");
+            let send = if using_rtp2 {
+                obj.by_name("rtpbin2send").expect("rtpbin2send should exist")
+            } else {
+                recv.clone()
+            };
+            RtspManager {
+                using_rtp2,
+                recv,
+                send,
+            }
+        } else {
+            gst::info!(CAT, "Creating new RTP manager");
+            let manager = RtspManager::new_with_settings(
+                using_rtp2,
+                Some(&settings),
+            );
+            manager
+                .add_to(obj.upcast_ref::<gst::Bin>())
+                .expect("Adding the manager cannot fail");
+            manager
+        };
 
         let mut tcp_interleave_appsrcs = HashMap::new();
         for (rtpsession_n, p) in state.setup_params.iter_mut().enumerate() {
