@@ -3618,9 +3618,129 @@ impl RtspSrc {
                 (settings.user_id.clone(), settings.user_pw.clone())
             };
 
-            let mut state = RtspTaskState::new(url, stream, sink, user_id, user_pw);
-
-            let task_ret = task_src.rtsp_task(&mut state, rx).await;
+            let mut state = RtspTaskState::new(url.clone(), stream, sink, user_id.clone(), user_pw.clone());
+            let mut reconnect_count = 0;
+            let max_reconnect_attempts = settings.max_reconnection_attempts;
+            let reconnection_timeout = settings.reconnection_timeout;
+            let retry_config = super::retry::RetryConfig {
+                strategy: settings.retry_strategy,
+                max_attempts: settings.max_reconnection_attempts,
+                initial_delay: Duration::from_nanos(settings.initial_retry_delay.nseconds()),
+                max_delay: Duration::from_nanos(reconnection_timeout.nseconds()),
+                linear_step: Duration::from_nanos(settings.linear_retry_step.nseconds()),
+            };
+            
+            // Main loop with reconnection logic
+            let mut current_rx = Some(rx);
+            let task_ret = loop {
+                // Get or create a receiver for this attempt
+                let rx_to_use = if let Some(rx) = current_rx.take() {
+                    rx
+                } else {
+                    // For reconnections, create a fresh channel
+                    let (tx, rx) = mpsc::channel(16);
+                    // Update the command queue with the new sender
+                    *task_src.command_queue.lock().unwrap() = Some(tx);
+                    rx
+                };
+                
+                let result = task_src.rtsp_task(&mut state, rx_to_use).await;
+                
+                // Check if we should reconnect
+                match &result {
+                    Err(err) if err.is_network_error() => {
+                        // Check if reconnection is enabled and we haven't exceeded max attempts
+                        if max_reconnect_attempts < 0 || reconnect_count < max_reconnect_attempts {
+                            reconnect_count += 1;
+                            
+                            gst::warning!(CAT, "Connection lost, attempting reconnection (attempt {}/{})",
+                                reconnect_count,
+                                if max_reconnect_attempts < 0 { "unlimited".to_string() } else { max_reconnect_attempts.to_string() }
+                            );
+                            
+                            // Post a message about the reconnection attempt
+                            let msg = gst::message::Element::builder(
+                                gst::Structure::builder("rtsp-reconnection-attempt")
+                                    .field("attempt", reconnect_count)
+                                    .field("error", format!("{err:#?}"))
+                                    .build(),
+                            )
+                            .src(&*task_src.obj())
+                            .build();
+                            let _ = task_src.obj().post_message(msg);
+                            
+                            // Wait before reconnecting
+                            let reconnect_delay = std::time::Duration::from_nanos(settings.reconnection_timeout.nseconds());
+                            tokio::time::sleep(reconnect_delay).await;
+                            
+                            // Attempt to reconnect
+                            let connection_result = if settings.protocols.contains(&RtspProtocol::Http) {
+                                // Try HTTP tunneling reconnection
+                                // Note: proxy_config is not available here, would need to reconstruct
+                                // HTTP tunneling reconnection not yet implemented
+                                // TODO: Implement HTTP tunnel reconnection
+                                {
+                                    gst::error!(CAT, "HTTP tunnel reconnection not yet implemented");
+                                    break Err(RtspError::internal("HTTP tunnel reconnection not yet implemented"));
+                                }
+                                /*match super::http_tunnel::establish_http_tunnel(&url, None).await {
+                                    Ok(tunnel) => {
+                                        gst::info!(CAT, "Reconnected via HTTP tunnel");
+                                        // For now, return error as tunnel stream conversion is not implemented
+                                        break Err(RtspError::internal("HTTP tunnel reconnection not yet implemented"));
+                                    }
+                                    Err(e) => {
+                                        gst::error!(CAT, "Failed to reconnect via HTTP tunnel: {e:?}");
+                                        continue;
+                                    }
+                                }*/
+                            } else {
+                                // Normal TCP/TLS reconnection
+                                // TODO: Need to properly handle TLS vs plain TCP here
+                                match tokio::net::TcpStream::connect((url.host_str().unwrap(), url.port().unwrap_or(554))).await {
+                                    Ok(tcp_stream) => {
+                                        // Set TCP nodelay
+                                        let _ = tcp_stream.set_nodelay(true);
+                                        gst::info!(CAT, "Reconnected via plain TCP!");
+                                        
+                                        // Create new stream and sink
+                                        let (read, write) = tokio::io::split(tcp_stream);
+                                        let stream = Box::pin(super::tcp_message::async_read(read, MAX_MESSAGE_SIZE).fuse());
+                                        let sink = Box::pin(super::tcp_message::async_write(write));
+                                        
+                                        // Update state with new connection
+                                        state = RtspTaskState::new(url.clone(), stream, sink, user_id.clone(), user_pw.clone());
+                                        
+                                        // Post reconnection success message
+                                        let msg = gst::message::Element::builder(
+                                            gst::Structure::builder("rtsp-reconnection-success")
+                                                .field("attempt", reconnect_count)
+                                                .build(),
+                                        )
+                                        .src(&*task_src.obj())
+                                        .build();
+                                        let _ = task_src.obj().post_message(msg);
+                                        
+                                        continue; // Continue with the new connection
+                                    }
+                                    Err(e) => {
+                                        gst::error!(CAT, "Failed to reconnect: {e:?}");
+                                        continue;
+                                    }
+                                }
+                            };
+                        } else {
+                            gst::error!(CAT, "Maximum reconnection attempts ({}) exceeded", max_reconnect_attempts);
+                            break result;
+                        }
+                    }
+                    _ => {
+                        // Not a network error or successful completion - exit the loop
+                        break result;
+                    }
+                }
+            };
+            
             gst::info!(CAT, "Exited rtsp_task");
 
             // Cleanup after stopping
@@ -4263,14 +4383,49 @@ impl RtspSrc {
                         };
                     }
                     Some(Err(e)) => {
-                        // TODO: reconnect or ignore if UDP sockets are still receiving data
-                        gst::error!(CAT, "I/O error: {e:?}, quitting");
-                        return Err(gst::FlowError::Error.into());
+                        // Connection error - attempt to reconnect based on retry settings
+                        gst::warning!(CAT, "I/O error: {e:?}");
+                        
+                        // Check if we're using UDP and still receiving data
+                        let using_udp = state.setup_params.iter().any(|p| {
+                            matches!(p.transport, RtspTransportInfo::Udp { .. } | RtspTransportInfo::UdpMulticast { .. })
+                        });
+                        
+                        if using_udp {
+                            // For UDP transports, we can continue if data is still flowing
+                            gst::info!(CAT, "TCP connection error but using UDP transport, continuing...");
+                            // Continue the loop without the TCP connection for control
+                            continue;
+                        }
+                        
+                        // For TCP transport, we need to reconnect
+                        gst::error!(CAT, "TCP connection error, initiating reconnection...");
+                        
+                        // Signal that we need to reconnect
+                        return Err(RtspError::Network(super::error::NetworkError::ConnectionReset).into());
                     }
                     None => {
-                        // TODO: reconnect or ignore if UDP sockets are still receiving data
-                        gst::error!(CAT, "TCP connection EOF, quitting");
-                        return Err(gst::FlowError::Eos.into());
+                        // Connection dropped - attempt to reconnect based on retry settings
+                        gst::warning!(CAT, "TCP connection EOF detected");
+                        
+                        // Check if we're using UDP and still receiving data
+                        let using_udp = state.setup_params.iter().any(|p| {
+                            matches!(p.transport, RtspTransportInfo::Udp { .. } | RtspTransportInfo::UdpMulticast { .. })
+                        });
+                        
+                        if using_udp {
+                            // For UDP transports, we can continue if data is still flowing
+                            gst::info!(CAT, "TCP connection lost but using UDP transport, continuing...");
+                            // Continue the loop without the TCP connection for control
+                            // This allows UDP data to continue flowing
+                            continue;
+                        }
+                        
+                        // For TCP transport, we need to reconnect
+                        gst::error!(CAT, "TCP connection lost, initiating reconnection...");
+                        
+                        // Signal that we need to reconnect
+                        return Err(RtspError::Network(super::error::NetworkError::ConnectionReset).into());
                     }
                 },
                 Some(cmd) = cmd_rx.recv() => match cmd {

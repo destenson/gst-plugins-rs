@@ -4235,8 +4235,8 @@ dependencies = [
  "muldiv",
  "num-integer",
  "num-rational",
- "option-operations 0.5.0",
- "paste",
+ "option-operations",
+ "pastey",
  "pin-project-lite",
  "smallvec",
  "thiserror 2.0.16",
@@ -4259,7 +4259,7 @@ dependencies = [
  "muldiv",
  "num-integer",
  "num-rational",
- "option-operations 0.6.0",
+ "option-operations",
  "pastey",
  "pin-project-lite",
  "serde",
@@ -6903,15 +6903,6 @@ name = "option-ext"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
-
-[[package]]
-name = "option-operations"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c26d27bb1aeab65138e4bf7666045169d1717febcc9ff870166be8348b223d0"
-dependencies = [
- "paste",
-]
 
 [[package]]
 name = "option-operations"

@@ -384,6 +384,11 @@ impl RtspError {
         }
     }
 
+    /// Check if this is a network error that might be recoverable with reconnection
+    pub fn is_network_error(&self) -> bool {
+        matches!(self, RtspError::Network(_))
+    }
+
     /// Convert to a GStreamer error message with appropriate domain and code
     pub fn to_gst_error(&self) -> gst::ErrorMessage {
         match self {
