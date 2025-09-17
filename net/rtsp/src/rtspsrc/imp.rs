@@ -3842,15 +3842,12 @@ impl RtspSrc {
                 // Update caps if needed
                 appsrc.set_caps(Some(caps));
                 
-                // Make sure the element is not in flushing state
-                // Send flush-stop to take it out of flushing
-                let pad = appsrc.static_pad("src").unwrap();
-                pad.send_event(gst::event::FlushStop::builder(true).build());
+                // Ensure the element is in sync with parent state
+                // This will bring it out of NULL/READY into PAUSED/PLAYING
+                if let Err(e) = appsrc.sync_state_with_parent() {
+                    gst::warning!(CAT, "Failed to sync {} state with parent: {:?}", appsrc_name, e);
+                }
                 
-                // Ensure element is in playing state
-                let _ = appsrc.sync_state_with_parent();
-                
-                gst::info!(CAT, "Reset {} to non-flushing state", appsrc_name);
                 return Ok(appsrc);
             }
         }
@@ -3919,14 +3916,10 @@ impl RtspSrc {
         if let Some(existing) = obj.by_name(&appsrc_name) {
             gst::info!(CAT, "Reusing existing RTCP appsrc: {}", appsrc_name);
             if let Ok(appsrc) = existing.downcast::<gst_app::AppSrc>() {
-                // Make sure the element is not in flushing state
-                let pad = appsrc.static_pad("src").unwrap();
-                pad.send_event(gst::event::FlushStop::builder(true).build());
-                
-                // Ensure element is in playing state
-                let _ = appsrc.sync_state_with_parent();
-                
-                gst::info!(CAT, "Reset {} to non-flushing state", appsrc_name);
+                // Ensure the element is in sync with parent state
+                if let Err(e) = appsrc.sync_state_with_parent() {
+                    gst::warning!(CAT, "Failed to sync {} state with parent: {:?}", appsrc_name, e);
+                }
                 return Ok(appsrc);
             }
         }
@@ -4034,6 +4027,9 @@ impl RtspSrc {
         let cmd_tx = self.cmd_queue();
         let settings = { self.settings.lock().unwrap().clone() };
         
+        // Flag to track if we've received a PLAY response and are ready for data
+        let mut ready_for_data = false;
+        
         // For reconnection, we just need to:
         // 1. Do OPTIONS to verify server is alive
         // 2. Skip DESCRIBE (we already have SDP)
@@ -4117,19 +4113,6 @@ impl RtspSrc {
             }
         }
         
-        // Before restoring playback, ensure all elements are ready
-        gst::info!(CAT, "Preparing elements for playback restoration");
-        
-        // Send a reconfigure event to all AppSrc elements to ensure they're ready
-        for p in &state.setup_params {
-            if let Some(ref appsrc) = p.rtp_appsrc {
-                // Force element to re-evaluate its state
-                if let Some(pad) = appsrc.static_pad("src") {
-                    pad.send_event(gst::event::Reconfigure::new());
-                }
-            }
-        }
-        
         // Restore playback state after reconnection
         match &state.playback_state {
             PlaybackState::Playing { position, rate, range } => {
@@ -4183,27 +4166,8 @@ impl RtspSrc {
         // Build tcp_interleave_appsrcs map
         let mut tcp_interleave_appsrcs = HashMap::new();
         
-        // Rebuild tcp_interleave_appsrcs from existing elements and ensure they're not flushing
+        // Rebuild tcp_interleave_appsrcs from existing elements if using TCP
         for (rtpsession_n, p) in state.setup_params.iter().enumerate() {
-            // Ensure all AppSrc elements are taken out of flushing state
-            if let Some(ref appsrc) = p.rtp_appsrc {
-                gst::info!(CAT, "Ensuring {} is not in flushing state", appsrc.name());
-                
-                // Send flush-stop event to take element out of flushing
-                if let Some(pad) = appsrc.static_pad("src") {
-                    pad.send_event(gst::event::FlushStop::builder(true).build());
-                }
-                
-                // Send a new segment event to reset the streaming state
-                let segment = gst::FormattedSegment::<gst::ClockTime>::new();
-                if let Some(pad) = appsrc.static_pad("src") {
-                    pad.send_event(gst::event::Segment::new(&segment));
-                }
-                
-                // Make sure element is in correct state
-                let _ = appsrc.sync_state_with_parent();
-            }
-            
             if let RtspTransportInfo::Tcp {
                 channels: (rtp_channel, rtcp_channel),
             } = &p.transport
@@ -4264,6 +4228,8 @@ impl RtspSrc {
                                 Method::Play => {
                                     let s = session.as_mut().ok_or(RtspError::internal("No session"))?;
                                     state.play_response(&rsp, expected_cseq, s).await?;
+                                    ready_for_data = true;
+                                    gst::info!(CAT, "PLAY response received, ready to receive data");
                                 }
                                 Method::Pause => {
                                     let s = session.as_mut().ok_or(RtspError::internal("No session"))?;
@@ -4274,22 +4240,25 @@ impl RtspSrc {
                         }
                     }
                     Ok(Message::Data(data)) => {
-                        // Handle interleaved data
+                        // Handle interleaved data only if we're ready
+                        if !ready_for_data {
+                            gst::trace!(CAT, "Dropping data on channel {} - not ready yet", data.channel_id());
+                            continue;
+                        }
+                        
                         if let Some(appsrc) = tcp_interleave_appsrcs.get(&data.channel_id()) {
                             let buffer = gst::Buffer::from_slice(data.into_body());
                             match appsrc.push_buffer(buffer) {
-                                Ok(_) => {},
+                                Ok(_) => {
+                                    // Successfully pushed
+                                }
                                 Err(gst::FlowError::Flushing) => {
-                                    gst::warning!(CAT, "AppSrc {} is still flushing after reconnection, attempting to recover", appsrc.name());
-                                    // Try to recover from flushing state
-                                    if let Some(pad) = appsrc.static_pad("src") {
-                                        pad.send_event(gst::event::FlushStop::builder(true).build());
-                                        let segment = gst::FormattedSegment::<gst::ClockTime>::new();
-                                        pad.send_event(gst::event::Segment::new(&segment));
-                                    }
-                                },
+                                    // Elements might still be transitioning
+                                    gst::debug!(CAT, "AppSrc {} is flushing, likely still transitioning states", appsrc.name());
+                                    // Don't set ready_for_data to false - keep trying
+                                }
                                 Err(err) => {
-                                    gst::warning!(CAT, "Failed to push buffer to {}: {:?}", appsrc.name(), err);
+                                    gst::warning!(CAT, "Failed to push buffer: {:?}", err);
                                 }
                             }
                         }
