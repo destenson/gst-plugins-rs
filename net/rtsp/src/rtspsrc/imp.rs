@@ -4160,6 +4160,9 @@ impl RtspSrc {
             tokio::select! {
                 msg = state.stream.next() => match msg {
                     Some(Ok(rtsp_types::Message::Data(data))) => {
+                        // Reset session activity on any data
+                        state.session_manager.reset_activity();
+
                         let Some(appsrc) = tcp_interleave_appsrcs.get(&data.channel_id()) else {
                             gst::warning!(CAT,
                                 "ignored data of size {}: unknown channel {}",
