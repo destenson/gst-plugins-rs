@@ -4025,10 +4025,131 @@ impl RtspSrc {
         // OPTIONS
         state.options().await?;
         
-        // Create a minimal session for PLAY command
-        let mut session = Some(Session("reconnect".to_string(), None));
+        // We need to do a minimal SETUP to get a session, but we'll reuse existing transport
+        // For reconnection, we do SETUP but skip element creation
+        let mut session: Option<Session> = None;
         
-        // Skip all the pipeline setup - just go to the main loop
+        // Do SETUP for each stream to re-establish session
+        if !state.setup_params.is_empty() {
+            gst::info!(CAT, "Re-establishing RTSP session for {} streams", state.setup_params.len());
+            
+            // We need to do SETUP requests to get a new session from the server
+            for (stream_id, params) in state.setup_params.iter().enumerate() {
+                let control_url = &params.control_url;
+                
+                // Build transport string based on existing transport info
+                let transport_str = match &params.transport {
+                    RtspTransportInfo::Tcp { channels: (rtp, rtcp) } => {
+                        format!("RTP/AVP/TCP;unicast;interleaved={}-{}", 
+                            rtp, 
+                            rtcp.map_or(*rtp + 1, |c| c))
+                    }
+                    RtspTransportInfo::Udp { client_port, .. } => {
+                        if let Some((rtp_port, rtcp_port)) = client_port {
+                            format!("RTP/AVP;unicast;client_port={}-{}", 
+                                rtp_port, 
+                                rtcp_port.unwrap_or(rtp_port + 1))
+                        } else {
+                            "RTP/AVP;unicast".to_string()
+                        }
+                    }
+                    RtspTransportInfo::UdpMulticast { .. } => {
+                        "RTP/AVP;multicast".to_string()
+                    }
+                };
+                
+                // Send SETUP request
+                gst::info!(CAT, "Sending SETUP for stream {} with transport: {}", stream_id, transport_str);
+                
+                state.cseq += 1;
+                let mut req_builder = Request::builder(Method::Setup, Version::V1_0)
+                    .request_uri(control_url.clone())
+                    .typed_header(&CSeq::from(state.cseq))
+                    .header(rtsp_types::headers::TRANSPORT, transport_str);
+                    
+                if let Some(ref s) = session {
+                    req_builder = req_builder.header(rtsp_types::headers::SESSION, s.to_string());
+                }
+                
+                let req = req_builder.build(Body::default());
+                
+                state.sink.send(req.into()).await?;
+                
+                // Wait for SETUP response
+                let response = loop {
+                    match state.stream.next().await {
+                        Some(Ok(Message::Response(rsp))) => {
+                            if let Ok(Some(cseq)) = rsp.typed_header::<CSeq>() {
+                                if *cseq == state.cseq {
+                                    break rsp;
+                                }
+                            }
+                        }
+                        Some(Err(e)) => return Err(RtspError::internal(format!("Error during SETUP: {:?}", e))),
+                        None => return Err(RtspError::Network(super::error::NetworkError::ConnectionReset).into()),
+                        _ => continue,
+                    }
+                };
+                
+                // Extract session from first SETUP response
+                if session.is_none() {
+                    session = response.typed_header::<Session>().ok().flatten();
+                    gst::info!(CAT, "Got new session from SETUP response: {:?}", session);
+                }
+            }
+        }
+        
+        // Restore playback state after reconnection
+        match &state.playback_state {
+            PlaybackState::Playing { position, rate, range } => {
+                if let Some(ref s) = session {
+                    gst::info!(CAT, "Stream was playing before disconnection, restoring playback state");
+                    gst::info!(CAT, "  Position: {:?}, Rate: {}, Range: {:?}", position, rate, range);
+                    
+                    state.cseq += 1;
+                    let mut play_req_builder = Request::builder(Method::Play, Version::V1_0)
+                        .request_uri(state.aggregate_control.clone().unwrap_or(state.url.clone()))
+                        .typed_header(&CSeq::from(state.cseq))
+                        .header(rtsp_types::headers::SESSION, s.to_string());
+                    
+                    // Restore position if we had one
+                    if let Some(pos) = position {
+                        // Convert ClockTime to NPT time for Range header
+                        // NptTime::Seconds takes seconds and optional fractional microseconds
+                        let fractional_usecs = (pos.nseconds() % 1_000_000_000) / 1000;
+                        let npt_pos = NptTime::Seconds(pos.seconds(), Some(fractional_usecs as u32));
+                        let npt_range = NptRange::From(npt_pos);
+                        play_req_builder = play_req_builder.typed_header(&Range::Npt(npt_range));
+                    } else if let Some(ref existing_range) = range {
+                        play_req_builder = play_req_builder.typed_header(&Range::Npt(existing_range.clone()));
+                    } else {
+                        let npt_range = NptRange::From(NptTime::Now);
+                        play_req_builder = play_req_builder.typed_header(&Range::Npt(npt_range));
+                    }
+                    
+                    // Add Scale header if rate is not 1.0
+                    if (*rate - 1.0).abs() > 0.001 {
+                        play_req_builder = play_req_builder.header(rtsp_types::headers::SCALE, rate.to_string());
+                    }
+                    
+                    let play_req = play_req_builder.build(Body::default());
+                    state.sink.send(play_req.into()).await?;
+                    
+                    gst::info!(CAT, "PLAY command sent to restore playback");
+                }
+            },
+            PlaybackState::Paused { position } => {
+                gst::info!(CAT, "Stream was paused before disconnection at position {:?}", position);
+                // For paused state, we might want to send PLAY and immediately PAUSE
+                // Or just wait for user to resume
+                gst::info!(CAT, "Waiting for user to resume playback");
+            },
+            PlaybackState::Stopped => {
+                gst::info!(CAT, "Stream was stopped before disconnection, waiting for PLAY command");
+            },
+        }
+        
+        // Build tcp_interleave_appsrcs map
         let mut tcp_interleave_appsrcs = HashMap::new();
         
         // Rebuild tcp_interleave_appsrcs from existing elements if using TCP
@@ -4121,11 +4242,21 @@ impl RtspSrc {
                         let s = session.as_mut().ok_or(RtspError::internal("No session"))?;
                         let cseq = state.play(s).await?;
                         expected_response = Some((Method::Play, cseq));
+                        // Save playing state
+                        state.playback_state = PlaybackState::Playing {
+                            position: None,  // Will be updated from response
+                            rate: 1.0,
+                            range: None,
+                        };
                     }
                     Commands::Pause => {
                         let s = session.as_mut().ok_or(RtspError::internal("No session"))?;
                         let cseq = state.pause(s).await?;
                         expected_response = Some((Method::Pause, cseq));
+                        // Save paused state
+                        state.playback_state = PlaybackState::Paused {
+                            position: None,  // Current position
+                        };
                     }
                     Commands::Teardown(tx) => {
                         if let Some(tx) = tx {
@@ -4622,6 +4753,12 @@ impl RtspSrc {
                             self.post_cancelled("request", "PLAY request cancelled");
                         })?;
                         expected_response = Some((Method::Play, cseq));
+                        // Save playing state  
+                        state.playback_state = PlaybackState::Playing {
+                            position: None,
+                            rate: 1.0,
+                            range: None,
+                        };
                     },
                     Commands::Pause => {
                         let Some(s) = &session else {
@@ -4632,6 +4769,10 @@ impl RtspSrc {
                             self.post_cancelled("request", "PAUSE request cancelled");
                         })?;
                         expected_response = Some((Method::Pause, cseq));
+                        // Save paused state
+                        state.playback_state = PlaybackState::Paused {
+                            position: None,
+                        };
                     },
                     Commands::Seek { position, flags } => {
                         let Some(s) = &session else {
@@ -4647,6 +4788,13 @@ impl RtspSrc {
                             self.post_cancelled("request", "SEEK request cancelled");
                         })?;
                         expected_response = Some((Method::Play, cseq));
+                        
+                        // Update playback state with new position
+                        state.playback_state = PlaybackState::Playing {
+                            position: Some(position),
+                            rate: 1.0,  // Reset rate on seek unless specified otherwise
+                            range: None,  // Will be updated from response
+                        };
 
                         // Handle flush if needed
                         if flags.contains(gst::SeekFlags::FLUSH) {
@@ -5012,6 +5160,8 @@ struct RtspTaskState {
     user_pw: Option<String>,
     pending_get_parameter_promises: std::collections::HashMap<u32, gst::Promise>,
     pending_set_parameter_promises: std::collections::HashMap<u32, gst::Promise>,
+    // Playback state to restore after reconnection
+    playback_state: PlaybackState,
 }
 
 struct RtspSetupParams {
@@ -5019,6 +5169,19 @@ struct RtspSetupParams {
     transport: RtspTransportInfo,
     rtp_appsrc: Option<gst_app::AppSrc>,
     caps: gst::Caps,
+}
+
+#[derive(Debug, Clone)]
+enum PlaybackState {
+    Stopped,
+    Playing {
+        position: Option<gst::ClockTime>,
+        rate: f64,
+        range: Option<NptRange>,
+    },
+    Paused {
+        position: Option<gst::ClockTime>,
+    },
 }
 
 impl RtspTaskState {
@@ -5133,6 +5296,7 @@ impl RtspTaskState {
             user_pw,
             pending_get_parameter_promises: std::collections::HashMap::new(),
             pending_set_parameter_promises: std::collections::HashMap::new(),
+            playback_state: PlaybackState::Stopped,
         }
     }
 
