@@ -3902,8 +3902,20 @@ impl RtspSrc {
         rtpsession_n: usize,
         manager: &RtspManager,
     ) -> std::result::Result<gst_app::AppSrc, glib::Error> {
+        let obj = self.obj();
+        let appsrc_name = format!("rtcp_appsrc_{rtpsession_n}");
+        
+        // Check if the element already exists
+        if let Some(existing) = obj.by_name(&appsrc_name) {
+            gst::info!(CAT, "Reusing existing RTCP appsrc: {}", appsrc_name);
+            if let Ok(appsrc) = existing.downcast::<gst_app::AppSrc>() {
+                return Ok(appsrc);
+            }
+        }
+        
+        // Create new element if it doesn't exist
         let builder = gst_app::AppSrc::builder()
-            .name(format!("rtcp_appsrc_{rtpsession_n}"))
+            .name(appsrc_name)
             .format(gst::Format::Time);
 
         #[cfg(feature = "v1_18")]
@@ -3914,8 +3926,7 @@ impl RtspSrc {
             .stream_type(gst_app::AppStreamType::Stream)
             .is_live(true)
             .build();
-        self.obj()
-            .add(&appsrc)
+        obj.add(&appsrc)
             .map_err(|e| glib::Error::new(gst::ResourceError::Failed, &e.to_string()))?;
         appsrc
             .static_pad("src")
@@ -3936,6 +3947,14 @@ impl RtspSrc {
         manager: &RtspManager,
         on_rtcp: F,
     ) -> std::result::Result<(), glib::Error> {
+        let obj = self.obj();
+        let appsink_name = format!("rtcp_appsink_{rtpsession_n}");
+        
+        // Check if the element already exists
+        if obj.by_name(&appsink_name).is_some() {
+            gst::info!(CAT, "RTCP appsink {} already exists, skipping creation", appsink_name);
+            return Ok(());
+        }
         let cmd_tx_eos = self.cmd_queue();
         let cbs = gst_app::app_sink::AppSinkCallbacks::builder()
             .eos(move |_appsink| {
@@ -3948,13 +3967,12 @@ impl RtspSrc {
             .build();
 
         let rtcp_appsink = gst_app::AppSink::builder()
-            .name(format!("rtcp_appsink_{rtpsession_n}"))
+            .name(appsink_name)
             .sync(false)
             .async_(false)
             .callbacks(cbs)
             .build();
-        self.obj()
-            .add(&rtcp_appsink)
+        obj.add(&rtcp_appsink)
             .map_err(|e| glib::Error::new(gst::ResourceError::Failed, &e.to_string()))?;
         manager
             .rtcp_send_srcpad(rtpsession_n)
@@ -3987,12 +4005,154 @@ impl RtspSrc {
             .build();
         let _ = obj.post_message(msg);
     }
+    
+    async fn rtsp_task_reconnect(
+        &self,
+        state: &mut RtspTaskState,
+        mut cmd_rx: mpsc::Receiver<Commands>,
+    ) -> std::result::Result<(), super::error::RtspError> {
+        gst::info!(CAT, "Running simplified reconnection flow");
+        
+        let cmd_tx = self.cmd_queue();
+        let settings = { self.settings.lock().unwrap().clone() };
+        
+        // For reconnection, we just need to:
+        // 1. Do OPTIONS to verify server is alive
+        // 2. Skip DESCRIBE (we already have SDP)
+        // 3. Skip SETUP (we already have pipeline elements)
+        // 4. Go directly to PLAY
+        
+        // OPTIONS
+        state.options().await?;
+        
+        // Create a minimal session for PLAY command
+        let mut session = Some(Session("reconnect".to_string(), None));
+        
+        // Skip all the pipeline setup - just go to the main loop
+        let mut tcp_interleave_appsrcs = HashMap::new();
+        
+        // Rebuild tcp_interleave_appsrcs from existing elements if using TCP
+        for (rtpsession_n, p) in state.setup_params.iter().enumerate() {
+            if let RtspTransportInfo::Tcp {
+                channels: (rtp_channel, rtcp_channel),
+            } = &p.transport
+            {
+                if let Some(ref appsrc) = p.rtp_appsrc {
+                    tcp_interleave_appsrcs.insert(*rtp_channel, appsrc.clone());
+                }
+                // Note: RTCP appsrcs would need to be stored similarly if needed
+            }
+        }
+        
+        gst::info!(CAT, "Reconnection setup complete, entering main loop");
+        
+        // Jump directly to the main receive loop
+        let mut expected_response = None;
+        loop {
+            // Main message handling loop (same as original)
+            enum Res {
+                Msg(Result<Message<Body>, super::tcp_message::ReadError>),
+                Cmd(Commands),
+            }
+            let res = tokio::select! {
+                msg = state.stream.next() => {
+                    match msg {
+                        Some(Ok(m)) => Res::Msg(Ok(m)),
+                        Some(Err(e)) => Res::Msg(Err(e)),
+                        None => {
+                            gst::error!(CAT, "TCP connection EOF during reconnection");
+                            return Err(RtspError::Network(super::error::NetworkError::ConnectionReset).into());
+                        }
+                    }
+                }
+                Some(cmd) = cmd_rx.recv() => Res::Cmd(cmd),
+            };
+
+            match res {
+                Res::Msg(msg) => match msg {
+                    Ok(Message::Request(req)) => {
+                        // Handle server requests (GET_PARAMETER, SET_PARAMETER, etc)
+                        // For now, just log and continue
+                        gst::debug!(CAT, "Received request during reconnection: {:?}", req.method());
+                    }
+                    Ok(Message::Response(rsp)) => {
+                        // Handle server responses
+                        let cseq = rsp.typed_header::<CSeq>();
+                        
+                        if let Some((expected_method, expected_cseq)) = expected_response.take() {
+                            if let Ok(Some(cseq)) = cseq {
+                                if *cseq != expected_cseq {
+                                    // Put it back if not matching
+                                    expected_response = Some((expected_method, expected_cseq));
+                                    continue;
+                                }
+                            }
+                            
+                            // Handle the response based on method
+                            match &expected_method {
+                                Method::Play => {
+                                    let s = session.as_mut().ok_or(RtspError::internal("No session"))?;
+                                    state.play_response(&rsp, expected_cseq, s).await?;
+                                }
+                                Method::Pause => {
+                                    let s = session.as_mut().ok_or(RtspError::internal("No session"))?;
+                                    state.pause_response(&rsp, expected_cseq, s).await?;
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    Ok(Message::Data(data)) => {
+                        // Handle interleaved data
+                        if let Some(appsrc) = tcp_interleave_appsrcs.get(&data.channel_id()) {
+                            let buffer = gst::Buffer::from_slice(data.into_body());
+                            if let Err(err) = appsrc.push_buffer(buffer) {
+                                gst::warning!(CAT, "Failed to push buffer: {:?}", err);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        gst::error!(CAT, "I/O error: {e:?}");
+                        return Err(RtspError::Network(super::error::NetworkError::ConnectionReset).into());
+                    }
+                },
+                Res::Cmd(cmd) => match cmd {
+                    Commands::Play => {
+                        let s = session.as_mut().ok_or(RtspError::internal("No session"))?;
+                        let cseq = state.play(s).await?;
+                        expected_response = Some((Method::Play, cseq));
+                    }
+                    Commands::Pause => {
+                        let s = session.as_mut().ok_or(RtspError::internal("No session"))?;
+                        let cseq = state.pause(s).await?;
+                        expected_response = Some((Method::Pause, cseq));
+                    }
+                    Commands::Teardown(tx) => {
+                        if let Some(tx) = tx {
+                            let _ = tx.send(());
+                        }
+                        break;
+                    }
+                    _ => {}
+                },
+            }
+        }
+        
+        Ok(())
+    }
 
     async fn rtsp_task(
         &self,
         state: &mut RtspTaskState,
         mut cmd_rx: mpsc::Receiver<Commands>,
     ) -> std::result::Result<(), super::error::RtspError> {
+        // Check if this is a reconnection
+        if !state.setup_params.is_empty() {
+            // This is a reconnection - use simplified flow
+            return self.rtsp_task_reconnect(state, cmd_rx).await;
+        }
+        
+        // Normal first-time connection flow
         let cmd_tx = self.cmd_queue();
 
         let settings = { self.settings.lock().unwrap().clone() };
@@ -4020,38 +4180,15 @@ impl RtspSrc {
 
         // Punch NAT holes for UDP transport after SETUP
         RtspTaskState::punch_nat_holes(&state.setup_params, settings.nat_method).await;
-        
+        let manager = RtspManager::new_with_settings(
+            std::env::var("USE_RTP2").is_ok_and(|s| s == "1"),
+            Some(&settings),
+        );
+
         let obj = self.obj();
-        
-        // Check if rtpbin/rtpbin2 already exists
-        let using_rtp2 = std::env::var("USE_RTP2").is_ok_and(|s| s == "1");
-        let rtpbin_name = if using_rtp2 { "rtpbin2" } else { "rtpbin" };
-        
-        let manager = if obj.by_name(rtpbin_name).is_some() {
-            gst::info!(CAT, "Reusing existing RTP manager: {}", rtpbin_name);
-            // Extract existing manager - we'll need to recreate it from existing elements
-            let recv = obj.by_name(rtpbin_name).expect("rtpbin should exist");
-            let send = if using_rtp2 {
-                obj.by_name("rtpbin2send").expect("rtpbin2send should exist")
-            } else {
-                recv.clone()
-            };
-            RtspManager {
-                using_rtp2,
-                recv,
-                send,
-            }
-        } else {
-            gst::info!(CAT, "Creating new RTP manager");
-            let manager = RtspManager::new_with_settings(
-                using_rtp2,
-                Some(&settings),
-            );
-            manager
-                .add_to(obj.upcast_ref::<gst::Bin>())
-                .expect("Adding the manager cannot fail");
-            manager
-        };
+        manager
+            .add_to(obj.upcast_ref::<gst::Bin>())
+            .expect("Adding the manager cannot fail");
 
         let mut tcp_interleave_appsrcs = HashMap::new();
         for (rtpsession_n, p) in state.setup_params.iter_mut().enumerate() {
