@@ -3716,17 +3716,6 @@ impl RtspSrc {
                                         state.session_manager = super::session_manager::SessionManager::new();
                                         state.auth_state = AuthState::default();
                                         
-                                        // Clear flushing state from all AppSrc elements
-                                        for params in &state.setup_params {
-                                            if let Some(ref appsrc) = params.rtp_appsrc {
-                                                // Send FlushStop to ensure AppSrc is ready to receive data
-                                                let flush_stop = gst::event::FlushStop::builder(false).build();
-                                                if !appsrc.send_event(flush_stop) {
-                                                    gst::warning!(CAT, "Failed to send FlushStop to {} during reconnection", appsrc.name());
-                                                }
-                                            }
-                                        }
-                                        
                                         // Post reconnection success message
                                         let msg = gst::message::Element::builder(
                                             gst::Structure::builder("rtsp-reconnection-success")
@@ -4160,23 +4149,6 @@ impl RtspSrc {
             },
         }
         
-        // Clear flushing state from all AppSrc elements before starting
-        gst::info!(CAT, "Clearing flushing state from AppSrc elements");
-        for params in &state.setup_params {
-            if let Some(ref appsrc) = params.rtp_appsrc {
-                // Send FlushStop event to take AppSrc out of flushing state
-                let flush_stop = gst::event::FlushStop::builder(false).build();
-                if !appsrc.send_event(flush_stop) {
-                    gst::warning!(CAT, "Failed to send FlushStop to {}", appsrc.name());
-                }
-                
-                // Also ensure the element is in playing state
-                if let Err(e) = appsrc.sync_state_with_parent() {
-                    gst::warning!(CAT, "Failed to sync state for {}: {:?}", appsrc.name(), e);
-                }
-            }
-        }
-        
         // Build tcp_interleave_appsrcs map
         let mut tcp_interleave_appsrcs = HashMap::new();
         
@@ -4255,17 +4227,8 @@ impl RtspSrc {
                         // Handle interleaved data
                         if let Some(appsrc) = tcp_interleave_appsrcs.get(&data.channel_id()) {
                             let buffer = gst::Buffer::from_slice(data.into_body());
-                            match appsrc.push_buffer(buffer) {
-                                Ok(_) => {},
-                                Err(gst::FlowError::Flushing) => {
-                                    // If still flushing after reconnection, try to clear it
-                                    gst::debug!(CAT, "AppSrc {} still flushing, sending FlushStop", appsrc.name());
-                                    let flush_stop = gst::event::FlushStop::builder(false).build();
-                                    appsrc.send_event(flush_stop);
-                                },
-                                Err(err) => {
-                                    gst::warning!(CAT, "Failed to push buffer: {:?}", err);
-                                }
+                            if let Err(err) = appsrc.push_buffer(buffer) {
+                                gst::warning!(CAT, "Failed to push buffer: {:?}", err);
                             }
                         }
                     }
