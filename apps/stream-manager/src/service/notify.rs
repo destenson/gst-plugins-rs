@@ -2,12 +2,13 @@ use std::env;
 use std::io;
 use std::path::PathBuf;
 use tracing::debug;
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct SdNotify {
     socket_path: PathBuf,
     #[cfg(unix)]
-    socket: Option<std::os::unix::net::UnixDatagram>,
+    socket: Option<Arc<std::os::unix::net::UnixDatagram>>,
 }
 
 #[derive(Debug)]
@@ -34,7 +35,7 @@ impl SdNotify {
         
         // Create Unix datagram socket on Unix platforms
         #[cfg(unix)]
-        let socket = Some(std::os::unix::net::UnixDatagram::unbound()?);
+        let socket = Some(Arc::new(std::os::unix::net::UnixDatagram::unbound()?));
         
         Ok(Self {
             socket_path,

@@ -123,8 +123,8 @@ impl BackoffStrategy {
     }
 
     fn apply_jitter(&self, delay: Duration) -> Duration {
-        let mut rng = rand::thread_rng();
-        let jitter_factor = rng.gen_range(0.5..=1.5);
+        let mut rng = rand::rng();
+        let jitter_factor = rng.random_range(0.5..=1.5);
         
         let millis = (delay.as_millis() as f64 * jitter_factor) as u64;
         let jittered = Duration::from_millis(millis);

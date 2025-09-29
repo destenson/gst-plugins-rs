@@ -9447,6 +9447,7 @@ dependencies = [
  "gstreamer-sdp 0.25.0 (git+https://gitlab.freedesktop.org/gstreamer/gstreamer-rs?branch=main)",
  "gstreamer-video",
  "gstreamer-webrtc",
+ "hex",
  "httpdate",
  "image",
  "imageproc",
