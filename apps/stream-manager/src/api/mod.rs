@@ -1,6 +1,6 @@
 use actix_web::{
     web, App, HttpServer,
-    middleware::{Logger, NormalizePath},
+    middleware::{Logger, NormalizePath, Compress},
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -16,6 +16,7 @@ pub mod websocket;
 pub mod event_integration;
 pub mod rotation;
 pub mod recovery;
+pub mod static_files;
 
 pub use error::ApiError;
 pub use dto::*;
@@ -132,25 +133,42 @@ pub async fn start_server(
     info!("WebSocket event broadcaster initialized and ready");
     // TODO: Integrate stream manager events with WebSocket broadcaster
     
+    // Determine if we're in development mode
+    let development_mode = config.api.development_mode.unwrap_or(false);
+    let enable_cache = !development_mode;
+    let static_dir = config.api.static_dir.clone().unwrap_or_else(|| std::path::PathBuf::from("static"));
+
     HttpServer::new(move || {
         let whip_whep_data = app_state.whip_whep_handler.clone()
             .map(|h| web::Data::new(h));
-        
+
         let mut app = App::new()
             .app_data(web::Data::new(app_state.clone()))
             .app_data(web::Data::new(app_state.event_broadcaster.clone()))
             .app_data(web::Data::new(app_state.disk_rotation_manager.clone()));
-        
+
         if let Some(handler_data) = whip_whep_data {
             app = app.app_data(handler_data);
         }
-        
+
         app
+            .wrap(Compress::default())  // Enable gzip compression
             .wrap(Logger::default())
             .wrap(NormalizePath::trim())
             .wrap(middleware::error_handler())
             .wrap(middleware::request_logger())
+            // Configure API routes first (they take precedence)
             .configure(routes::configure_routes)
+            // Then configure static file serving for everything else
+            .configure(|cfg| {
+                if development_mode && static_dir.exists() {
+                    // In development mode, serve from disk if available
+                    static_files::configure_development(cfg, static_dir.clone())
+                } else {
+                    // In production or if static dir doesn't exist, use embedded files
+                    static_files::configure(cfg, enable_cache)
+                }
+            })
     })
     .bind(&bind_address)?
     .workers(config.api.worker_threads.unwrap_or(4))
