@@ -3365,28 +3365,21 @@ impl RtspSrc {
 
         let task_src = self.ref_counted();
 
-        // Check if task is already running (avoid interrupting reconnection)
-        {
-            let task_handle = self.task_handle.lock().unwrap();
-            if task_handle.is_some() {
-                gst::debug!(CAT, imp = self, "Task already running, skipping start");
-                return Ok(());
-            }
+        let mut task_handle = self.task_handle.lock().unwrap();
+        
+        // Check if task is already running
+        if task_handle.is_some() {
+            gst::debug!(CAT, imp = self, "Task already running, not starting a new one");
+            return Ok(());
         }
 
-        let cancel_token = {
+        // Create a new cancellation token for this start
+        let cancel_token = CancellationToken::new();
+        {
             let mut stop_token_guard = self.stop_token.lock().unwrap();
-            // Only create new token if none exists (preserves token during reconnection)
-            if let Some(existing_token) = stop_token_guard.as_ref() {
-                existing_token.clone()
-            } else {
-                let new_token = CancellationToken::new();
-                stop_token_guard.replace(new_token.clone());
-                new_token
-            }
-        };
-
-        let mut task_handle = self.task_handle.lock().unwrap();
+            // Replace any existing token (this ensures stop() can cancel)
+            stop_token_guard.replace(cancel_token.clone());
+        }
 
         let (tx, rx) = mpsc::channel(2);
         {
