@@ -143,6 +143,16 @@ where
                             duration_ms = %elapsed.as_millis(),
                             "Request completed"
                         );
+                    } else if status.as_u16() == 101 {
+                        // WebSocket upgrade - not an error
+                        debug!(
+                            request_id = %request_id,
+                            method = %method,
+                            path = %path,
+                            status = %status,
+                            duration_ms = %elapsed.as_millis(),
+                            "WebSocket upgrade"
+                        );
                     } else if status.is_client_error() {
                         warn!(
                             request_id = %request_id,

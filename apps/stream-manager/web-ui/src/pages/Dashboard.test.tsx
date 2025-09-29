@@ -74,8 +74,8 @@ Deno.test('Dashboard Component Tests', async (t) => {
     assertEquals(activeStreams, 0);
 
     // Test undefined/null safety
-    const events: any[] | undefined = undefined;
-    const hasEvents = events && events.length > 0;
-    assertEquals(hasEvents, undefined);
+    const events = undefined as any[] | undefined;
+    const hasEvents = events ? events.length > 0 : false;
+    assertEquals(hasEvents, false);
   });
 });

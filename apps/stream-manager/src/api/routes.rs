@@ -4,6 +4,23 @@ use serde_json::json;
 use tracing::debug;
 
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
+
+    cfg.service(
+        web::scope("/api/v1")
+            .route("/metrics", web::get().to(get_metrics))
+            .route("/metrics/prometheus", web::get().to(get_prometheus_metrics))
+            .route("/health", web::get().to(health_check))
+            .route("/health/liveness", web::get().to(liveness_check))
+            .route("/health/readiness", web::get().to(readiness_check))
+            .service(
+                web::scope("/config")
+                    .route("", web::get().to(get_config))
+                    .route("", web::put().to(update_config))
+                    .route("/reload", web::post().to(reload_config))
+                    .route("/reload/status", web::get().to(get_reload_status))
+            )
+    );
+
     // Configure the stream control API endpoints from PRP-12
     crate::api::streams::configure(cfg);
 
@@ -25,21 +42,6 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     // Configure WHIP/WHEP endpoints from PRP-27
     crate::webrtc::whip_whep::configure(cfg);
 
-    cfg.service(
-        web::scope("/api/v1")
-            .route("/metrics", web::get().to(get_metrics))
-            .route("/metrics/prometheus", web::get().to(get_prometheus_metrics))
-            .route("/health", web::get().to(health_check))
-            .route("/health/liveness", web::get().to(liveness_check))
-            .route("/health/readiness", web::get().to(readiness_check))
-            .service(
-                web::scope("/config")
-                    .route("", web::get().to(get_config))
-                    .route("", web::put().to(update_config))
-                    .route("/reload", web::post().to(reload_config))
-                    .route("/reload/status", web::get().to(get_reload_status))
-            )
-    );
 }
 
 async fn health_check(_state: web::Data<AppState>) -> Result<HttpResponse, ApiError> {
