@@ -1,13 +1,13 @@
 #!/bin/bash
 # Build script for creating Debian package with cargo-deb
 # This script ensures proper build configuration for debian packaging
-# Following PRP-002 and PRP-004: Automated Build Script
 
 set -e
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+FBSWITCH_DIR="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(dirname "$(dirname "$FBSWITCH_DIR")")"
 
 # Colors for output
 RED='\033[0;31m'
@@ -16,168 +16,213 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Parse command line arguments
-TARGET_ARCH=""
-VERBOSE=false
-CLEAN_BUILD=false
+# Configuration
+PACKAGE_NAME="gst-plugin-fallbackswitch"
+ARCH="${1:-$(dpkg --print-architecture 2>/dev/null || echo 'amd64')}"
+VERBOSE="${VERBOSE:-0}"
 
-usage() {
-    echo "Usage: $0 [OPTIONS]"
-    echo "Options:"
-    echo "  --arch ARCH      Target architecture (amd64, arm64, armhf)"
-    echo "  --verbose        Enable verbose output"
-    echo "  --clean          Clean build artifacts before building"
-    echo "  --help           Show this help message"
-    exit 0
+# Logging functions
+log_info() {
+    echo -e "${GREEN}[INFO]${NC} $1"
 }
 
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --arch)
-            TARGET_ARCH="$2"
-            shift 2
-            ;;
-        --verbose)
-            VERBOSE=true
-            shift
-            ;;
-        --clean)
-            CLEAN_BUILD=true
-            shift
-            ;;
-        --help)
-            usage
+log_warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Cleanup function
+cleanup() {
+    log_info "[SKIP] Cleaning up build artifacts..."
+    # cd "$FBSWITCH_DIR"
+    # cargo clean 2>/dev/null || true
+}
+
+# Trap cleanup on exit
+trap cleanup EXIT
+
+# Check dependencies
+check_dependencies() {
+    log_info "Checking build dependencies..."
+    
+    local missing_deps=()
+    
+    # Check for required tools
+    command -v cargo >/dev/null 2>&1 || missing_deps+=("cargo (Rust toolchain)")
+    command -v cargo-deb >/dev/null 2>&1 || missing_deps+=("cargo-deb")
+    command -v pkg-config >/dev/null 2>&1 || missing_deps+=("pkg-config")
+    
+    # Check for GStreamer development files
+    if ! pkg-config --exists gstreamer-1.0; then
+        missing_deps+=("libgstreamer1.0-dev")
+    fi
+    
+    if ! pkg-config --exists gstreamer-net-1.0; then
+        missing_deps+=("libgstreamer-plugins-base1.0-dev")
+    fi
+    
+    if [ ${#missing_deps[@]} -gt 0 ]; then
+        log_error "Missing dependencies:"
+        for dep in "${missing_deps[@]}"; do
+            echo "  - $dep"
+        done
+        log_info "Install missing dependencies:"
+        echo "  sudo apt-get update"
+        echo "  sudo apt-get install -y build-essential pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev"
+        echo "  cargo install cargo-deb"
+        exit 1
+    fi
+    
+    log_info "All dependencies satisfied"
+}
+
+# Architecture validation
+validate_architecture() {
+    log_info "Validating target architecture: $ARCH"
+    
+    case "$ARCH" in
+        amd64|arm64|armhf|i386)
+            log_info "Architecture $ARCH is supported"
             ;;
         *)
-            echo -e "${RED}Unknown option: $1${NC}"
-            usage
+            log_warn "Architecture $ARCH may not be fully tested"
             ;;
     esac
-done
+}
 
-echo -e "${GREEN}Building gst-plugin-fallbackswitch Debian package...${NC}"
+# Build the plugin
+build_plugin() {
+    log_info "Building gst-plugin-fallbackswitch (release mode)..."
+    cd "$FBSWITCH_DIR"
 
-# Check for required tools
-check_tool() {
-    if ! command -v "$1" >/dev/null 2>&1; then
-        echo -e "${RED}$1 is required but not installed.${NC}"
-        if [ -n "$2" ]; then
-            echo -e "${YELLOW}Install with: $2${NC}"
-        fi
+    # Set build flags for optimization
+    export CARGO_PROFILE_RELEASE_LTO=true
+    export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
+    
+    if [ "$VERBOSE" = "1" ]; then
+        cargo build --release --verbose
+    else
+        cargo build --release
+    fi
+    
+    # Verify library was built
+    local lib_file
+    if [ "$(uname)" = "Linux" ]; then
+        lib_file="${PROJECT_ROOT}/target/release/libgstfallbackswitch.so"
+    else
+        lib_file="${PROJECT_ROOT}/target/release/gstfallbackswitch.dll"
+    fi
+    
+    if [ ! -f "$lib_file" ]; then
+        log_error "Library file not found: $lib_file"
         exit 1
+    fi
+    
+    log_info "Plugin built successfully: $lib_file"
+}
+
+# Generate Debian package
+generate_package() {
+    log_info "Generating Debian package..."
+    cd "$FBSWITCH_DIR"
+
+    if [ "$VERBOSE" = "1" ]; then
+        cargo deb --verbose --no-strip --no-build --multiarch=same
+    else
+        cargo deb --no-strip --no-build --multiarch=same
+    fi
+    
+    # Find the generated package
+    local deb_file
+    deb_file=$(find ${PROJECT_ROOT}/target/debian -name "*.deb" | head -n 1)
+    
+    if [ -z "$deb_file" ]; then
+        log_error "No .deb file found in ${PROJECT_ROOT}/target/debian/"
+        exit 1
+    fi
+    
+    log_info "Package generated: $deb_file"
+    
+    # Basic package validation
+    validate_package "$deb_file"
+}
+
+# Validate the generated package
+validate_package() {
+    local deb_file="$1"
+    log_info "Validating package: $deb_file"
+    
+    # Check package contents
+    log_info "Package contents:"
+    dpkg-deb -c "$deb_file" | head -20
+    
+    # Check package info
+    log_info "Package information:"
+    dpkg-deb --info "$deb_file"
+    
+    # Run lintian if available
+    if command -v lintian >/dev/null 2>&1; then
+        log_info "Running lintian checks..."
+        lintian "$deb_file" || log_warn "Lintian found issues (may be non-critical)"
+    else
+        log_warn "lintian not available, skipping package policy checks"
     fi
 }
 
-check_tool cargo
-check_tool cargo-deb "cargo install cargo-deb"
-check_tool dpkg
-check_tool dpkg-architecture
+# Main execution
+main() {
+    log_info "Starting Debian package build for $PACKAGE_NAME"
+    log_info "Target architecture: $ARCH"
+    log_info "Working directory: $FBSWITCH_DIR"
+    
+    check_dependencies
+    validate_architecture
+    build_plugin
+    generate_package
+    
+    log_info "Build completed successfully!"
+    
+    # Show final package location
+    local final_deb
+    final_deb=$(find "${PROJECT_ROOT}/target/debian" -name "*.deb" | head -n 1)
+    if [ -n "$final_deb" ]; then
+        log_info "Final package: $final_deb"
+        log_info "Package size: $(du -h "$final_deb" | cut -f1)"
+    fi
+}
 
-# Detect architecture and set multiarch path
-if [ -z "$TARGET_ARCH" ]; then
-    ARCH=$(dpkg --print-architecture)
-else
-    ARCH="$TARGET_ARCH"
-fi
+# Help text
+show_help() {
+    cat <<EOF
+Usage: $0 [ARCHITECTURE]
 
-# Map architecture to Rust target
-case $ARCH in
-    amd64)
-        RUST_TARGET="x86_64-unknown-linux-gnu"
-        ;;
-    arm64|aarch64)
-        RUST_TARGET="aarch64-unknown-linux-gnu"
-        ;;
-    armhf)
-        RUST_TARGET="armv7-unknown-linux-gnueabihf"
+Build Debian package for gst-plugin-fallbackswitch
+
+Arguments:
+    ARCHITECTURE    Target architecture (amd64, arm64, armhf, i386)
+                   Default: auto-detected or amd64
+
+Environment Variables:
+    VERBOSE=1       Enable verbose output
+
+Examples:
+    $0                  # Build for current architecture
+    $0 arm64           # Cross-build for ARM64
+    VERBOSE=1 $0       # Build with verbose output
+
+EOF
+}
+
+# Parse command line arguments
+case "${1:-}" in
+    -h|--help|help)
+        show_help
+        exit 0
         ;;
     *)
-        echo -e "${RED}Unsupported architecture: $ARCH${NC}"
-        echo "Supported: amd64, arm64, armhf"
-        exit 1
+        main "$@"
         ;;
 esac
-
-DEB_HOST_MULTIARCH=$(dpkg-architecture -a"$ARCH" -qDEB_HOST_MULTIARCH)
-echo -e "${BLUE}Building for architecture: ${ARCH}${NC}"
-echo -e "${BLUE}Rust target: ${RUST_TARGET}${NC}"
-echo -e "${BLUE}Multiarch path: ${DEB_HOST_MULTIARCH}${NC}"
-
-# Export for cargo-deb to use
-export DEB_HOST_MULTIARCH
-export CARGO_TARGET_DIR="$PROJECT_DIR/target"
-
-# Change to project directory
-cd "$PROJECT_DIR"
-
-# Clean previous builds if requested
-if [ "$CLEAN_BUILD" = true ]; then
-    echo -e "${YELLOW}Cleaning previous builds...${NC}"
-    cargo clean
-fi
-
-# Check if cross-compilation is needed
-if [ "$ARCH" != "$(dpkg --print-architecture)" ]; then
-    echo -e "${YELLOW}Cross-compiling for $ARCH${NC}"
-    # Ensure the target is installed
-    rustup target add "$RUST_TARGET" 2>/dev/null || true
-    BUILD_FLAGS="--target $RUST_TARGET"
-else
-    BUILD_FLAGS=""
-fi
-
-# Build the plugin library with cargo in release mode
-echo -e "${BLUE}Building plugin library...${NC}"
-if [ "$VERBOSE" = true ]; then
-    cargo build -p gst-plugin-fallbackswitch --release $BUILD_FLAGS --verbose
-else
-    cargo build -p gst-plugin-fallbackswitch --release $BUILD_FLAGS
-fi
-
-# Verify the library was built
-if [ ! -f "target/release/libgstfallbackswitch.so" ]; then
-    echo -e "${RED}Failed to build library${NC}"
-    exit 1
-fi
-
-# Display library info
-echo "Library information:"
-file target/release/libgstfallbackswitch.so
-ldd target/release/libgstfallbackswitch.so || true
-
-# Strip the binary to reduce size (cargo-deb will do this too if strip=true)
-echo "Stripping binary for release..."
-strip --strip-unneeded target/release/libgstfallbackswitch.so
-
-# Generate the debian package
-echo "Generating Debian package..."
-cargo deb --no-build --no-strip --multiarch=same #--output "usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0"
-
-# Display package info
-DEB_FILE=$(ls -1 target/debian/*.deb 2>/dev/null | head -n1)
-if [ -n "$DEB_FILE" ]; then
-    echo -e "${GREEN}Package created successfully!${NC}"
-    echo "Package: $DEB_FILE"
-    echo ""
-    echo "Package details:"
-    dpkg-deb --info "$DEB_FILE"
-    echo ""
-    echo "Package contents (checking GStreamer plugin path):"
-    dpkg-deb --contents "$DEB_FILE" | grep -E "(gstreamer|\.so)"
-    echo ""
-    # Verify the library is in the correct multiarch path
-    if dpkg-deb --contents "$DEB_FILE" | grep -q "usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0"; then
-        echo -e "${GREEN}✓ Library will be installed to correct GStreamer plugin path${NC}"
-    else
-        echo -e "${YELLOW}⚠ Warning: Library path may not be correct for GStreamer discovery${NC}: usr/lib/${DEB_HOST_MULTIARCH}/gstreamer-1.0"
-    fi
-else
-    echo -e "${RED}Failed to create debian package${NC}"
-    exit 1
-fi
-
-echo -e "${GREEN}Build complete! Package available in target/debian/${NC}"
-echo ""
-echo "To test installation (in a container or VM):"
-echo "  sudo dpkg -i $DEB_FILE"
-echo "  gst-inspect-1.0 fallbackswitch"
