@@ -142,7 +142,7 @@ pub async fn mark_disk(
 
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/rotation")
+        web::scope("/api/v1/rotation")
             .route("/disks", web::get().to(list_disks))
             .route("/trigger", web::post().to(trigger_rotation))
             .route("/status", web::get().to(rotation_status))
