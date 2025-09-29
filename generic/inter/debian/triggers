@@ -1,0 +1,2 @@
+# Trigger ldconfig when the plugin is installed or removed
+activate-noawait ldconfig # this prevents installation from completing successfully :(

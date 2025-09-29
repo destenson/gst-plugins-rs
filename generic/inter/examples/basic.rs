@@ -15,15 +15,15 @@ fn toplevel(obj: &gst::Object) -> gst::Object {
 async fn main() -> Result<(), Error> {
     gst::init()?;
 
-    let src_pipeline = gst::parse::launch("videotestsrc is-live=true ! intersink")?;
-    let sink_pipeline = gst::parse::launch("intersrc ! videoconvert ! autovideosink")?;
+    let src_pipeline = gst::parse::launch("videotestsrc is-live=true num-buffers=10 ! intervideosink")?;
+    let sink_pipeline = gst::parse::launch("intervideosrc ! videoconvert ! autovideosink")?;
 
     let mut stream = select_all([
         src_pipeline.bus().unwrap().stream(),
         sink_pipeline.bus().unwrap().stream(),
     ]);
 
-    let base_time = gst::SystemClock::obtain().time().unwrap();
+    let base_time = gst::SystemClock::obtain().time();
 
     src_pipeline.set_clock(Some(&gst::SystemClock::obtain()))?;
     src_pipeline.set_start_time(gst::ClockTime::NONE);

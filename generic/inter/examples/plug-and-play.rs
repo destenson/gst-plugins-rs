@@ -44,7 +44,7 @@ fn create_sink_pipeline(producer_name: &str) -> Result<Producer, Error> {
         .property_from_str("valignment", "center")
         .property_from_str("halignment", "center")
         .build()?;
-    let sink = gst::ElementFactory::make("intersink")
+    let sink = gst::ElementFactory::make("intervideosink")
         .property("producer-name", producer_name)
         .build()?;
 
@@ -168,7 +168,7 @@ async fn main() -> Result<(), Error> {
 
     println!("h for help");
 
-    let base_time = gst::SystemClock::obtain().time().unwrap();
+    let base_time = gst::SystemClock::obtain().time();
 
     let mut producers: HashMap<String, Producer> = HashMap::new();
     let mut consumers: HashMap<String, Consumer> = HashMap::new();

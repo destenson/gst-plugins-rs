@@ -1,0 +1,7 @@
+gst-plugin-inter (0.14.0~git-1) unstable; urgency=medium
+
+  * Initial Debian package release
+  * Includes inter{audio,sub,video}src, and inter{audio,sub,video}sink elements
+  * Built from gst-plugins-rs repository
+
+ -- GStreamer Rust Plugins Maintainers <gstreamer-rust@lists.freedesktop.org>  Mon, 09 Sep 2025 12:00:00 +0000
