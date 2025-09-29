@@ -266,6 +266,43 @@ export function createMockAPI() {
 
   return {
     client: mockClient,
+    auth: {
+      login: async (credentials: { username: string; password: string }) => {
+        await mockClient.delay();
+        if (credentials.username === 'dev' && credentials.password === 'dev') {
+          return {
+            token: 'mock-token-' + Date.now(),
+            user: {
+              id: 'dev-user',
+              username: 'developer',
+              email: 'dev@example.com',
+              role: 'admin'
+            },
+            expiresIn: 3600
+          };
+        }
+        throw new Error('Invalid credentials');
+      },
+      logout: async () => {
+        await mockClient.delay();
+      },
+      verify: async () => {
+        await mockClient.delay();
+        return {
+          id: 'dev-user',
+          username: 'developer',
+          email: 'dev@example.com',
+          role: 'admin'
+        };
+      },
+      refresh: async () => {
+        await mockClient.delay();
+        return {
+          token: 'mock-token-' + Date.now(),
+          expiresIn: 3600
+        };
+      }
+    },
     health: {
       check: () => mockClient.checkHealth(),
       getStatus: () => mockClient.getStatus(),

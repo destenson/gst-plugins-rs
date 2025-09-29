@@ -1,8 +1,10 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useState, useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Dialog, Transition } from '@headlessui/react';
 import { XMarkIcon, Bars3Icon } from '@heroicons/react/24/outline';
 import { navigationItems } from '../../utils/navigation.ts';
+import { useAuth } from '../../contexts/AuthContext.tsx';
+import { Database } from 'lucide-react';
 import clsx from 'clsx';
 
 interface SidebarProps {
@@ -12,6 +14,21 @@ interface SidebarProps {
 
 export default function Sidebar({ sidebarOpen, setSidebarOpen }: SidebarProps) {
   const location = useLocation();
+  const { isDevelopmentMode } = useAuth();
+
+  // Add database item to navigation in development mode
+  const navItems = useMemo(() => {
+    const items = [...navigationItems];
+    if (isDevelopmentMode) {
+      items.push({
+        name: 'Database',
+        path: '/database',
+        icon: Database as any,
+        description: 'Database viewer (Dev Only)',
+      });
+    }
+    return items;
+  }, [isDevelopmentMode]);
 
   return (
     <>
@@ -72,7 +89,7 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }: SidebarProps) {
                     <ul role="list" className="flex flex-1 flex-col gap-y-7">
                       <li>
                         <ul role="list" className="-mx-2 space-y-1">
-                          {navigationItems.map((item) => (
+                          {navItems.map((item) => (
                             <li key={item.name}>
                               <Link
                                 to={item.path}
@@ -120,7 +137,7 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }: SidebarProps) {
             <ul role="list" className="flex flex-1 flex-col gap-y-7">
               <li>
                 <ul role="list" className="-mx-2 space-y-1">
-                  {navigationItems.map((item) => (
+                  {navItems.map((item) => (
                     <li key={item.name}>
                       <Link
                         to={item.path}

@@ -2,6 +2,7 @@ import { Bars3Icon, MoonIcon, SunIcon } from '@heroicons/react/24/outline';
 import { useTheme } from '../../contexts/ThemeContext.tsx';
 import { ConnectionStatus } from '../../lib/websocket/index.ts';
 import Breadcrumb from '../Breadcrumb.tsx';
+import UserMenu from '../UserMenu.tsx';
 
 interface HeaderProps {
   setSidebarOpen: (open: boolean) => void;
@@ -48,19 +49,11 @@ export default function Header({ setSidebarOpen }: HeaderProps) {
               )}
             </button>
 
-            {/* Profile dropdown placeholder */}
+            {/* Separator */}
             <div className="hidden lg:block lg:h-6 lg:w-px lg:bg-gray-200 dark:bg-gray-700" aria-hidden="true" />
 
-            {/* User menu placeholder */}
-            <div className="flex items-center">
-              <button
-                type="button"
-                className="flex items-center gap-x-2 p-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-gray-900 dark:hover:text-white"
-              >
-                <span className="inline-block h-8 w-8 rounded-full bg-gray-300 dark:bg-gray-600" />
-                <span className="hidden lg:block">User</span>
-              </button>
-            </div>
+            {/* User menu */}
+            <UserMenu />
           </div>
         </div>
       </div>

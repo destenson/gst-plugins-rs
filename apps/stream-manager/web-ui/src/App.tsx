@@ -1,9 +1,13 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext.tsx';
 import { APIProvider } from './contexts/APIContext.tsx';
+import { AuthProvider } from './contexts/AuthContext.tsx';
 import { WebSocketProvider } from './lib/websocket/index.ts';
 import ErrorBoundary from './components/ErrorBoundary.tsx';
+import ProtectedRoute from './components/ProtectedRoute.tsx';
+import SessionTimeoutModal from './components/SessionTimeoutModal.tsx';
 import Layout from './components/layout/Layout.tsx';
+import Login from './pages/Login.tsx';
 import Dashboard from './pages/Dashboard.tsx';
 import Streams from './pages/Streams.tsx';
 import Recordings from './pages/Recordings.tsx';
@@ -11,6 +15,7 @@ import Configuration from './pages/Configuration.tsx';
 import Metrics from './pages/Metrics.tsx';
 import Logs from './pages/Logs.tsx';
 import Help from './pages/Help.tsx';
+import Database from './pages/Database.tsx';
 
 function App() {
   // Get WebSocket configuration from environment
@@ -19,27 +24,50 @@ function App() {
     debug: (window as any).DEV || false,
   };
 
+  // Check if development mode - always true for development
+  const isDevelopmentMode = true; // Set to false for production
+
   return (
     <ErrorBoundary>
       <APIProvider>
-        <WebSocketProvider config={wsConfig} autoConnect>
-          <ThemeProvider>
-            <BrowserRouter>
-              <Routes>
-                <Route path="/" element={<Layout />}>
-                  <Route index element={<Dashboard />} />
-                  <Route path="streams" element={<Streams />} />
-                  <Route path="recordings" element={<Recordings />} />
-                  <Route path="configuration" element={<Configuration />} />
-                  <Route path="metrics" element={<Metrics />} />
-                  <Route path="logs" element={<Logs />} />
-                  <Route path="help" element={<Help />} />
-                  <Route path="*" element={<NotFound />} />
-                </Route>
-              </Routes>
-            </BrowserRouter>
-          </ThemeProvider>
-        </WebSocketProvider>
+        <AuthProvider developmentMode={isDevelopmentMode}>
+          <WebSocketProvider config={wsConfig} autoConnect>
+            <ThemeProvider>
+              <BrowserRouter>
+                <Routes>
+                  {/* Login Route - No protection needed */}
+                  <Route path="/login" element={<Login />} />
+
+                  {/* Protected Routes */}
+                  <Route
+                    path="/"
+                    element={
+                      <ProtectedRoute>
+                        <Layout />
+                      </ProtectedRoute>
+                    }
+                  >
+                    <Route index element={<Dashboard />} />
+                    <Route path="streams" element={<Streams />} />
+                    <Route path="recordings" element={<Recordings />} />
+                    <Route path="configuration" element={<Configuration />} />
+                    <Route path="metrics" element={<Metrics />} />
+                    <Route path="logs" element={<Logs />} />
+                    <Route path="help" element={<Help />} />
+                    {/* Database viewer - only in development mode */}
+                    {isDevelopmentMode && (
+                      <Route path="database" element={<Database />} />
+                    )}
+                    <Route path="*" element={<NotFound />} />
+                  </Route>
+                </Routes>
+
+                {/* Session Timeout Modal */}
+                <SessionTimeoutModal />
+              </BrowserRouter>
+            </ThemeProvider>
+          </WebSocketProvider>
+        </AuthProvider>
       </APIProvider>
     </ErrorBoundary>
   );

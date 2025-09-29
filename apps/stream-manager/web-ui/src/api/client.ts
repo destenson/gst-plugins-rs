@@ -71,7 +71,7 @@ export class APIClient {
 
   constructor(config: APIClientConfig = {}) {
     this.config = {
-      baseURL: config.baseURL || 'http://localhost:3000',
+      baseURL: config.baseURL || '',
       timeout: config.timeout || 30000,
       retryAttempts: config.retryAttempts || 3,
       retryDelay: config.retryDelay || 1000,

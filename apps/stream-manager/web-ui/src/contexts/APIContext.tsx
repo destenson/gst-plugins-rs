@@ -21,7 +21,7 @@ interface APIProviderProps {
 
 export const APIProvider: React.FC<APIProviderProps> = ({
   children,
-  baseURL = (globalThis as any).VITE_API_URL || 'http://localhost:3000',
+  baseURL = (globalThis as any).VITE_API_URL || '',
   initialToken,
   forceMock = false
 }) => {
