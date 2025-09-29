@@ -160,7 +160,7 @@ export interface WebSocketConfig {
 
 export const DEFAULT_CONFIG: WebSocketConfig = {
   port: 8080,
-  path: '/api/v1/ws',
+  path: '/ws',
   reconnect: true,
   reconnectAttempts: 10,
   reconnectInterval: 1000,

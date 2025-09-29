@@ -34,7 +34,7 @@ Health check endpoint for monitoring.
 }
 ```
 
-#### GET /api/status
+#### GET /api/v1/status
 Get overall system status.
 
 **Response:**
@@ -54,7 +54,7 @@ Get overall system status.
 
 ### Stream Management
 
-#### GET /api/streams
+#### GET /api/v1/streams
 List all configured streams.
 
 **Query Parameters:**
@@ -87,7 +87,7 @@ List all configured streams.
 }
 ```
 
-#### GET /api/streams/{id}
+#### GET /api/v1/streams/{id}
 Get details for a specific stream.
 
 **Response:**
@@ -121,7 +121,7 @@ Get details for a specific stream.
 }
 ```
 
-#### POST /api/streams
+#### POST /api/v1/streams
 Create a new stream.
 
 **Request Body:**
@@ -155,7 +155,7 @@ Create a new stream.
 }
 ```
 
-#### PUT /api/streams/{id}
+#### PUT /api/v1/streams/{id}
 Update stream configuration.
 
 **Request Body:**
@@ -172,12 +172,12 @@ Update stream configuration.
 
 **Response:** 200 OK
 
-#### DELETE /api/streams/{id}
+#### DELETE /api/v1/streams/{id}
 Remove a stream.
 
 **Response:** 204 No Content
 
-#### POST /api/streams/{id}/start
+#### POST /api/v1/streams/{id}/start
 Start a stream.
 
 **Response:** 200 OK
@@ -187,7 +187,7 @@ Start a stream.
 }
 ```
 
-#### POST /api/streams/{id}/stop
+#### POST /api/v1/streams/{id}/stop
 Stop a stream.
 
 **Response:** 200 OK
@@ -197,7 +197,7 @@ Stop a stream.
 }
 ```
 
-#### POST /api/streams/{id}/restart
+#### POST /api/v1/streams/{id}/restart
 Restart a stream.
 
 **Response:** 200 OK
@@ -209,7 +209,7 @@ Restart a stream.
 
 ### Recording Control
 
-#### POST /api/streams/{id}/recording/start
+#### POST /api/v1/streams/{id}/recording/start
 Start recording for a stream.
 
 **Request Body (optional):**
@@ -228,7 +228,7 @@ Start recording for a stream.
 }
 ```
 
-#### POST /api/streams/{id}/recording/stop
+#### POST /api/v1/streams/{id}/recording/stop
 Stop recording for a stream.
 
 **Response:** 200 OK
@@ -244,17 +244,17 @@ Stop recording for a stream.
 }
 ```
 
-#### POST /api/streams/{id}/recording/pause
+#### POST /api/v1/streams/{id}/recording/pause
 Pause recording (keeps stream active).
 
 **Response:** 200 OK
 
-#### POST /api/streams/{id}/recording/resume
+#### POST /api/v1/streams/{id}/recording/resume
 Resume paused recording.
 
 **Response:** 200 OK
 
-#### GET /api/streams/{id}/recordings
+#### GET /api/v1/streams/{id}/recordings
 List all recordings for a stream.
 
 **Query Parameters:**
@@ -281,7 +281,7 @@ List all recordings for a stream.
 
 ### Metrics & Statistics
 
-#### GET /api/metrics
+#### GET /api/v1/metrics
 Get Prometheus-compatible metrics.
 
 **Response:** (text/plain)
@@ -299,7 +299,7 @@ stream_manager_bytes_received{stream="camera-1"} 1073741824
 stream_manager_packets_lost{stream="camera-1"} 10
 ```
 
-#### GET /api/streams/{id}/metrics
+#### GET /api/v1/streams/{id}/metrics
 Get detailed metrics for a specific stream.
 
 **Response:**
@@ -335,7 +335,7 @@ Get detailed metrics for a specific stream.
 
 ### Configuration
 
-#### GET /api/config
+#### GET /api/v1/config
 Get current configuration.
 
 **Response:**
@@ -358,7 +358,7 @@ Get current configuration.
 }
 ```
 
-#### PUT /api/config
+#### PUT /api/v1/config
 Update configuration (requires reload).
 
 **Request Body:**
@@ -372,14 +372,14 @@ Update configuration (requires reload).
 
 **Response:** 200 OK
 
-#### POST /api/config/reload
+#### POST /api/v1/config/reload
 Reload configuration from file.
 
 **Response:** 200 OK
 
 ### Backup & Recovery
 
-#### POST /api/backup
+#### POST /api/v1/backup
 Create a backup of configuration and state.
 
 **Request Body:**
@@ -398,7 +398,7 @@ Create a backup of configuration and state.
 }
 ```
 
-#### GET /api/backup/{job_id}
+#### GET /api/v1/backup/{job_id}
 Get backup job status.
 
 **Response:**
@@ -412,7 +412,7 @@ Get backup job status.
 }
 ```
 
-#### POST /api/restore
+#### POST /api/v1/restore
 Restore from backup.
 
 **Request Body:**
@@ -433,7 +433,7 @@ WebSocket endpoint for real-time events.
 
 **Connection:**
 ```javascript
-const ws = new WebSocket('ws://localhost:3000/api/events');
+const ws = new WebSocket('ws://localhost:3000/api/v1/events');
 
 ws.onmessage = (event) => {
   const data = JSON.parse(event.data);
@@ -530,7 +530,7 @@ API requests are rate-limited to prevent abuse:
 import requests
 import json
 
-BASE_URL = "http://localhost:3000/api"
+BASE_URL = "http://localhost:8080/api/v1"
 TOKEN = "your-auth-token"
 
 headers = {
@@ -571,24 +571,24 @@ print(f"Current bitrate: {metrics['bitrate']['current']}")
 ```bash
 # List all streams
 curl -H "Authorization: Bearer $TOKEN" \
-     http://localhost:3000/api/streams
+     http://localhost:3000/api/v1/streams
 
 # Create a new stream
 curl -X POST \
      -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/json" \
      -d '{"id":"camera-3","source_url":"rtsp://camera3.local:554/stream"}' \
-     http://localhost:3000/api/streams
+     http://localhost:3000/api/v1/streams
 
 # Start recording with custom settings
 curl -X POST \
      -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/json" \
      -d '{"segment_duration":300}' \
-     http://localhost:3000/api/streams/camera-3/recording/start
+     http://localhost:3000/api/v1/streams/camera-3/recording/start
 
 # Get system metrics in Prometheus format
-curl http://localhost:3000/api/metrics
+curl http://localhost:3000/api/v1/metrics
 ```
 
 ### JavaScript/Node.js
@@ -597,7 +597,7 @@ curl http://localhost:3000/api/metrics
 const axios = require('axios');
 
 const api = axios.create({
-  baseURL: 'http://localhost:3000/api',
+  baseURL: 'http://localhost:8080/api/v1',
   headers: {
     'Authorization': 'Bearer your-token',
     'Content-Type': 'application/json'

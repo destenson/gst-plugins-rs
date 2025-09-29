@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import LoadingSpinner from '../components/LoadingSpinner.tsx';
 import clsx from 'clsx';
@@ -98,10 +98,13 @@ export default function Dashboard() {
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [cpuHistory, setCpuHistory] = useState<Array<{time: string, value: number}>>([]);
   const [memoryHistory, setMemoryHistory] = useState<Array<{time: string, value: number}>>([]);
+  const [backendError, setBackendError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Fetch system status
   const fetchSystemStatus = useCallback(async () => {
     try {
+      setBackendError(null);
       // Check if api has the health property (real API) or if it's a mock
       if ('health' in api && api.health) {
         const status = await api.health.getStatus();
@@ -111,10 +114,17 @@ export default function Dashboard() {
         const status = await api.client.get<SystemStatus>('/api/status');
         setSystemStatus(status);
       }
-    } catch (error) {
+      setRetryCount(0);
+    } catch (error: any) {
       console.error('Failed to fetch system status:', error);
+      setBackendError('Backend API is not available');
+      setRetryCount(prev => prev + 1);
+      // Stop retrying after 3 attempts
+      if (retryCount >= 3) {
+        setAutoRefresh(false);
+      }
     }
-  }, [api]);
+  }, [api, retryCount]);
 
   // Fetch streams
   const fetchStreams = useCallback(async () => {
@@ -128,10 +138,14 @@ export default function Dashboard() {
         const response = await api.client.get<{streams: Stream[]}>('/api/streams');
         setStreams(response?.streams || []);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to fetch streams:', error);
+      // Don't set error again if already set by system status
+      if (!backendError) {
+        setBackendError('Backend API is not available');
+      }
     }
-  }, [api]);
+  }, [api, backendError]);
 
   // Load initial data
   const loadData = useCallback(async () => {
@@ -192,21 +206,27 @@ export default function Dashboard() {
     }
   }, [events, fetchStreams]);
 
+  // Store loadData in a ref to avoid dependency issues
+  const loadDataRef = useRef(loadData);
+  useEffect(() => {
+    loadDataRef.current = loadData;
+  }, [loadData]);
+
   // Auto-refresh
   useEffect(() => {
     if (!autoRefresh) return;
 
     const interval = setInterval(() => {
-      loadData();
+      loadDataRef.current();
     }, REFRESH_INTERVAL);
 
     return () => clearInterval(interval);
-  }, [autoRefresh, loadData]);
+  }, [autoRefresh]);
 
-  // Initial load
+  // Initial load - only run once
   useEffect(() => {
-    loadData();
-  }, []);
+    loadDataRef.current();
+  }, []); // Empty dependency array
 
   // Calculate metrics
   const metrics = useMemo(() => {
@@ -269,6 +289,38 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Backend Error Banner */}
+      {backendError && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+          <div className="flex items-center">
+            <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400 mr-3" />
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-red-800 dark:text-red-300">
+                Backend Connection Issue
+              </h3>
+              <p className="text-sm text-red-700 dark:text-red-400 mt-1">
+                Unable to connect to the stream manager backend. The service may be starting up or experiencing issues.
+              </p>
+              {retryCount >= 3 && (
+                <p className="text-xs text-red-600 dark:text-red-500 mt-2">
+                  Auto-refresh has been disabled after multiple failed attempts.
+                  <button
+                    onClick={() => {
+                      setRetryCount(0);
+                      setAutoRefresh(true);
+                      loadData();
+                    }}
+                    className="ml-2 underline hover:no-underline"
+                  >
+                    Retry now
+                  </button>
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>

@@ -4,8 +4,8 @@
 Initialize a modern web frontend project for the Stream Manager with build tooling, development server, and integration with the existing Rust backend API.
 
 ## Context
-- Backend uses actix-web on port 3000 with REST API at `/api/*`
-- WebSocket events available at `/api/events`
+- Backend uses actix-web on port 8080 with REST API at `/api/v1/*`
+- WebSocket events available at `/api/v1/events`
 - No existing frontend infrastructure
 - Must be served alongside the Rust backend
 - Cross-platform compatibility required (Windows, Linux, macOS)
@@ -23,7 +23,7 @@ Initialize a modern web frontend project for the Stream Manager with build tooli
 1. Initialize project with Vite and React/Vue/Svelte (React recommended for ecosystem)
 2. Configure TypeScript with strict settings
 3. Setup Tailwind CSS with custom configuration
-4. Configure Vite proxy to forward `/api` to `http://localhost:3000`
+4. Configure Vite proxy to forward `/api/v1` to `http://localhost:8080`
 5. Create build scripts that output to `../static/` directory
 6. Setup ESLint and Prettier for code quality
 7. Create basic index.html with proper meta tags

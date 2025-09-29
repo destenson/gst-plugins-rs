@@ -6,7 +6,7 @@ Create the main dashboard page showing system status, stream statistics, and key
 ## Context
 - First page users see after login
 - Must load quickly and show real-time updates
-- Data from /api/status and WebSocket events
+- Data from /api/v1/status and WebSocket events
 - Should be responsive and work on mobile
 - Uses existing API client and WebSocket connections
 

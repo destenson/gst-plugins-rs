@@ -4,7 +4,7 @@
 Create a robust TypeScript API client layer for communication with the Stream Manager backend REST API.
 
 ## Context
-- Backend API uses actix-web on `/api/*` endpoints
+- Backend API uses actix-web on `/api/v1/*` endpoints
 - API documentation available in docs/API.md
 - Need type-safe client with error handling
 - Must handle authentication tokens
@@ -40,12 +40,12 @@ Create a robust TypeScript API client layer for communication with the Stream Ma
 12. Create custom hooks for API calls
 
 ## API Endpoints to Implement
-- Health: GET /health, GET /api/status
-- Streams: GET/POST/PUT/DELETE /api/streams
-- Recording: POST /api/streams/{id}/recording/*
-- Metrics: GET /api/metrics, GET /api/streams/{id}/metrics
-- Config: GET/PUT /api/config, POST /api/config/reload
-- Backup: POST /api/backup, GET /api/backup/{id}, POST /api/restore
+- Health: GET /health, GET /api/v1/status
+- Streams: GET/POST/PUT/DELETE /api/v1/streams
+- Recording: POST /api/v1/streams/{id}/recording/*
+- Metrics: GET /api/v1/metrics, GET /api/v1/streams/{id}/metrics
+- Config: GET/PUT /api/v1/config, POST /api/v1/config/reload
+- Backup: POST /api/v1/backup, GET /api/v1/backup/{id}, POST /api/v1/restore
 
 ## Resources
 - Axios documentation: https://axios-http.com/docs/intro

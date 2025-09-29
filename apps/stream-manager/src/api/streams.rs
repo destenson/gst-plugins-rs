@@ -101,7 +101,7 @@ pub async fn remove_stream(
     path: web::Path<String>,
 ) -> Result<HttpResponse> {
     let stream_id = path.into_inner();
-    
+
     match manager.remove_stream(&stream_id).await {
         Ok(_) => Ok(HttpResponse::NoContent().finish()),
         Err(e) => Ok(HttpResponse::NotFound().json(ErrorResponse {
@@ -115,11 +115,23 @@ pub async fn remove_stream(
 pub async fn list_streams(
     manager: web::Data<Arc<StreamManager>>,
 ) -> Result<HttpResponse> {
-    let streams = manager.list_streams().await;
-    
-    let stream_responses: Vec<StreamResponse> = streams
-        .into_iter()
-        .map(|info| StreamResponse {
+    tracing::info!("API: Listing streams endpoint called");
+
+    let streams = match manager.list_streams().await {
+        streams => {
+            tracing::info!("API: Successfully retrieved {} streams", streams.len());
+            streams
+        }
+    };
+
+    tracing::debug!("API: Processing stream responses");
+
+    let mut stream_responses = Vec::new();
+
+    for (idx, info) in streams.into_iter().enumerate() {
+        tracing::debug!("API: Processing stream {} ({})", idx, info.id);
+
+        let response = StreamResponse {
             id: info.id.clone(),
             name: info.config.name.clone(),
             uri: info.config.source_uri.clone(),
@@ -137,14 +149,18 @@ pub async fn list_streams(
                 duration_seconds: info.recording_state.duration.map(|d| d.as_secs_f64()),
                 bytes_written: info.recording_state.bytes_written,
             },
-        })
-        .collect();
-    
+        };
+
+        stream_responses.push(response);
+    }
+
     let response = StreamListResponse {
         total_count: stream_responses.len(),
         streams: stream_responses,
     };
-    
+
+    tracing::info!("API: Returning {} streams in response", response.total_count);
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -154,7 +170,7 @@ pub async fn get_stream(
     path: web::Path<String>,
 ) -> Result<HttpResponse> {
     let stream_id = path.into_inner();
-    
+
     match manager.get_stream_info(&stream_id).await {
         Ok(info) => {
             let response = StreamResponse {
@@ -191,7 +207,7 @@ pub async fn start_recording(
     path: web::Path<String>,
 ) -> Result<HttpResponse> {
     let stream_id = path.into_inner();
-    
+
     match manager.start_recording(&stream_id).await {
         Ok(_) => Ok(HttpResponse::Ok().json(serde_json::json!({
             "message": "Recording started",
@@ -210,7 +226,7 @@ pub async fn stop_recording(
     path: web::Path<String>,
 ) -> Result<HttpResponse> {
     let stream_id = path.into_inner();
-    
+
     match manager.stop_recording(&stream_id).await {
         Ok(_) => Ok(HttpResponse::Ok().json(serde_json::json!({
             "message": "Recording stopped",
@@ -229,7 +245,7 @@ pub async fn get_recording_status(
     path: web::Path<String>,
 ) -> Result<HttpResponse> {
     let stream_id = path.into_inner();
-    
+
     match manager.get_stream_info(&stream_id).await {
         Ok(info) => {
             let response = RecordingStatusResponse {
@@ -311,7 +327,7 @@ mod tests {
             .await;
 
         assert_eq!(resp.status(), 200);
-        
+
         let body: StreamListResponse = test::read_body_json(resp).await;
         assert_eq!(body.total_count, 0);
     }
@@ -337,7 +353,7 @@ mod tests {
     #[actix_web::test]
     async fn test_remove_stream() {
         let manager = Arc::new(create_test_manager().await);
-        
+
         // Add a stream first
         let config = StreamConfig {
             id: "test-stream".to_string(),
@@ -365,7 +381,7 @@ mod tests {
     #[actix_web::test]
     async fn test_recording_control() {
         let manager = Arc::new(create_test_manager().await);
-        
+
         // Add a stream first
         let config = StreamConfig {
             id: "test-stream".to_string(),
@@ -432,7 +448,7 @@ mod tests {
             .await;
 
         assert_eq!(resp.status(), 400);
-        
+
         let body: ErrorResponse = test::read_body_json(resp).await;
         assert!(body.error.contains("Validation"));
     }
