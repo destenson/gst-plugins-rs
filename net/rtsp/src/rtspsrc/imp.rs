@@ -3365,13 +3365,26 @@ impl RtspSrc {
 
         let task_src = self.ref_counted();
 
-        let cancel_token = CancellationToken::new();
+        // Check if task is already running (avoid interrupting reconnection)
         {
-            let mut stop_token_guard = self.stop_token.lock().unwrap();
-            if let Some(previous_token) = stop_token_guard.replace(cancel_token.clone()) {
-                previous_token.cancel();
+            let task_handle = self.task_handle.lock().unwrap();
+            if task_handle.is_some() {
+                gst::debug!(CAT, imp = self, "Task already running, skipping start");
+                return Ok(());
             }
         }
+
+        let cancel_token = {
+            let mut stop_token_guard = self.stop_token.lock().unwrap();
+            // Only create new token if none exists (preserves token during reconnection)
+            if let Some(existing_token) = stop_token_guard.as_ref() {
+                existing_token.clone()
+            } else {
+                let new_token = CancellationToken::new();
+                stop_token_guard.replace(new_token.clone());
+                new_token
+            }
+        };
 
         let mut task_handle = self.task_handle.lock().unwrap();
 
@@ -3775,6 +3788,16 @@ impl RtspSrc {
             };
 
             gst::info!(CAT, "Exited rtsp_task");
+
+            // Clear the stop token and command queue when task exits (allows fresh start)
+            {
+                let mut stop_token_guard = task_src.stop_token.lock().unwrap();
+                stop_token_guard.take();
+            }
+            {
+                let mut cmd_queue_guard = task_src.command_queue.lock().unwrap();
+                cmd_queue_guard.take();
+            }
 
             // Cleanup after stopping
             for h in &state.handles {
