@@ -1,6 +1,5 @@
 #!/bin/bash
 # build-deb.sh - Automated Debian Package Generation Script for gst-plugin-rtsp
-# Following PRP-004: Automated Build Script
 
 set -e
 
