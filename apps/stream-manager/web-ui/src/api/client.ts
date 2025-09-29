@@ -73,8 +73,8 @@ export class APIClient {
     this.config = {
       baseURL: config.baseURL || '',
       timeout: config.timeout || 30000,
-      retryAttempts: config.retryAttempts || 3,
-      retryDelay: config.retryDelay || 1000,
+      retryAttempts: config.retryAttempts || 1, // Reduce from 3 to 1
+      retryDelay: config.retryDelay || 2000, // Increase delay
       cacheEnabled: config.cacheEnabled ?? true,
       cacheMaxAge: config.cacheMaxAge || 60000, // 1 minute default
       ...config

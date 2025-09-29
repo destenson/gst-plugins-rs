@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext.tsx';
 import { APIProvider } from './contexts/APIContext.tsx';
 import { AuthProvider } from './contexts/AuthContext.tsx';
@@ -17,6 +17,40 @@ import Logs from './pages/Logs.tsx';
 import Help from './pages/Help.tsx';
 import Database from './pages/Database.tsx';
 
+// Create router with future flags enabled
+const router = createBrowserRouter(
+  [
+    {
+      path: "/login",
+      element: <Login />
+    },
+    {
+      path: "/",
+      element: (
+        <ProtectedRoute>
+          <Layout />
+        </ProtectedRoute>
+      ),
+      children: [
+        { index: true, element: <Dashboard /> },
+        { path: "streams", element: <Streams /> },
+        { path: "recordings", element: <Recordings /> },
+        { path: "configuration", element: <Configuration /> },
+        { path: "metrics", element: <Metrics /> },
+        { path: "logs", element: <Logs /> },
+        { path: "database", element: <Database /> },
+        { path: "help", element: <Help /> },
+      ]
+    }
+  ],
+  {
+    future: {
+      v7_startTransition: true,
+      v7_relativeSplatPath: true,
+    }
+  }
+);
+
 function App() {
   // Get WebSocket configuration from environment
   const wsConfig = {
@@ -33,52 +67,13 @@ function App() {
         <AuthProvider developmentMode={isDevelopmentMode}>
           <WebSocketProvider config={wsConfig} autoConnect>
             <ThemeProvider>
-              <BrowserRouter>
-                <Routes>
-                  {/* Login Route - No protection needed */}
-                  <Route path="/login" element={<Login />} />
-
-                  {/* Protected Routes */}
-                  <Route
-                    path="/"
-                    element={
-                      <ProtectedRoute>
-                        <Layout />
-                      </ProtectedRoute>
-                    }
-                  >
-                    <Route index element={<Dashboard />} />
-                    <Route path="streams" element={<Streams />} />
-                    <Route path="recordings" element={<Recordings />} />
-                    <Route path="configuration" element={<Configuration />} />
-                    <Route path="metrics" element={<Metrics />} />
-                    <Route path="logs" element={<Logs />} />
-                    <Route path="help" element={<Help />} />
-                    {/* Database viewer - only in development mode */}
-                    {isDevelopmentMode && (
-                      <Route path="database" element={<Database />} />
-                    )}
-                    <Route path="*" element={<NotFound />} />
-                  </Route>
-                </Routes>
-
-                {/* Session Timeout Modal */}
-                <SessionTimeoutModal />
-              </BrowserRouter>
+              <RouterProvider router={router} />
+              <SessionTimeoutModal />
             </ThemeProvider>
           </WebSocketProvider>
         </AuthProvider>
       </APIProvider>
     </ErrorBoundary>
-  );
-}
-
-function NotFound() {
-  return (
-    <div className="flex flex-col items-center justify-center h-64">
-      <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">404</h1>
-      <p className="text-gray-600 dark:text-gray-400">Page not found</p>
-    </div>
   );
 }
 

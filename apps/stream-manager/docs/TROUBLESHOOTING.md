@@ -235,10 +235,10 @@ du -sh /var/recordings/*
 2. **Verify recording is enabled:**
 ```bash
 # Check via API
-curl http://localhost:3000/api/streams/camera-1 | jq '.recording'
+curl http://localhost:3000/api/v1/streams/camera-1 | jq '.recording'
 
 # Enable recording
-curl -X POST http://localhost:3000/api/streams/camera-1/recording/start
+curl -X POST http://localhost:3000/api/v1/streams/camera-1/recording/start
 ```
 
 3. **Check write permissions:**
@@ -430,7 +430,7 @@ curl -H "Host: stream.example.com" http://127.0.0.1/api/health
 3. **Check rate limiting:**
 ```bash
 # View current limits
-curl http://localhost:3000/api/status | jq '.rate_limit'
+curl http://localhost:3000/api/v1/status | jq '.rate_limit'
 ```
 
 #### Problem: Authentication Failures
@@ -447,7 +447,7 @@ curl http://localhost:3000/api/status | jq '.rate_limit'
 echo $STREAM_MANAGER_AUTH_TOKEN
 
 # Test with token
-curl -H "Authorization: Bearer your-token" http://localhost:3000/api/streams
+curl -H "Authorization: Bearer your-token" http://localhost:3000/api/v1/streams
 ```
 
 2. **Check token expiration:**

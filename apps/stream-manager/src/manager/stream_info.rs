@@ -52,12 +52,20 @@ impl From<HealthStatus> for bool {
 
 impl From<&StreamStatistics> for StreamHealth {
     fn from(stats: &StreamStatistics) -> Self {
+        // Calculate bitrate, avoiding division by zero
+        let elapsed_secs = stats.last_update.elapsed().as_secs_f64();
+        let bitrate_mbps = if elapsed_secs > 0.0 {
+            (stats.bytes_received as f64 * 8.0) / 1_000_000.0 / elapsed_secs
+        } else {
+            0.0
+        };
+
         Self {
             is_healthy: true, // Will be overridden by actual health status
             last_frame_time: Some(Utc::now()),
             frames_received: stats.packets_received,
             frames_dropped: stats.dropped_frames,
-            bitrate_mbps: (stats.bytes_received as f64 * 8.0) / 1_000_000.0 / stats.last_update.elapsed().as_secs_f64(),
+            bitrate_mbps,
         }
     }
 }

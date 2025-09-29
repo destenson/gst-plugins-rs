@@ -328,7 +328,7 @@ Configuration can be reloaded without restarting the service:
 
 ```bash
 # Via API
-curl -X POST http://localhost:3000/api/config/reload
+curl -X POST http://localhost:3000/api/v1/config/reload
 
 # Via signal
 kill -SIGHUP $(cat /var/run/stream-manager.pid)

@@ -4,7 +4,7 @@
 Create comprehensive metrics dashboards for monitoring system and stream performance with real-time charts and historical data.
 
 ## Context
-- Metrics available from /api/metrics (Prometheus format)
+- Metrics available from /api/v1/metrics (Prometheus format)
 - Real-time updates via WebSocket
 - Need both system-wide and per-stream views
 - Historical data for trend analysis

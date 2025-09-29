@@ -5,8 +5,8 @@ Configure the actix-web backend to serve the frontend static files in production
 
 ## Context
 - Backend uses actix-web 4.11.0
-- API routes are mounted at `/api/*`
-- WebSocket endpoint at `/api/events`
+- API routes are mounted at `/api/v1/*`
+- WebSocket endpoint at `/api/v1/events`
 - Frontend build outputs to `static/` directory
 - Must support SPA routing (return index.html for unknown routes)
 
@@ -45,21 +45,21 @@ cd apps/stream-manager/web-ui && deno run build && cd ..
 cargo run --package stream-manager
 
 # Test static file serving
-curl http://localhost:3000/index.html
+curl http://localhost:8080/index.html
 
 # Test SPA routing (should return index.html)
-curl http://localhost:3000/dashboard
+curl http://localhost:8080/dashboard
 
 # Test API still works
-curl http://localhost:3000/api/health
+curl http://localhost:8080/api/v1/health
 
 # Check cache headers
-curl -I http://localhost:3000/assets/main.js
+curl -I http://localhost:8080/assets/main.js
 ```
 
 ## Success Criteria
 - Frontend files served at root path
-- API endpoints still accessible at /api/*
+- API endpoints still accessible at /api/v1/*
 - SPA routing works (unknown paths return index.html)
 - Proper cache headers set
 - Gzip compression enabled for text files

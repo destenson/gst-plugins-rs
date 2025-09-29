@@ -372,7 +372,7 @@ server {
     }
 
     # WebSocket support
-    location /api/events {
+    location /api/v1/events {
         proxy_pass http://stream_manager_api;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -822,7 +822,7 @@ systemctl start stream-manager
 curl http://localhost:3000/health
 
 # Detailed status
-curl http://localhost:3000/api/status
+curl http://localhost:3000/api/v1/status
 
 # Metrics check
 curl http://localhost:9090/metrics | grep stream_manager

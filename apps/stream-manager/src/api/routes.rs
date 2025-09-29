@@ -1,4 +1,3 @@
-#![allow(unused)]
 use actix_web::{web, HttpResponse};
 use crate::api::{AppState, ApiError};
 use serde_json::json;
@@ -7,13 +6,13 @@ use tracing::debug;
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     // Configure the stream control API endpoints from PRP-12
     crate::api::streams::configure(cfg);
-    
+
     // Configure WebSocket endpoint from PRP-14
     crate::api::websocket::configure(cfg);
-    
+
     // Configure disk rotation endpoints from PRP-17
     crate::api::rotation::configure_routes(cfg);
-    
+
     // Configure recovery endpoints
     crate::api::recovery::configure(cfg);
 
@@ -22,12 +21,14 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
 
     // Configure WebRTC endpoints from PRP-26
     // WebRTC configuration is handled by webrtc module directly
-    
+
     // Configure WHIP/WHEP endpoints from PRP-27
     crate::webrtc::whip_whep::configure(cfg);
-    
+
     cfg.service(
         web::scope("/api/v1")
+            .route("/metrics", web::get().to(get_metrics))
+            .route("/metrics/prometheus", web::get().to(get_prometheus_metrics))
             .route("/health", web::get().to(health_check))
             .route("/health/liveness", web::get().to(liveness_check))
             .route("/health/readiness", web::get().to(readiness_check))
@@ -37,11 +38,6 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
                     .route("", web::put().to(update_config))
                     .route("/reload", web::post().to(reload_config))
                     .route("/reload/status", web::get().to(get_reload_status))
-            )
-            .service(
-                web::scope("/metrics")
-                    .route("", web::get().to(get_metrics))
-                    .route("/prometheus", web::get().to(get_prometheus_metrics))
             )
     );
 }

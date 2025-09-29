@@ -116,7 +116,7 @@ STREAM_MANAGER_PORT=8080 cargo run --package stream-manager
 
 1. Start a stream:
 ```bash
-curl -X POST http://localhost:3000/api/streams \
+curl -X POST http://localhost:3000/api/v1/streams \
   -H "Content-Type: application/json" \
   -d '{
     "id": "camera-1",
@@ -127,7 +127,7 @@ curl -X POST http://localhost:3000/api/streams \
 
 2. Check stream status:
 ```bash
-curl http://localhost:3000/api/streams/camera-1
+curl http://localhost:3000/api/v1/streams/camera-1
 ```
 
 3. Start recording:

@@ -152,6 +152,7 @@ pub async fn start_server(
 
         let mut app = App::new()
             .app_data(web::Data::new(app_state.clone()))
+            .app_data(web::Data::new(app_state.stream_manager.clone()))  // Add StreamManager directly for streams API
             .app_data(web::Data::new(app_state.event_broadcaster.clone()))
             .app_data(web::Data::new(app_state.disk_rotation_manager.clone()));
 

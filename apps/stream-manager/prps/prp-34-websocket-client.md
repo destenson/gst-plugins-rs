@@ -4,7 +4,7 @@
 Implement a robust WebSocket client for real-time event streaming from the Stream Manager backend.
 
 ## Context
-- Backend WebSocket endpoint at `/api/events` (actix-ws)
+- Backend WebSocket endpoint at `/api/v1/events` (actix-ws)
 - Events defined in src/api/websocket.rs
 - Backend default port should be 8080 (configurable)
 - Need automatic reconnection and event handling
