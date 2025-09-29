@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext.tsx';
 import { APIProvider } from './contexts/APIContext.tsx';
+import { WebSocketProvider } from './lib/websocket/index.ts';
 import ErrorBoundary from './components/ErrorBoundary.tsx';
 import Layout from './components/layout/Layout.tsx';
 import Dashboard from './pages/Dashboard.tsx';
@@ -12,25 +13,33 @@ import Logs from './pages/Logs.tsx';
 import Help from './pages/Help.tsx';
 
 function App() {
+  // Get WebSocket configuration from environment
+  const wsConfig = {
+    port: parseInt((window as any).VITE_API_PORT || '8080'),
+    debug: (window as any).DEV || false,
+  };
+
   return (
     <ErrorBoundary>
       <APIProvider>
-        <ThemeProvider>
-          <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<Layout />}>
-                <Route index element={<Dashboard />} />
-                <Route path="streams" element={<Streams />} />
-                <Route path="recordings" element={<Recordings />} />
-                <Route path="configuration" element={<Configuration />} />
-                <Route path="metrics" element={<Metrics />} />
-                <Route path="logs" element={<Logs />} />
-                <Route path="help" element={<Help />} />
-                <Route path="*" element={<NotFound />} />
-              </Route>
-            </Routes>
-          </BrowserRouter>
-        </ThemeProvider>
+        <WebSocketProvider config={wsConfig} autoConnect>
+          <ThemeProvider>
+            <BrowserRouter>
+              <Routes>
+                <Route path="/" element={<Layout />}>
+                  <Route index element={<Dashboard />} />
+                  <Route path="streams" element={<Streams />} />
+                  <Route path="recordings" element={<Recordings />} />
+                  <Route path="configuration" element={<Configuration />} />
+                  <Route path="metrics" element={<Metrics />} />
+                  <Route path="logs" element={<Logs />} />
+                  <Route path="help" element={<Help />} />
+                  <Route path="*" element={<NotFound />} />
+                </Route>
+              </Routes>
+            </BrowserRouter>
+          </ThemeProvider>
+        </WebSocketProvider>
       </APIProvider>
     </ErrorBoundary>
   );
