@@ -4296,9 +4296,10 @@ impl RtspSrc {
                     }
 
                     let play_req = play_req_builder.build(Body::default());
+                    let cseq = state.cseq;
                     state.sink.send(play_req.into()).await?;
 
-                    gst::info!(CAT, "PLAY command sent to restore playback");
+                    gst::info!(CAT, "PLAY command sent to restore playback, CSeq: {}", cseq);
                 }
             }
             PlaybackState::Paused { position } => {
@@ -4335,10 +4336,16 @@ impl RtspSrc {
             }
         }
 
-        gst::info!(CAT, "Reconnection setup complete, entering main loop");
-
-        // Jump directly to the main receive loop
+        // Set expected_response based on what command we sent
         let mut expected_response = None;
+        
+        // If we sent a PLAY command, we should expect a PLAY response
+        if matches!(state.playback_state, PlaybackState::Playing { .. }) {
+            expected_response = Some((Method::Play, state.cseq)); // cseq used in the PLAY request
+            gst::info!(CAT, "Expecting PLAY response with CSeq: {}", state.cseq);
+        }
+        
+        gst::info!(CAT, "Reconnection setup complete, entering main loop");
         loop {
             // Main message handling loop (same as original)
             enum Res {
@@ -4376,6 +4383,11 @@ impl RtspSrc {
                         Ok(Message::Response(rsp)) => {
                             // Handle server responses
                             let cseq = rsp.typed_header::<CSeq>();
+                            
+                            gst::debug!(CAT, "Received response: {} CSeq: {:?}, expected: {:?}", 
+                                rsp.status(), 
+                                cseq.as_ref().ok().and_then(|c| c.as_ref()).map(|c| *c),
+                                expected_response.as_ref().map(|(m, c)| (m, *c)));
 
                             if let Some((expected_method, expected_cseq)) = expected_response.take()
                             {
@@ -4413,13 +4425,15 @@ impl RtspSrc {
                         Ok(Message::Data(data)) => {
                             // Handle interleaved data only if we're ready
                             if !ready_for_data {
-                                gst::trace!(
+                                gst::debug!(
                                     CAT,
-                                    "Dropping data on channel {} - not ready yet",
+                                    "Dropping data on channel {} - not ready yet (waiting for PLAY response)",
                                     data.channel_id()
                                 );
                                 continue;
                             }
+                            
+                            gst::trace!(CAT, "Received data on channel {}", data.channel_id());
 
                             if let Some(appsrc) = tcp_interleave_appsrcs.get(&data.channel_id()) {
                                 let buffer = gst::Buffer::from_slice(data.into_body());
