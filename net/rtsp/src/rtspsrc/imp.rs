@@ -3708,6 +3708,7 @@ impl RtspSrc {
                             }
 
                             // Attempt to reconnect using ConnectionRacer (same as initial connection)
+                            gst::info!(CAT, "Starting TCP/TLS reconnection attempt using ConnectionRacer");
                             if settings.protocols.contains(&RtspProtocol::Http) {
                                 // Try HTTP tunneling reconnection
                                 // Note: HTTP tunnel reconnection not yet fully implemented
@@ -3758,6 +3759,10 @@ impl RtspSrc {
                                         .src(&*task_src.obj())
                                         .build();
                                         let _ = task_src.obj().post_message(msg);
+                                        
+                                        // Now we need to re-establish the RTSP session
+                                        // The rtsp_task will detect this is a reconnection and call rtsp_task_reconnect
+                                        gst::info!(CAT, "TCP connection restored, will re-establish RTSP session");
 
                                         continue; // Continue with the new connection
                                     }
@@ -3776,8 +3781,14 @@ impl RtspSrc {
                             break result;
                         }
                     }
+                    Ok(()) if !state.setup_params.is_empty() => {
+                        // Reconnection flow completed successfully (rtsp_task_reconnect returned OK)
+                        // This means it was terminated by Teardown or cancellation, so exit
+                        gst::info!(CAT, "Reconnection flow terminated normally");
+                        break result;
+                    }
                     _ => {
-                        // Not a network error or successful completion - exit the loop
+                        // Not a network error or first-time connection completion - exit the loop
                         break result;
                     }
                 }
@@ -4124,7 +4135,7 @@ impl RtspSrc {
         mut cmd_rx: mpsc::Receiver<Commands>,
         stop_token: CancellationToken,
     ) -> std::result::Result<(), super::error::RtspError> {
-        gst::info!(CAT, "Running simplified reconnection flow");
+        gst::info!(CAT, "Running simplified reconnection flow for {} streams", state.setup_params.len());
 
         let cmd_tx = self.cmd_queue();
         let settings = { self.settings.lock().unwrap().clone() };
@@ -4475,6 +4486,7 @@ impl RtspSrc {
 
         Self::drain_teardown(&mut cmd_rx);
 
+        gst::info!(CAT, "rtsp_task_reconnect exiting normally");
         Ok(())
     }
 
