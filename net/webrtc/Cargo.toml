@@ -9,14 +9,14 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-gst = { workspace = true, features = ["v1_22", "serde"] }
-gst-app = { workspace = true, features = ["v1_22"] }
-gst-audio = { workspace = true, features = ["v1_22", "serde"] }
-gst-video = { workspace = true, features = ["v1_22", "serde"] }
-gst-net = { workspace = true, features = ["v1_22"] }
-gst-webrtc = { workspace = true, features = ["v1_22"] }
-gst-sdp = { workspace = true, features = ["v1_22"] }
-gst-rtp = { workspace = true, features = ["v1_22"] }
+gst = { workspace = true, features = ["v1_20", "serde"] }
+gst-app = { workspace = true, features = ["v1_20"] }
+gst-audio = { workspace = true, features = ["v1_20", "serde"] }
+gst-video = { workspace = true, features = ["v1_20", "serde"] }
+gst-net = { workspace = true, features = ["v1_20"] }
+gst-webrtc = { workspace = true, features = ["v1_20"] }
+gst-sdp = { workspace = true, features = ["v1_20"] }
+gst-rtp = { workspace = true, features = ["v1_20"] }
 gst-utils.workspace = true
 gst-base.workspace = true
 uuid = { version = "1", features = ["v4"] }
@@ -88,9 +88,13 @@ path = "src/lib.rs"
 gst-plugin-version-helper.workspace = true
 
 [features]
-default = ["janus", "whip", "web_server"]
+default = ["v1_20", "janus", "whip", "web_server"]
 static = []
 capi = []
+v1_16 = ["gst/v1_16", "gst-app/v1_16", "gst-video/v1_16", "gst-webrtc/v1_16", "gst-sdp/v1_16", "gst-rtp/v1_16"]
+v1_18 = ["gst/v1_18", "gst-app/v1_18", "gst-video/v1_18", "gst-webrtc/v1_18", "gst-sdp/v1_18", "gst-rtp/v1_18"]
+v1_20 = ["gst/v1_20", "gst-app/v1_20", "gst-video/v1_20", "gst-webrtc/v1_20", "gst-sdp/v1_20", "gst-rtp/v1_20"]
+v1_22 = ["gst/v1_22", "gst-app/v1_22", "gst-video/v1_22", "gst-webrtc/v1_22", "gst-sdp/v1_22", "gst-rtp/v1_22"]
 doc = []
 
 aws = ["dep:aws-config", "dep:aws-smithy-runtime", "dep:aws-smithy-runtime-api", "dep:aws-types", "dep:aws-credential-types",
