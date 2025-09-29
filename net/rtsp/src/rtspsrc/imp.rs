@@ -3714,38 +3714,37 @@ impl RtspSrc {
                                 }
                             }
 
-                            // Attempt to reconnect
-                            let connection_result = if settings.protocols.contains(&RtspProtocol::Http) {
+                            // Attempt to reconnect using ConnectionRacer (same as initial connection)
+                            if settings.protocols.contains(&RtspProtocol::Http) {
                                 // Try HTTP tunneling reconnection
-                                // Note: proxy_config is not available here, would need to reconstruct
-                                // HTTP tunneling reconnection not yet implemented
-                                // TODO: Implement HTTP tunnel reconnection
-                                {
-                                    gst::error!(CAT, "HTTP tunnel reconnection not yet implemented");
-                                    break Err(RtspError::internal("HTTP tunnel reconnection not yet implemented"));
-                                }
-                                /*match super::http_tunnel::establish_http_tunnel(&url, None).await {
-                                    Ok(tunnel) => {
-                                        gst::info!(CAT, "Reconnected via HTTP tunnel");
-                                        // For now, return error as tunnel stream conversion is not implemented
-                                        break Err(RtspError::internal("HTTP tunnel reconnection not yet implemented"));
-                                    }
-                                    Err(e) => {
-                                        gst::error!(CAT, "Failed to reconnect via HTTP tunnel: {e:?}");
-                                        continue;
-                                    }
-                                }*/
+                                // Note: HTTP tunnel reconnection not yet fully implemented
+                                gst::error!(CAT, "HTTP tunnel reconnection not yet implemented");
+                                break Err(RtspError::internal("HTTP tunnel reconnection not yet implemented"));
                             } else {
-                                // Normal TCP/TLS reconnection
-                                // TODO: Need to properly handle TLS vs plain TCP here
-                                match tokio::net::TcpStream::connect((url.host_str().unwrap(), url.port().unwrap_or(554))).await {
-                                    Ok(tcp_stream) => {
-                                        // Set TCP nodelay
-                                        let _ = tcp_stream.set_nodelay(true);
-                                        gst::info!(CAT, "Reconnected via plain TCP!");
+                                // Use ConnectionRacer for proper TCP/TLS reconnection
+                                let racing_config = super::connection_racer::ConnectionRacingConfig {
+                                    strategy: settings.connection_racing,
+                                    max_parallel_connections: settings.max_parallel_connections,
+                                    racing_delay_ms: settings.racing_delay_ms,
+                                    racing_timeout: std::time::Duration::from_nanos(settings.racing_timeout.nseconds()),
+                                    proxy_config: None, // TODO: Restore proxy config if needed
+                                };
+                                let mut racer = super::connection_racer::ConnectionRacer::new(racing_config);
+                                
+                                // Try to connect with timeout
+                                let connect_timeout = std::time::Duration::from_nanos(settings.timeout.nseconds());
+                                match time::timeout(connect_timeout, racer.connect(&url)).await {
+                                    Ok(Ok(mut rtsp_stream)) => {
+                                        // Set TCP nodelay if it's a plain TCP stream
+                                        if let super::tls::RtspStream::Plain(ref tcp_stream) = rtsp_stream {
+                                            let _ = tcp_stream.set_nodelay(true);
+                                            gst::info!(CAT, "Reconnected via plain TCP!");
+                                        } else {
+                                            gst::info!(CAT, "Reconnected via TLS!");
+                                        }
 
-                                        // Create new stream and sink
-                                        let (read, write) = tokio::io::split(tcp_stream);
+                                        // Create new stream and sink from RtspStream
+                                        let (read, write) = tokio::io::split(rtsp_stream);
                                         let stream = Box::pin(super::tcp_message::async_read(read, MAX_MESSAGE_SIZE).fuse());
                                         let sink = Box::pin(super::tcp_message::async_write(write));
 
@@ -3769,12 +3768,16 @@ impl RtspSrc {
 
                                         continue; // Continue with the new connection
                                     }
-                                    Err(e) => {
+                                    Ok(Err(e)) => {
                                         gst::error!(CAT, "Failed to reconnect: {e:?}");
                                         continue;
                                     }
+                                    Err(_) => {
+                                        gst::error!(CAT, "Reconnection timeout");
+                                        continue;
+                                    }
                                 }
-                            };
+                            }
                         } else {
                             gst::error!(CAT, "Maximum reconnection attempts ({}) exceeded", max_reconnect_attempts);
                             break result;
