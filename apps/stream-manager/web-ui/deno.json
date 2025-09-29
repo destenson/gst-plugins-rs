@@ -32,7 +32,9 @@
     "@types/node": "npm:@types/node@^20.19.17",
     "@heroicons/react": "npm:@heroicons/react@^2.2.0",
     "@headlessui/react": "npm:@headlessui/react@^1.7.19",
-    "events": "npm:events@^3.3.0"
+    "events": "npm:events@^3.3.0",
+    "recharts": "npm:recharts@^2.13.3",
+    "date-fns": "npm:date-fns@^4.1.0"
   },
   "lint": {
     "include": ["src/"],
