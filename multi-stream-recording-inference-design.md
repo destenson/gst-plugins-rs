@@ -402,6 +402,7 @@ async fn main() -> Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(manager.clone()))
+            .scope("/api/v1")
             .route("/streams", web::post().to(api::add_stream))
             .route("/streams/{id}", web::delete().to(api::remove_stream))
             .route("/streams/{id}/record", web::post().to(api::start_recording))
