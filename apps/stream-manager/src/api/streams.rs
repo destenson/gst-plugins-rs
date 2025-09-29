@@ -266,14 +266,14 @@ pub async fn get_recording_status(
 /// Configure stream API routes
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/api/v1/streams")
-            .route("", web::post().to(add_stream))
-            .route("", web::get().to(list_streams))
-            .route("/{id}", web::get().to(get_stream))
-            .route("/{id}", web::delete().to(remove_stream))
-            .route("/{id}/record/start", web::post().to(start_recording))
-            .route("/{id}/record/stop", web::post().to(stop_recording))
-            .route("/{id}/record/status", web::get().to(get_recording_status)),
+        web::scope("/api/v1")
+            .route("/streams", web::post().to(add_stream))
+            .route("/streams", web::get().to(list_streams))
+            .route("/streams/{id}", web::get().to(get_stream))
+            .route("/streams/{id}", web::delete().to(remove_stream))
+            .route("/streams/{id}/record/start", web::post().to(start_recording))
+            .route("/streams/{id}/record/stop", web::post().to(stop_recording))
+            .route("/streams/{id}/record/status", web::get().to(get_recording_status)),
     );
 }
 
