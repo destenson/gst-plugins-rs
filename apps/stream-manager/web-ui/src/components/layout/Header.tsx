@@ -1,5 +1,6 @@
 import { Bars3Icon, MoonIcon, SunIcon } from '@heroicons/react/24/outline';
 import { useTheme } from '../../contexts/ThemeContext.tsx';
+import { ConnectionStatus } from '../../lib/websocket/index.ts';
 import Breadcrumb from '../Breadcrumb.tsx';
 
 interface HeaderProps {
@@ -30,6 +31,9 @@ export default function Header({ setSidebarOpen }: HeaderProps) {
           </div>
 
           <div className="flex items-center gap-x-4 lg:gap-x-6">
+            {/* WebSocket connection status */}
+            <ConnectionStatus compact />
+
             {/* Theme toggle */}
             <button
               type="button"
