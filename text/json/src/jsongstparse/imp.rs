@@ -103,7 +103,7 @@ enum Line<'a> {
 }
 
 impl State {
-    fn line(&mut self, drain: bool) -> Result<Option<Line<'_>>, (&[u8], serde_json::Error)> {
+    fn line(&mut self, drain: bool) -> Result<Option<Line<'_>>, (Vec<u8>, serde_json::Error)> {
         let line = if self.replay_last_line {
             self.replay_last_line = false;
             &self.last_raw_line
@@ -119,7 +119,7 @@ impl State {
             }
         };
 
-        let line: Line = serde_json::from_slice(line).map_err(|err| (line, err))?;
+        let line: Line = serde_json::from_slice(line).map_err(|err| (self.last_raw_line.clone(), err))?;
 
         Ok(Some(line))
     }
@@ -293,7 +293,7 @@ impl JsonGstParse {
                         CAT,
                         imp = self,
                         "Couldn't parse line '{:?}': {:?}",
-                        std::str::from_utf8(line),
+                        std::str::from_utf8(&line),
                         err
                     );
 
@@ -316,11 +316,11 @@ impl JsonGstParse {
         }
     }
 
-    fn handle_skipped_line(
-        &self,
+    fn handle_skipped_line<'a>(
+        &'a self,
         pts: impl Into<Option<gst::ClockTime>>,
         mut state: MutexGuard<State>,
-    ) -> MutexGuard<'_, State> {
+    ) -> MutexGuard<'a, State> {
         if pts.into().opt_ge(state.segment.start()).unwrap_or(false) {
             state.seeking = false;
             state.discont = true;

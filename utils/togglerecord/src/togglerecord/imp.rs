@@ -384,7 +384,9 @@ impl ToggleRecord {
             let mut settings = self.settings.lock();
 
             if rec_state.time_start_block.is_none() {
-                rec_state.time_start_block = clock.as_ref().map(gst::Clock::time);
+                rec_state.time_start_block = clock
+                    .as_ref()
+                    .map_or(state.current_running_time, |c| Some(c.time()));
             }
             while !settings.record && !state.flushing {
                 gst::debug!(CAT, obj = pad, "Waiting for record=true");

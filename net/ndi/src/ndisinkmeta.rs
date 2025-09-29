@@ -11,10 +11,10 @@ unsafe impl Send for NdiSinkAudioMeta {}
 unsafe impl Sync for NdiSinkAudioMeta {}
 
 impl NdiSinkAudioMeta {
-    pub fn add(
-        buffer: &mut gst::BufferRef,
+    pub fn add<'a>(
+        buffer: &'a mut gst::BufferRef,
         buffers: Vec<(gst::Buffer, gst_audio::AudioInfo, i64)>,
-    ) -> gst::MetaRefMut<'_, Self, gst::meta::Standalone> {
+    ) -> gst::MetaRefMut<'a, Self, gst::meta::Standalone> {
         unsafe {
             // Manually dropping because gst_buffer_add_meta() takes ownership of the
             // content of the struct

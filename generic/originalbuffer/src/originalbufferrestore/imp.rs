@@ -300,7 +300,7 @@ impl OriginalBufferRestore {
 
             let _ = meta.transform(
                 outbuf.make_mut(),
-                &gst::meta::MetaTransformCopy::new(false, ..),
+                &gst::meta::MetaTransformCopy::new(..),
             );
         }
 

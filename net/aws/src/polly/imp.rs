@@ -284,6 +284,16 @@ impl Polly {
                 gst::debug!(CAT, imp = self, "Marking buffer discont");
                 buf_mut.set_flags(gst::BufferFlags::DISCONT);
             }
+            inbuf.foreach_meta(|meta| {
+                if meta.tags().is_empty() {
+                    if let Err(err) =
+                        meta.transform(buf_mut, &gst::meta::MetaTransformCopy::new(..))
+                    {
+                        gst::trace!(CAT, imp = self, "Could not copy meta {}: {err}", meta.api());
+                    }
+                }
+                std::ops::ControlFlow::Continue(())
+            });
         }
 
         state.out_segment.set_position(pts + duration);

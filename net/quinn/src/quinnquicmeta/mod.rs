@@ -12,11 +12,11 @@ unsafe impl Send for QuinnQuicMeta {}
 unsafe impl Sync for QuinnQuicMeta {}
 
 impl QuinnQuicMeta {
-    pub fn add(
-        buffer: &mut gst::BufferRef,
+    pub fn add<'a>(
+        buffer: &'a mut gst::BufferRef,
         stream_id: u64,
         is_datagram: bool,
-    ) -> gst::MetaRefMut<'_, Self, gst::meta::Standalone> {
+    ) -> gst::MetaRefMut<'a, Self, gst::meta::Standalone> {
         unsafe {
             let mut params = mem::ManuallyDrop::new(imp::QuinnQuicMetaParams {
                 stream_id,

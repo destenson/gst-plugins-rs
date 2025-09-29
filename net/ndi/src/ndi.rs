@@ -402,7 +402,7 @@ pub struct SendInstance(ptr::NonNull<::std::os::raw::c_void>);
 unsafe impl Send for SendInstance {}
 
 impl SendInstance {
-    pub fn builder(ndi_name: &str) -> SendBuilder<'_> {
+    pub fn builder<'a>(ndi_name: &'a str) -> SendBuilder<'a> {
         SendBuilder {
             ndi_name,
             clock_video: false,

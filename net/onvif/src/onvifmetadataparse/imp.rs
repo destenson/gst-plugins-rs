@@ -1280,7 +1280,7 @@ impl OnvifMetadataParse {
                 // Drain until the current clock running time minus the configured latency when
                 // live
                 if let Some((now, base_time)) = Option::zip(
-                    self.obj().clock().as_ref().map(gst::Clock::time),
+                    self.obj().clock().map(|clock| clock.time()),
                     self.obj().base_time(),
                 ) {
                     gst::trace!(
@@ -1348,7 +1348,7 @@ impl OnvifMetadataParse {
                         imp = self,
                         "Waiting on timer with time {}, now {}",
                         clock_wait.time(),
-                        clock_wait.clock().as_ref().map(gst::Clock::time).display(),
+                        clock_wait.clock().map(|clock| clock.time()).display(),
                     );
 
                     drop(state);
