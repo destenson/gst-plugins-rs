@@ -8,3 +8,5 @@ builddir
 **/*.local.*
 **/target/
 **/.*/**
+**/static/
+**/node_modules/
