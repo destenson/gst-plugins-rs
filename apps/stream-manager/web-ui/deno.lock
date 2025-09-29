@@ -8,6 +8,7 @@
     "npm:@types/react@^18.3.24": "18.3.24",
     "npm:@vitejs/plugin-react@^4.7.0": "4.7.0_vite@5.4.20__@types+node@20.19.17_@babel+core@7.28.4_@types+node@20.19.17",
     "npm:autoprefixer@^10.4.21": "10.4.21_postcss@8.5.6",
+    "npm:axios-retry@^4.5.0": "4.5.0_axios@1.12.2",
     "npm:axios@^1.12.2": "1.12.2",
     "npm:clsx@^2.1.1": "2.1.1",
     "npm:postcss@^8.5.6": "8.5.6",
@@ -584,6 +585,13 @@
       ],
       "bin": true
     },
+    "axios-retry@4.5.0_axios@1.12.2": {
+      "integrity": "sha512-aR99oXhpEDGo0UuAlYcn2iGRds30k366Zfa05XWScR9QaQD4JYiP3/1Qt1u7YlefUOK+cn0CcwoL1oefavQUlQ==",
+      "dependencies": [
+        "axios",
+        "is-retry-allowed"
+      ]
+    },
     "axios@1.12.2": {
       "integrity": "sha512-vMJzPewAlRyOgxV2dU0Cuz2O8zzzx9VYtbJOaBgXFeLc4IV/Eg50n4LowmehOOR61S8ZMpc2K5Sa7g6A4jfkUw==",
       "dependencies": [
@@ -930,6 +938,9 @@
     },
     "is-number@7.0.0": {
       "integrity": "sha512-41Cifkg6e8TylSpdtTpeLVMqvSBEVzTttHvERD741+pnZ8ANv0004MRL43QKPDlK9cGvNp6NZWZUBlbGXYxxng=="
+    },
+    "is-retry-allowed@2.2.0": {
+      "integrity": "sha512-XVm7LOeLpTW4jV19QSH38vkswxoLud8sQ57YwJVTPWdiaI9I8keEhGFpBlslyVsgdQy4Opg8QOLb8YRgsyZiQg=="
     },
     "isexe@2.0.0": {
       "integrity": "sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw=="
@@ -1411,6 +1422,7 @@
       "npm:@types/react@^18.3.24",
       "npm:@vitejs/plugin-react@^4.7.0",
       "npm:autoprefixer@^10.4.21",
+      "npm:axios-retry@^4.5.0",
       "npm:axios@^1.12.2",
       "npm:clsx@^2.1.1",
       "npm:postcss@^8.5.6",
