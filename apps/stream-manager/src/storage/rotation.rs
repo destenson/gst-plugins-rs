@@ -5,7 +5,7 @@ use tokio::sync::{RwLock, Mutex, mpsc};
 use tracing::{info, warn, error, debug};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode};
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use tokio::time::{Duration, interval};
 
 use crate::storage::StorageError;
@@ -189,7 +189,7 @@ impl DiskRotationManager {
     async fn start_fs_watcher(&self) -> Result<(), RotationError> {
         let (tx, mut rx) = mpsc::channel(100);
         
-        let watcher = notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
+        let mut watcher = notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
             if let Ok(event) = res {
                 let _ = tx.blocking_send(event);
             }

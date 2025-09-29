@@ -37,19 +37,19 @@ pub fn configure(cfg: &mut web::ServiceConfig, enable_cache: bool) {
 
     // Apply cache headers middleware and register the service
     if enable_cache {
-        cfg.default_service(
+        cfg.service(
             web::scope("")
-                .wrap(DefaultHeaders::new().header("Cache-Control", cache_control))
-                .service(default_service)
+                .wrap(DefaultHeaders::new().add(("Cache-Control", cache_control)))
+                .default_service(default_service)
         );
     } else {
-        cfg.default_service(
+        cfg.service(
             web::scope("")
                 .wrap(DefaultHeaders::new()
-                    .header("Cache-Control", "no-cache, no-store, must-revalidate")
-                    .header("Pragma", "no-cache")
-                    .header("Expires", "0"))
-                .service(default_service)
+                    .add(("Cache-Control", "no-cache, no-store, must-revalidate"))
+                    .add(("Pragma", "no-cache"))
+                    .add(("Expires", "0")))
+                .default_service(default_service)
         );
     }
 }
@@ -59,27 +59,28 @@ async fn serve_embedded_file(
     req: ServiceRequest,
     enable_cache: bool,
 ) -> Result<ServiceResponse, Error> {
-    let path = req.path();
+    let req_path = req.path().to_string();
+    let (http_req, _payload) = req.into_parts();
 
     // Don't apply SPA fallback to API routes or WebSocket
-    if path.starts_with("/api/") || path.starts_with("/ws/") {
-        debug!("Skipping static file serving for API/WebSocket route: {}", path);
+    if req_path.starts_with("/api/") || req_path.starts_with("/ws/") {
+        debug!("Skipping static file serving for API/WebSocket route: {}", req_path);
         return Ok(ServiceResponse::new(
-            req.into_parts().0,
+            http_req,
             HttpResponse::NotFound().body("API endpoint not found"),
         ));
     }
 
     // Remove leading slash for embed lookup
-    let path = if path == "/" {
+    let path = if req_path == "/" {
         "index.html"
     } else {
-        path.trim_start_matches('/')
+        req_path.trim_start_matches('/')
     };
 
     // Try to find the exact file first
     if let Some(content) = StaticAssets::get(path) {
-        return serve_embedded_content(req, path, content, enable_cache);
+        return serve_embedded_content(http_req, path, content, enable_cache);
     }
 
     // Check if this looks like a file request (has an extension)
@@ -87,28 +88,28 @@ async fn serve_embedded_file(
         // File doesn't exist, return 404
         debug!("Static file not found: {}", path);
         return Ok(ServiceResponse::new(
-            req.into_parts().0,
+            http_req,
             HttpResponse::NotFound().body("File not found"),
         ));
     }
 
     // For all other routes, serve index.html (SPA fallback)
     if let Some(content) = StaticAssets::get("index.html") {
-        debug!("Serving index.html for SPA route: {}", req.path());
-        return serve_embedded_content(req, "index.html", content, false); // Never cache index.html
+        debug!("Serving index.html for SPA route: {}", req_path);
+        return serve_embedded_content(http_req, "index.html", content, false); // Never cache index.html
     }
 
     // No index.html found
     warn!("index.html not found in embedded assets");
     Ok(ServiceResponse::new(
-        req.into_parts().0,
+        http_req,
         HttpResponse::NotFound().body("Application not found. Please rebuild with frontend assets."),
     ))
 }
 
 /// Serve embedded content with appropriate headers
 fn serve_embedded_content(
-    req: ServiceRequest,
+    req: HttpRequest,
     path: &str,
     content: rust_embed::EmbeddedFile,
     enable_cache: bool,
@@ -142,29 +143,28 @@ fn serve_embedded_content(
     }
 
     // Add ETag if available
-    if let Some(etag) = content.metadata.sha256_hash() {
+    let etag = content.metadata.sha256_hash();
+    let etag_str = hex::encode(etag);
+    builder.insert_header((
+        header::ETAG,
+        header::HeaderValue::from_str(&format!("\"{}\"", etag_str)).unwrap_or_else(|_| {
+            header::HeaderValue::from_static("\"unknown\"")
+        }),
+    ));
+
+    // Add Last-Modified if available
+    if let Some(last_modified) = content.metadata.last_modified() {
+        let time = httpdate::fmt_http_date(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(last_modified));
         builder.insert_header((
-            header::ETAG,
-            header::HeaderValue::from_str(&format!("\"{}\"", etag)).unwrap_or_else(|_| {
-                header::HeaderValue::from_static("\"unknown\"")
+            header::LAST_MODIFIED,
+            header::HeaderValue::from_str(&time).unwrap_or_else(|_| {
+                header::HeaderValue::from_static("Thu, 01 Jan 1970 00:00:00 GMT")
             }),
         ));
     }
 
-    // Add Last-Modified if available
-    if let Some(last_modified) = content.metadata.last_modified() {
-        if let Ok(time) = httpdate::fmt_http_date(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(last_modified)) {
-            builder.insert_header((
-                header::LAST_MODIFIED,
-                header::HeaderValue::from_str(&time).unwrap_or_else(|_| {
-                    header::HeaderValue::from_static("Thu, 01 Jan 1970 00:00:00 GMT")
-                }),
-            ));
-        }
-    }
-
     let response = builder.body(content.data.to_vec());
-    Ok(ServiceResponse::new(req.into_parts().0, response))
+    Ok(ServiceResponse::new(req, response))
 }
 
 /// Alternative implementation using actix-files for development
@@ -195,12 +195,12 @@ pub fn configure_development(cfg: &mut web::ServiceConfig, static_dir: std::path
             }
         }));
 
-    cfg.default_service(
+    cfg.service(
         web::scope("")
             .wrap(DefaultHeaders::new()
-                .header("Cache-Control", "no-cache, no-store, must-revalidate")
-                .header("Pragma", "no-cache")
-                .header("Expires", "0"))
+                .add(("Cache-Control", "no-cache, no-store, must-revalidate"))
+                .add(("Pragma", "no-cache"))
+                .add(("Expires", "0")))
             .service(files_service)
     );
 }
@@ -212,12 +212,13 @@ async fn spa_fallback_dev(
 ) -> Result<ServiceResponse, Error> {
     use actix_files::NamedFile;
 
-    let path = req.path();
+    let (http_req, _payload) = req.into_parts();
+    let path = http_req.path();
 
     // Don't apply SPA fallback to API routes or WebSocket
     if path.starts_with("/api/") || path.starts_with("/ws/") {
         return Ok(ServiceResponse::new(
-            req.into_parts().0,
+            http_req,
             HttpResponse::NotFound().body("API endpoint not found"),
         ));
     }
@@ -226,15 +227,15 @@ async fn spa_fallback_dev(
     let index_path = static_dir.join("index.html");
     if index_path.exists() {
         let file = NamedFile::open(index_path)?;
-        let mut res = file.into_response(&req);
+        let mut res = file.into_response(&http_req);
         res.headers_mut().insert(
             header::CACHE_CONTROL,
             header::HeaderValue::from_static("no-cache, no-store, must-revalidate"),
         );
-        Ok(ServiceResponse::new(req.into_parts().0, res))
+        Ok(ServiceResponse::new(http_req.clone(), res))
     } else {
         Ok(ServiceResponse::new(
-            req.into_parts().0,
+            http_req,
             HttpResponse::NotFound().body("index.html not found"),
         ))
     }
