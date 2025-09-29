@@ -10,5 +10,5 @@ builddir
 **/.*/**
 **/static/
 **/node_modules/
-stream-manager.db*
+stream_manager.db*
 
