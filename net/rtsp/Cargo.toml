@@ -42,6 +42,7 @@ url = "2.5.7"
 console-subscriber = { version = "0.4.1", optional = true }
 prometheus = { version = "0.14.0", optional = true }
 bitflags = "2.9.4"
+tokio-util = "0.7.16"
 
 [lib]
 name = "gstrsrtsp"
@@ -101,9 +102,7 @@ license-file = ["LICENSE-MPL-2.0", "4"]
 extended-description = """\
 GStreamer plugin providing RTSP client functionality.
 This plugin contains:
-  - rtspsrc: RTSP client source element
-  - rtspauth: RTSP authentication handling
-  - rtsptransport: RTSP transport layer management
+  - rtspsrc2: RTSP client source element
 These elements are useful for receiving and processing RTSP streams."""
 depends = "$auto, gstreamer1.0-plugins-base (>= 1.16.0), libgstreamer1.0-0 (>= 1.16.0)"
 section = "libs"
