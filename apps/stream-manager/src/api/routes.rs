@@ -16,7 +16,10 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     
     // Configure recovery endpoints
     crate::api::recovery::configure(cfg);
-    
+
+    // Configure database endpoints (development mode only)
+    crate::api::database::register_routes(cfg);
+
     // Configure WebRTC endpoints from PRP-26
     // WebRTC configuration is handled by webrtc module directly
     

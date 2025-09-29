@@ -18,6 +18,7 @@
     "react-dom": "npm:react-dom@^18.3.1",
     "@types/react": "npm:@types/react@^18.3.24",
     "@types/react-dom": "npm:@types/react-dom@^18.3.7",
+    "lucide-react": "npm:lucide-react@^0.544.0",
     "clsx": "npm:clsx@^2.1.1",
     "tailwind-merge": "npm:tailwind-merge@^3.3.1",
     "vite": "npm:vite@^5.4.20",

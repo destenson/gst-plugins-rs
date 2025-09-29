@@ -189,12 +189,14 @@ async fn main() -> Result<()> {
         // Start API server (actix-web spawns its own runtime)
         let api_config = config.clone();
         let api_manager = stream_manager.clone();
+        let api_database = Some(database.clone());
         std::thread::spawn(move || {
             let runtime = actix_rt::System::new();
             runtime.block_on(async move {
                 if let Err(e) = stream_manager::api::start_server(
                     api_config,
                     api_manager,
+                    api_database,
                 ).await {
                     error!("API server error: {}", e);
                 }

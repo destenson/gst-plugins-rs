@@ -17,6 +17,7 @@ pub mod event_integration;
 pub mod rotation;
 pub mod recovery;
 pub mod static_files;
+pub mod database;
 
 pub use error::ApiError;
 pub use dto::*;
@@ -32,6 +33,7 @@ pub struct AppState {
     pub backup_manager: Option<Arc<crate::database::recovery::BackupManager>>,
     pub webrtc_server: Option<Arc<RwLock<crate::webrtc::WebRtcServer>>>,
     pub whip_whep_handler: Option<Arc<crate::webrtc::WhipWhepHandler>>,
+    pub database: Option<Arc<crate::database::Database>>,
 }
 
 impl AppState {
@@ -61,6 +63,7 @@ impl AppState {
             backup_manager: None,
             webrtc_server: None,
             whip_whep_handler: None,
+            database: None,
         }
     }
     
@@ -86,6 +89,7 @@ impl AppState {
             backup_manager: None,
             webrtc_server: None,
             whip_whep_handler: None,
+            database: None,
         }
     }
     
@@ -100,12 +104,16 @@ impl AppState {
 pub async fn start_server(
     config: Arc<Config>,
     stream_manager: Arc<StreamManager>,
+    database: Option<Arc<crate::database::Database>>,
 ) -> std::io::Result<()> {
     let bind_address = format!("{}:{}", config.api.host, config.api.port);
     info!("Starting API server on {}", bind_address);
     
     let mut app_state = AppState::new(stream_manager.clone(), config.clone());
-    
+
+    // Set the database if provided
+    app_state.database = database;
+
     // Initialize WebRTC server if enabled in config
     // For now, always enable it
     let webrtc_server = Arc::new(RwLock::new(
@@ -180,35 +188,37 @@ pub async fn start_server(
 mod tests {
     use super::*;
     use actix_web::{test, App};
-    
+
     #[actix_web::test]
     async fn test_app_state_creation() {
         gst::init().ok();
         let config = Arc::new(Config::default());
         let stream_manager = Arc::new(StreamManager::new(config.clone()).unwrap());
-        let app_state = AppState::new(stream_manager, config);
-        
+        let mut app_state = AppState::new(stream_manager, config);
+        app_state.database = None; // Optional database
+
         assert!(Arc::strong_count(&app_state.stream_manager) > 0);
         assert!(Arc::strong_count(&app_state.config) > 0);
     }
-    
+
     #[actix_web::test]
     async fn test_server_configuration() {
         gst::init().ok();
         let config = Arc::new(Config::default());
         let stream_manager = Arc::new(StreamManager::new(config.clone()).unwrap());
-        let app_state = AppState::new(stream_manager, config);
-        
+        let mut app_state = AppState::new(stream_manager, config);
+        app_state.database = None; // Optional database
+
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(app_state))
                 .configure(routes::configure_routes)
         ).await;
-        
+
         let req = test::TestRequest::get()
             .uri("/api/v1/health")
             .to_request();
-        
+
         let resp = test::call_service(&app, req).await;
         assert!(resp.status().is_success());
     }
