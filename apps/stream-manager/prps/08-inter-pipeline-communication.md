@@ -1,7 +1,7 @@
 # PRP-08: Inter-Pipeline Communication Setup
 
 ## Overview
-Implement inter-pipeline communication using intersink/intersrc elements for decoupled inference and processing pipelines.
+Implement inter-pipeline communication using inter{audio,sub,video}sink/inter{audio,sub,video}src elements for decoupled inference and processing pipelines.
 
 ## Context
 - Inference should run in separate pipeline for isolation
@@ -10,8 +10,8 @@ Implement inter-pipeline communication using intersink/intersrc elements for dec
 - Should handle pipeline lifecycle independently
 
 ## Requirements
-1. Setup intersink elements in main pipeline
-2. Create corresponding intersrc consumers
+1. Setup inter*sink elements in main pipeline
+2. Create corresponding inter*src consumers
 3. Implement pipeline coupling logic
 4. Handle connection state management
 5. Support multiple consumers per producer
@@ -19,16 +19,16 @@ Implement inter-pipeline communication using intersink/intersrc elements for dec
 ## Implementation Tasks
 1. Create src/pipeline/inter.rs module
 2. Define InterConnection struct:
-   - Producer ID (intersink name)
+   - Producer ID (inter*sink name)
    - Consumer pipeline references
    - Connection state
 3. Implement producer setup:
-   - Add intersink to branch
+   - Add inter*sink to branch
    - Configure unique producer ID
    - Set producer properties
 4. Create consumer pipeline builder:
    - Create new pipeline
-   - Add intersrc with matching ID
+   - Add inter*src with matching ID
    - Configure consumer properties
    - Return pipeline reference
 5. Add connection management:
@@ -55,10 +55,10 @@ cargo test multiple_consumers
 
 ## Dependencies
 - PRP-04: Pipeline abstraction
-- PRP-06: Branch management for intersink placement
+- PRP-06: Branch management for inter*sink placement
 
 ## References
-- intersink/intersrc: generic/inter/src/
+- inter*sink/inter*src: generic/inter/src/
 - Examples: generic/inter/examples/
 - StreamProducer API: Search for "streamproducer"
 

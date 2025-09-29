@@ -56,7 +56,7 @@ Input → fallbacksrc → Processing → Distribution
 
 - **`fallbacksrc`**: Automatic stream reconnection with fallback sources
 - **`togglerecord`**: Seamless recording start/stop without frame loss
-- **`intersink/intersrc`**: Zero-copy inter-pipeline communication
+- **`inter{audio,sub,video}sink/inter{audio,sub,video}src`**: Zero-copy inter-pipeline communication
 - **`splitmuxsink`**: Segmented recording with configurable chunk size
 - **`webrtcbin`**: WebRTC streaming with ICE/STUN/TURN support
 
