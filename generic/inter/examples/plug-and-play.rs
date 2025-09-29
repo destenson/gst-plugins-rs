@@ -44,7 +44,7 @@ fn create_sink_pipeline(producer_name: &str) -> Result<Producer, Error> {
         .property_from_str("valignment", "center")
         .property_from_str("halignment", "center")
         .build()?;
-    let sink = gst::ElementFactory::make("intersink")
+    let sink = gst::ElementFactory::make("intervideosink")
         .property("producer-name", producer_name)
         .build()?;
 
