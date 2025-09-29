@@ -8,17 +8,17 @@ export class ConfigAPI {
   constructor(private client: APIClient) {}
 
   async get(): Promise<SystemConfig> {
-    return this.client.get<SystemConfig>('/api/config', {
+    return this.client.get<SystemConfig>('/api/v1/config', {
       cancelKey: 'config-get'
     });
   }
 
   async update(data: UpdateConfigRequest): Promise<void> {
-    return this.client.put<void>('/api/config', data);
+    return this.client.put<void>('/api/v1/config', data);
   }
 
   async reload(): Promise<void> {
-    return this.client.post<void>('/api/config/reload');
+    return this.client.post<void>('/api/v1/config/reload');
   }
 
   // Utility methods
