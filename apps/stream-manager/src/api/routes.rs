@@ -137,13 +137,46 @@ pub async fn get_metrics(state: web::Data<AppState>) -> Result<HttpResponse, Api
     let active_streams = streams.iter()
         .filter(|s| matches!(s.state, crate::manager::StreamState::Running))
         .count();
-    
-    
+    let recording_streams = streams.iter()
+        .filter(|s| s.recording_state.is_recording)
+        .count();
+
+    // Get system resource usage
+    let cpu_usage = get_cpu_usage();
+    let memory_usage = get_memory_usage();
+    let disk_usage = get_disk_usage();
+
     Ok(HttpResponse::Ok().json(json!({
-        "total_streams": streams.len(),
         "active_streams": active_streams,
+        "total_streams": streams.len(),
+        "recording_streams": recording_streams,
+        "cpu_usage": cpu_usage,
+        "memory_usage": memory_usage,
+        "disk_usage": disk_usage,
         "timestamp": chrono::Utc::now().to_rfc3339(),
     })))
+}
+
+// Helper functions to get system metrics
+fn get_cpu_usage() -> f64 {
+    // TODO: Implement actual CPU usage collection
+    // For now return mock data
+    25.5
+}
+
+fn get_memory_usage() -> f64 {
+    // TODO: Implement actual memory usage collection
+    // For now return mock data
+    512.0 // MB
+}
+
+fn get_disk_usage() -> serde_json::Value {
+    // TODO: Implement actual disk usage collection
+    // For now return mock data
+    json!({
+        "used": 15000000000u64,  // 15 GB in bytes
+        "total": 100000000000u64  // 100 GB in bytes
+    })
 }
 
 pub async fn get_prometheus_metrics(state: web::Data<AppState>) -> Result<HttpResponse, ApiError> {

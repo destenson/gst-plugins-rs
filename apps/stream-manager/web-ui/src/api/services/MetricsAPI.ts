@@ -4,7 +4,7 @@ export class MetricsAPI {
   constructor(private client: APIClient) {}
 
   async getPrometheus(): Promise<string> {
-    const response = await this.client.get<any>('/api/metrics', {
+    const response = await this.client.get<any>('/api/v1/metrics', {
       cancelKey: 'metrics-prometheus',
       headers: {
         'Accept': 'text/plain'

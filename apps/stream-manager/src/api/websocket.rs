@@ -297,7 +297,9 @@ async fn handle_subscription(client: Arc<WebSocketClient>, request: Subscription
 
 /// Configure WebSocket routes
 pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.route("/ws", web::get().to(websocket_handler));
+    cfg
+        .route("/ws", web::get().to(websocket_handler))
+        .route("/api/v1/ws", web::get().to(websocket_handler));
 }
 
 #[cfg(test)]
@@ -376,7 +378,7 @@ mod tests {
         ).await;
         
         let req = actix_web::test::TestRequest::get()
-            .uri("/ws")
+            .uri("/api/v1/ws")
             .insert_header(("Connection", "Upgrade"))
             .insert_header(("Upgrade", "websocket"))
             .insert_header(("Sec-WebSocket-Version", "13"))
