@@ -50,7 +50,7 @@ impl Scheduler {
         let thread = thread::Builder::new().name(context_name.to_string());
 
         let (handle_sender, handle_receiver) = sync_mpsc::channel();
-        let context_name = Arc::from(context_name);
+        let context_name: Arc<str> = Arc::from(context_name);
         let thread_ctx_name = context_name.clone();
         let join = thread
             .spawn(move || {

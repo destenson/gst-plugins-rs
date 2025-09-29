@@ -295,7 +295,7 @@ impl Polly {
             inbuf.foreach_meta(|meta| {
                 if meta.tags().is_empty() {
                     if let Err(err) =
-                        meta.transform(buf_mut, &gst::meta::MetaTransformCopy::new(false, ..))
+                        meta.transform(buf_mut, &gst::meta::MetaTransformCopy::new(..))
                     {
                         gst::trace!(CAT, imp = self, "Could not copy meta {}: {err}", meta.api());
                     }
