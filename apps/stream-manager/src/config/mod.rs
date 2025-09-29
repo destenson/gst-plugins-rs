@@ -43,6 +43,8 @@ pub struct ApiConfig {
     pub worker_threads: Option<usize>,
     pub request_timeout_seconds: u64,
     pub cors_enabled: bool,
+    pub development_mode: Option<bool>,
+    pub static_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -288,6 +290,8 @@ impl Default for ApiConfig {
             worker_threads: None,
             request_timeout_seconds: 30,
             cors_enabled: true,
+            development_mode: Some(false),
+            static_dir: Some(PathBuf::from("static")),
         }
     }
 }
