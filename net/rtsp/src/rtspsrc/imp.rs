@@ -30,9 +30,11 @@ use socket2::Socket;
 use super::error::RtspError;
 use tokio::net::UdpSocket;
 use tokio::runtime;
+use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time;
+use tokio_util::sync::CancellationToken;
 
 use rtsp_types::headers::{
     CSeq, NptRange, NptTime, Public, Range, RtpInfos, RtpLowerTransport, RtpProfile, RtpTransport,
@@ -746,6 +748,7 @@ pub struct RtspSrc {
     task_handle: Mutex<Option<JoinHandle<()>>>,
     command_queue: Mutex<Option<mpsc::Sender<Commands>>>,
     buffer_queue: Arc<Mutex<BufferQueue>>,
+    stop_token: Mutex<Option<CancellationToken>>,
     // TODO: tls_database and tls_interaction properties cannot be properly stored
     // because gio::TlsDatabase and gio::TlsInteraction are not Send+Sync.
     // These properties will need to be implemented after removing Tokio.
@@ -760,6 +763,7 @@ impl Default for RtspSrc {
             task_handle: Mutex::new(None),
             command_queue: Mutex::new(None),
             buffer_queue: Arc::new(Mutex::new(BufferQueue::default())),
+            stop_token: Mutex::new(None),
             #[cfg(feature = "telemetry")]
             metrics: super::telemetry::RtspMetrics::default(),
         }
@@ -3361,9 +3365,17 @@ impl RtspSrc {
 
         let task_src = self.ref_counted();
 
+        let cancel_token = CancellationToken::new();
+        {
+            let mut stop_token_guard = self.stop_token.lock().unwrap();
+            if let Some(previous_token) = stop_token_guard.replace(cancel_token.clone()) {
+                previous_token.cancel();
+            }
+        }
+
         let mut task_handle = self.task_handle.lock().unwrap();
 
-        let (tx, rx) = mpsc::channel(1);
+        let (tx, rx) = mpsc::channel(2);
         {
             let mut cmd_queue_opt = self.command_queue.lock().unwrap();
             debug_assert!(cmd_queue_opt.is_none());
@@ -3371,6 +3383,8 @@ impl RtspSrc {
         }
 
         let join_handle = RUNTIME.spawn(async move {
+            let stop_token = cancel_token.clone();
+            let mut cmd_rx_opt = Some(rx);
             gst::info!(CAT, "Connecting to {url} ..");
             #[cfg(feature = "telemetry")]
             let _connection_span = super::telemetry::SpanHelper::connection_span(url.as_str());
@@ -3629,9 +3643,9 @@ impl RtspSrc {
                 max_delay: Duration::from_nanos(reconnection_timeout.nseconds()),
                 linear_step: Duration::from_nanos(settings.linear_retry_step.nseconds()),
             };
-            
+
             // Main loop with reconnection logic
-            let mut current_rx = Some(rx);
+            let mut current_rx = cmd_rx_opt.take();
             let task_ret = loop {
                 // Get or create a receiver for this attempt
                 let rx_to_use = if let Some(rx) = current_rx.take() {
@@ -3643,21 +3657,23 @@ impl RtspSrc {
                     *task_src.command_queue.lock().unwrap() = Some(tx);
                     rx
                 };
-                
-                let result = task_src.rtsp_task(&mut state, rx_to_use).await;
-                
+
+                let result = task_src
+                    .rtsp_task(&mut state, rx_to_use, stop_token.clone())
+                    .await;
+
                 // Check if we should reconnect
                 match &result {
                     Err(err) if err.is_network_error() => {
                         // Check if reconnection is enabled and we haven't exceeded max attempts
                         if max_reconnect_attempts < 0 || reconnect_count < max_reconnect_attempts {
                             reconnect_count += 1;
-                            
+
                             gst::warning!(CAT, "Connection lost, attempting reconnection (attempt {}/{})",
                                 reconnect_count,
                                 if max_reconnect_attempts < 0 { "unlimited".to_string() } else { max_reconnect_attempts.to_string() }
                             );
-                            
+
                             // Post a message about the reconnection attempt
                             let msg = gst::message::Element::builder(
                                 gst::Structure::builder("rtsp-reconnection-attempt")
@@ -3668,11 +3684,23 @@ impl RtspSrc {
                             .src(&*task_src.obj())
                             .build();
                             let _ = task_src.obj().post_message(msg);
-                            
+
                             // Wait before reconnecting
                             let reconnect_delay = std::time::Duration::from_nanos(settings.reconnection_timeout.nseconds());
-                            tokio::time::sleep(reconnect_delay).await;
-                            
+                            if stop_token.is_cancelled() {
+                                gst::info!(CAT, "Cancellation requested, aborting reconnection wait");
+                                break Ok(());
+                            }
+                            let mut delay_sleep = tokio::time::sleep(reconnect_delay);
+                            tokio::pin!(delay_sleep);
+                            tokio::select! {
+                                _ = &mut delay_sleep => {},
+                                _ = stop_token.cancelled() => {
+                                    gst::info!(CAT, "Cancellation requested during reconnection delay");
+                                    break Ok(());
+                                }
+                            }
+
                             // Attempt to reconnect
                             let connection_result = if settings.protocols.contains(&RtspProtocol::Http) {
                                 // Try HTTP tunneling reconnection
@@ -3702,12 +3730,12 @@ impl RtspSrc {
                                         // Set TCP nodelay
                                         let _ = tcp_stream.set_nodelay(true);
                                         gst::info!(CAT, "Reconnected via plain TCP!");
-                                        
+
                                         // Create new stream and sink
                                         let (read, write) = tokio::io::split(tcp_stream);
                                         let stream = Box::pin(super::tcp_message::async_read(read, MAX_MESSAGE_SIZE).fuse());
                                         let sink = Box::pin(super::tcp_message::async_write(write));
-                                        
+
                                         // Update only the connection in the existing state, preserving setup_params
                                         state.stream = stream;
                                         state.sink = sink;
@@ -3715,7 +3743,7 @@ impl RtspSrc {
                                         state.cseq = 0;
                                         state.session_manager = super::session_manager::SessionManager::new();
                                         state.auth_state = AuthState::default();
-                                        
+
                                         // Post reconnection success message
                                         let msg = gst::message::Element::builder(
                                             gst::Structure::builder("rtsp-reconnection-success")
@@ -3725,7 +3753,7 @@ impl RtspSrc {
                                         .src(&*task_src.obj())
                                         .build();
                                         let _ = task_src.obj().post_message(msg);
-                                        
+
                                         continue; // Continue with the new connection
                                     }
                                     Err(e) => {
@@ -3745,7 +3773,7 @@ impl RtspSrc {
                     }
                 }
             };
-            
+
             gst::info!(CAT, "Exited rtsp_task");
 
             // Cleanup after stopping
@@ -3799,20 +3827,48 @@ impl RtspSrc {
 
     fn stop(&self) -> Result<(), gst::ErrorMessage> {
         gst::info!(CAT, "Stopping...");
-        let cmd_queue = self.cmd_queue();
+        let cmd_queue = {
+            let guard = self.command_queue.lock().unwrap();
+            guard.as_ref().cloned()
+        };
+        let cancel_token = {
+            let mut guard = self.stop_token.lock().unwrap();
+            guard.take()
+        };
         let task_handle = { self.task_handle.lock().unwrap().take() };
 
-        RUNTIME.block_on(async {
-            let (tx, rx) = oneshot::channel();
-            if let Ok(()) = cmd_queue.send(Commands::Teardown(Some(tx))).await {
-                if let Err(_elapsed) = time::timeout(Duration::from_millis(500), rx).await {
-                    gst::warning!(
-                        CAT,
-                        "Timeout waiting for Teardown, going to NULL asynchronously"
-                    );
+        if let Some(cmd_queue) = cmd_queue {
+            let cancel_clone = cancel_token.clone();
+            RUNTIME.block_on(async {
+                let (tx, rx) = oneshot::channel();
+                match cmd_queue.send(Commands::Teardown(Some(tx))).await {
+                    Ok(()) => {
+                        if let Some(token) = cancel_clone.as_ref() {
+                            token.cancel();
+                        }
+                        if let Err(_elapsed) = time::timeout(Duration::from_millis(500), rx).await {
+                            gst::warning!(
+                                CAT,
+                                "Timeout waiting for Teardown, going to NULL asynchronously"
+                            );
+                        }
+                    }
+                    Err(err) => {
+                        gst::warning!(CAT, "Failed to send Teardown command: {err}");
+                        if let Some(token) = cancel_clone.as_ref() {
+                            token.cancel();
+                        }
+                    }
                 }
-            }
-        });
+            });
+        } else if let Some(token) = cancel_token.as_ref() {
+            token.cancel();
+        }
+
+        if let Some(token) = cancel_token {
+            // Ensure cancellation is triggered even if Teardown send path didn't run
+            token.cancel();
+        }
 
         if let Some(join_handle) = task_handle {
             gst::debug!(CAT, "Waiting for RTSP connection thread to shut down..");
@@ -3834,24 +3890,29 @@ impl RtspSrc {
     ) -> std::result::Result<gst_app::AppSrc, glib::Error> {
         let obj = self.obj();
         let appsrc_name = format!("rtp_appsrc_{rtpsession_n}");
-        
+
         // Check if the element already exists
         if let Some(existing) = obj.by_name(&appsrc_name) {
             gst::info!(CAT, "Reusing existing appsrc: {}", appsrc_name);
             if let Ok(appsrc) = existing.downcast::<gst_app::AppSrc>() {
                 // Update caps if needed
                 appsrc.set_caps(Some(caps));
-                
+
                 // Ensure the element is in sync with parent state
                 // This will bring it out of NULL/READY into PAUSED/PLAYING
                 if let Err(e) = appsrc.sync_state_with_parent() {
-                    gst::warning!(CAT, "Failed to sync {} state with parent: {:?}", appsrc_name, e);
+                    gst::warning!(
+                        CAT,
+                        "Failed to sync {} state with parent: {:?}",
+                        appsrc_name,
+                        e
+                    );
                 }
-                
+
                 return Ok(appsrc);
             }
         }
-        
+
         // Create new element if it doesn't exist
         let callbacks = gst_app::AppSrcCallbacks::builder()
             .enough_data(|appsrc| {
@@ -3911,19 +3972,24 @@ impl RtspSrc {
     ) -> std::result::Result<gst_app::AppSrc, glib::Error> {
         let obj = self.obj();
         let appsrc_name = format!("rtcp_appsrc_{rtpsession_n}");
-        
+
         // Check if the element already exists
         if let Some(existing) = obj.by_name(&appsrc_name) {
             gst::info!(CAT, "Reusing existing RTCP appsrc: {}", appsrc_name);
             if let Ok(appsrc) = existing.downcast::<gst_app::AppSrc>() {
                 // Ensure the element is in sync with parent state
                 if let Err(e) = appsrc.sync_state_with_parent() {
-                    gst::warning!(CAT, "Failed to sync {} state with parent: {:?}", appsrc_name, e);
+                    gst::warning!(
+                        CAT,
+                        "Failed to sync {} state with parent: {:?}",
+                        appsrc_name,
+                        e
+                    );
                 }
                 return Ok(appsrc);
             }
         }
-        
+
         // Create new element if it doesn't exist
         let builder = gst_app::AppSrc::builder()
             .name(appsrc_name)
@@ -3960,10 +4026,14 @@ impl RtspSrc {
     ) -> std::result::Result<(), glib::Error> {
         let obj = self.obj();
         let appsink_name = format!("rtcp_appsink_{rtpsession_n}");
-        
+
         // Check if the element already exists
         if obj.by_name(&appsink_name).is_some() {
-            gst::info!(CAT, "RTCP appsink {} already exists, skipping creation", appsink_name);
+            gst::info!(
+                CAT,
+                "RTCP appsink {} already exists, skipping creation",
+                appsink_name
+            );
             return Ok(());
         }
         let cmd_tx_eos = self.cmd_queue();
@@ -4016,79 +4086,105 @@ impl RtspSrc {
             .build();
         let _ = obj.post_message(msg);
     }
-    
+
+    fn drain_teardown(rx: &mut mpsc::Receiver<Commands>) {
+        loop {
+            match rx.try_recv() {
+                Ok(Commands::Teardown(Some(tx))) => {
+                    let _ = tx.send(());
+                }
+                Ok(_) => continue,
+                Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => break,
+            }
+        }
+    }
+
     async fn rtsp_task_reconnect(
         &self,
         state: &mut RtspTaskState,
         mut cmd_rx: mpsc::Receiver<Commands>,
+        stop_token: CancellationToken,
     ) -> std::result::Result<(), super::error::RtspError> {
         gst::info!(CAT, "Running simplified reconnection flow");
-        
+
         let cmd_tx = self.cmd_queue();
         let settings = { self.settings.lock().unwrap().clone() };
-        
+
         // Flag to track if we've received a PLAY response and are ready for data
         let mut ready_for_data = false;
-        
+
         // For reconnection, we just need to:
         // 1. Do OPTIONS to verify server is alive
         // 2. Skip DESCRIBE (we already have SDP)
         // 3. Skip SETUP (we already have pipeline elements)
         // 4. Go directly to PLAY
-        
+
         // OPTIONS
         state.options().await?;
-        
+
         // We need to do a minimal SETUP to get a session, but we'll reuse existing transport
         // For reconnection, we do SETUP but skip element creation
         let mut session: Option<Session> = None;
-        
+
         // Do SETUP for each stream to re-establish session
         if !state.setup_params.is_empty() {
-            gst::info!(CAT, "Re-establishing RTSP session for {} streams", state.setup_params.len());
-            
+            gst::info!(
+                CAT,
+                "Re-establishing RTSP session for {} streams",
+                state.setup_params.len()
+            );
+
             // We need to do SETUP requests to get a new session from the server
             for (stream_id, params) in state.setup_params.iter().enumerate() {
                 let control_url = &params.control_url;
-                
+
                 // Build transport string based on existing transport info
                 let transport_str = match &params.transport {
-                    RtspTransportInfo::Tcp { channels: (rtp, rtcp) } => {
-                        format!("RTP/AVP/TCP;unicast;interleaved={}-{}", 
-                            rtp, 
-                            rtcp.map_or(*rtp + 1, |c| c))
+                    RtspTransportInfo::Tcp {
+                        channels: (rtp, rtcp),
+                    } => {
+                        format!(
+                            "RTP/AVP/TCP;unicast;interleaved={}-{}",
+                            rtp,
+                            rtcp.map_or(*rtp + 1, |c| c)
+                        )
                     }
                     RtspTransportInfo::Udp { client_port, .. } => {
                         if let Some((rtp_port, rtcp_port)) = client_port {
-                            format!("RTP/AVP;unicast;client_port={}-{}", 
-                                rtp_port, 
-                                rtcp_port.unwrap_or(rtp_port + 1))
+                            format!(
+                                "RTP/AVP;unicast;client_port={}-{}",
+                                rtp_port,
+                                rtcp_port.unwrap_or(rtp_port + 1)
+                            )
                         } else {
                             "RTP/AVP;unicast".to_string()
                         }
                     }
-                    RtspTransportInfo::UdpMulticast { .. } => {
-                        "RTP/AVP;multicast".to_string()
-                    }
+                    RtspTransportInfo::UdpMulticast { .. } => "RTP/AVP;multicast".to_string(),
                 };
-                
+
                 // Send SETUP request
-                gst::info!(CAT, "Sending SETUP for stream {} with transport: {}", stream_id, transport_str);
-                
+                gst::info!(
+                    CAT,
+                    "Sending SETUP for stream {} with transport: {}",
+                    stream_id,
+                    transport_str
+                );
+
                 state.cseq += 1;
                 let mut req_builder = Request::builder(Method::Setup, Version::V1_0)
                     .request_uri(control_url.clone())
                     .typed_header(&CSeq::from(state.cseq))
                     .header(rtsp_types::headers::TRANSPORT, transport_str);
-                    
+
                 if let Some(ref s) = session {
                     req_builder = req_builder.header(rtsp_types::headers::SESSION, s.to_string());
                 }
-                
+
                 let req = req_builder.build(Body::default());
-                
+
                 state.sink.send(req.into()).await?;
-                
+
                 // Wait for SETUP response
                 let response = loop {
                     match state.stream.next().await {
@@ -4099,12 +4195,19 @@ impl RtspSrc {
                                 }
                             }
                         }
-                        Some(Err(e)) => return Err(RtspError::internal(format!("Error during SETUP: {:?}", e))),
-                        None => return Err(RtspError::Network(super::error::NetworkError::ConnectionReset).into()),
+                        Some(Err(e)) => {
+                            return Err(RtspError::internal(format!("Error during SETUP: {:?}", e)))
+                        }
+                        None => {
+                            return Err(RtspError::Network(
+                                super::error::NetworkError::ConnectionReset,
+                            )
+                            .into())
+                        }
                         _ => continue,
                     }
                 };
-                
+
                 // Extract session from first SETUP response
                 if session.is_none() {
                     session = response.typed_header::<Session>().ok().flatten();
@@ -4112,60 +4215,83 @@ impl RtspSrc {
                 }
             }
         }
-        
+
         // Restore playback state after reconnection
         match &state.playback_state {
-            PlaybackState::Playing { position, rate, range } => {
+            PlaybackState::Playing {
+                position,
+                rate,
+                range,
+            } => {
                 if let Some(ref s) = session {
-                    gst::info!(CAT, "Stream was playing before disconnection, restoring playback state");
-                    gst::info!(CAT, "  Position: {:?}, Rate: {}, Range: {:?}", position, rate, range);
-                    
+                    gst::info!(
+                        CAT,
+                        "Stream was playing before disconnection, restoring playback state"
+                    );
+                    gst::info!(
+                        CAT,
+                        "  Position: {:?}, Rate: {}, Range: {:?}",
+                        position,
+                        rate,
+                        range
+                    );
+
                     state.cseq += 1;
                     let mut play_req_builder = Request::builder(Method::Play, Version::V1_0)
                         .request_uri(state.aggregate_control.clone().unwrap_or(state.url.clone()))
                         .typed_header(&CSeq::from(state.cseq))
                         .header(rtsp_types::headers::SESSION, s.to_string());
-                    
+
                     // Restore position if we had one
                     if let Some(pos) = position {
                         // Convert ClockTime to NPT time for Range header
                         // NptTime::Seconds takes seconds and optional fractional microseconds
                         let fractional_usecs = (pos.nseconds() % 1_000_000_000) / 1000;
-                        let npt_pos = NptTime::Seconds(pos.seconds(), Some(fractional_usecs as u32));
+                        let npt_pos =
+                            NptTime::Seconds(pos.seconds(), Some(fractional_usecs as u32));
                         let npt_range = NptRange::From(npt_pos);
                         play_req_builder = play_req_builder.typed_header(&Range::Npt(npt_range));
                     } else if let Some(ref existing_range) = range {
-                        play_req_builder = play_req_builder.typed_header(&Range::Npt(existing_range.clone()));
+                        play_req_builder =
+                            play_req_builder.typed_header(&Range::Npt(existing_range.clone()));
                     } else {
                         let npt_range = NptRange::From(NptTime::Now);
                         play_req_builder = play_req_builder.typed_header(&Range::Npt(npt_range));
                     }
-                    
+
                     // Add Scale header if rate is not 1.0
                     if (*rate - 1.0).abs() > 0.001 {
-                        play_req_builder = play_req_builder.header(rtsp_types::headers::SCALE, rate.to_string());
+                        play_req_builder =
+                            play_req_builder.header(rtsp_types::headers::SCALE, rate.to_string());
                     }
-                    
+
                     let play_req = play_req_builder.build(Body::default());
                     state.sink.send(play_req.into()).await?;
-                    
+
                     gst::info!(CAT, "PLAY command sent to restore playback");
                 }
-            },
+            }
             PlaybackState::Paused { position } => {
-                gst::info!(CAT, "Stream was paused before disconnection at position {:?}", position);
+                gst::info!(
+                    CAT,
+                    "Stream was paused before disconnection at position {:?}",
+                    position
+                );
                 // For paused state, we might want to send PLAY and immediately PAUSE
                 // Or just wait for user to resume
                 gst::info!(CAT, "Waiting for user to resume playback");
-            },
+            }
             PlaybackState::Stopped => {
-                gst::info!(CAT, "Stream was stopped before disconnection, waiting for PLAY command");
-            },
+                gst::info!(
+                    CAT,
+                    "Stream was stopped before disconnection, waiting for PLAY command"
+                );
+            }
         }
-        
+
         // Build tcp_interleave_appsrcs map
         let mut tcp_interleave_appsrcs = HashMap::new();
-        
+
         // Rebuild tcp_interleave_appsrcs from existing elements if using TCP
         for (rtpsession_n, p) in state.setup_params.iter().enumerate() {
             if let RtspTransportInfo::Tcp {
@@ -4178,9 +4304,9 @@ impl RtspSrc {
                 // Note: RTCP appsrcs would need to be stored similarly if needed
             }
         }
-        
+
         gst::info!(CAT, "Reconnection setup complete, entering main loop");
-        
+
         // Jump directly to the main receive loop
         let mut expected_response = None;
         loop {
@@ -4188,6 +4314,7 @@ impl RtspSrc {
             enum Res {
                 Msg(Result<Message<Body>, super::tcp_message::ReadError>),
                 Cmd(Commands),
+                Cancelled,
             }
             let res = tokio::select! {
                 msg = state.stream.next() => {
@@ -4201,73 +4328,95 @@ impl RtspSrc {
                     }
                 }
                 Some(cmd) = cmd_rx.recv() => Res::Cmd(cmd),
+                _ = stop_token.cancelled() => Res::Cancelled,
             };
 
             match res {
-                Res::Msg(msg) => match msg {
-                    Ok(Message::Request(req)) => {
-                        // Handle server requests (GET_PARAMETER, SET_PARAMETER, etc)
-                        // For now, just log and continue
-                        gst::debug!(CAT, "Received request during reconnection: {:?}", req.method());
-                    }
-                    Ok(Message::Response(rsp)) => {
-                        // Handle server responses
-                        let cseq = rsp.typed_header::<CSeq>();
-                        
-                        if let Some((expected_method, expected_cseq)) = expected_response.take() {
-                            if let Ok(Some(cseq)) = cseq {
-                                if *cseq != expected_cseq {
-                                    // Put it back if not matching
-                                    expected_response = Some((expected_method, expected_cseq));
-                                    continue;
-                                }
-                            }
-                            
-                            // Handle the response based on method
-                            match &expected_method {
-                                Method::Play => {
-                                    let s = session.as_mut().ok_or(RtspError::internal("No session"))?;
-                                    state.play_response(&rsp, expected_cseq, s).await?;
-                                    ready_for_data = true;
-                                    gst::info!(CAT, "PLAY response received, ready to receive data");
-                                }
-                                Method::Pause => {
-                                    let s = session.as_mut().ok_or(RtspError::internal("No session"))?;
-                                    state.pause_response(&rsp, expected_cseq, s).await?;
-                                }
-                                _ => {}
-                            }
+                Res::Msg(msg) => {
+                    match msg {
+                        Ok(Message::Request(req)) => {
+                            // Handle server requests (GET_PARAMETER, SET_PARAMETER, etc)
+                            // For now, just log and continue
+                            gst::debug!(
+                                CAT,
+                                "Received request during reconnection: {:?}",
+                                req.method()
+                            );
                         }
-                    }
-                    Ok(Message::Data(data)) => {
-                        // Handle interleaved data only if we're ready
-                        if !ready_for_data {
-                            gst::trace!(CAT, "Dropping data on channel {} - not ready yet", data.channel_id());
-                            continue;
-                        }
-                        
-                        if let Some(appsrc) = tcp_interleave_appsrcs.get(&data.channel_id()) {
-                            let buffer = gst::Buffer::from_slice(data.into_body());
-                            match appsrc.push_buffer(buffer) {
-                                Ok(_) => {
-                                    // Successfully pushed
+                        Ok(Message::Response(rsp)) => {
+                            // Handle server responses
+                            let cseq = rsp.typed_header::<CSeq>();
+
+                            if let Some((expected_method, expected_cseq)) = expected_response.take()
+                            {
+                                if let Ok(Some(cseq)) = cseq {
+                                    if *cseq != expected_cseq {
+                                        // Put it back if not matching
+                                        expected_response = Some((expected_method, expected_cseq));
+                                        continue;
+                                    }
                                 }
-                                Err(gst::FlowError::Flushing) => {
-                                    // Elements might still be transitioning
-                                    gst::debug!(CAT, "AppSrc {} is flushing, likely still transitioning states", appsrc.name());
-                                    // Don't set ready_for_data to false - keep trying
-                                }
-                                Err(err) => {
-                                    gst::warning!(CAT, "Failed to push buffer: {:?}", err);
+
+                                // Handle the response based on method
+                                match &expected_method {
+                                    Method::Play => {
+                                        let s = session
+                                            .as_mut()
+                                            .ok_or(RtspError::internal("No session"))?;
+                                        state.play_response(&rsp, expected_cseq, s).await?;
+                                        ready_for_data = true;
+                                        gst::info!(
+                                            CAT,
+                                            "PLAY response received, ready to receive data"
+                                        );
+                                    }
+                                    Method::Pause => {
+                                        let s = session
+                                            .as_mut()
+                                            .ok_or(RtspError::internal("No session"))?;
+                                        state.pause_response(&rsp, expected_cseq, s).await?;
+                                    }
+                                    _ => {}
                                 }
                             }
                         }
+                        Ok(Message::Data(data)) => {
+                            // Handle interleaved data only if we're ready
+                            if !ready_for_data {
+                                gst::trace!(
+                                    CAT,
+                                    "Dropping data on channel {} - not ready yet",
+                                    data.channel_id()
+                                );
+                                continue;
+                            }
+
+                            if let Some(appsrc) = tcp_interleave_appsrcs.get(&data.channel_id()) {
+                                let buffer = gst::Buffer::from_slice(data.into_body());
+                                match appsrc.push_buffer(buffer) {
+                                    Ok(_) => {
+                                        // Successfully pushed
+                                    }
+                                    Err(gst::FlowError::Flushing) => {
+                                        // Elements might still be transitioning
+                                        gst::debug!(CAT, "AppSrc {} is flushing, likely still transitioning states", appsrc.name());
+                                        // Don't set ready_for_data to false - keep trying
+                                    }
+                                    Err(err) => {
+                                        gst::warning!(CAT, "Failed to push buffer: {:?}", err);
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            gst::error!(CAT, "I/O error: {e:?}");
+                            return Err(RtspError::Network(
+                                super::error::NetworkError::ConnectionReset,
+                            )
+                            .into());
+                        }
                     }
-                    Err(e) => {
-                        gst::error!(CAT, "I/O error: {e:?}");
-                        return Err(RtspError::Network(super::error::NetworkError::ConnectionReset).into());
-                    }
-                },
+                }
                 Res::Cmd(cmd) => match cmd {
                     Commands::Play => {
                         let s = session.as_mut().ok_or(RtspError::internal("No session"))?;
@@ -4275,7 +4424,7 @@ impl RtspSrc {
                         expected_response = Some((Method::Play, cseq));
                         // Save playing state
                         state.playback_state = PlaybackState::Playing {
-                            position: None,  // Will be updated from response
+                            position: None, // Will be updated from response
                             rate: 1.0,
                             range: None,
                         };
@@ -4286,7 +4435,7 @@ impl RtspSrc {
                         expected_response = Some((Method::Pause, cseq));
                         // Save paused state
                         state.playback_state = PlaybackState::Paused {
-                            position: None,  // Current position
+                            position: None, // Current position
                         };
                     }
                     Commands::Teardown(tx) => {
@@ -4297,9 +4446,16 @@ impl RtspSrc {
                     }
                     _ => {}
                 },
+                Res::Cancelled => {
+                    gst::info!(CAT, "Cancellation received during reconnection loop");
+                    Self::drain_teardown(&mut cmd_rx);
+                    break;
+                }
             }
         }
-        
+
+        Self::drain_teardown(&mut cmd_rx);
+
         Ok(())
     }
 
@@ -4307,13 +4463,16 @@ impl RtspSrc {
         &self,
         state: &mut RtspTaskState,
         mut cmd_rx: mpsc::Receiver<Commands>,
+        stop_token: CancellationToken,
     ) -> std::result::Result<(), super::error::RtspError> {
         // Check if this is a reconnection
         if !state.setup_params.is_empty() {
             // This is a reconnection - use simplified flow
-            return self.rtsp_task_reconnect(state, cmd_rx).await;
+            return self
+                .rtsp_task_reconnect(state, cmd_rx, stop_token.clone())
+                .await;
         }
-        
+
         // Normal first-time connection flow
         let cmd_tx = self.cmd_queue();
 
@@ -4731,34 +4890,34 @@ impl RtspSrc {
                     Some(Err(e)) => {
                         // Connection error - attempt to reconnect based on retry settings
                         gst::warning!(CAT, "I/O error: {e:?}");
-                        
+
                         // Check if we're using UDP and still receiving data
                         let using_udp = state.setup_params.iter().any(|p| {
                             matches!(p.transport, RtspTransportInfo::Udp { .. } | RtspTransportInfo::UdpMulticast { .. })
                         });
-                        
+
                         if using_udp {
                             // For UDP transports, we can continue if data is still flowing
                             gst::info!(CAT, "TCP connection error but using UDP transport, continuing...");
                             // Continue the loop without the TCP connection for control
                             continue;
                         }
-                        
+
                         // For TCP transport, we need to reconnect
                         gst::error!(CAT, "TCP connection error, initiating reconnection...");
-                        
+
                         // Signal that we need to reconnect
                         return Err(RtspError::Network(super::error::NetworkError::ConnectionReset).into());
                     }
                     None => {
                         // Connection dropped - attempt to reconnect based on retry settings
                         gst::warning!(CAT, "TCP connection EOF detected");
-                        
+
                         // Check if we're using UDP and still receiving data
                         let using_udp = state.setup_params.iter().any(|p| {
                             matches!(p.transport, RtspTransportInfo::Udp { .. } | RtspTransportInfo::UdpMulticast { .. })
                         });
-                        
+
                         if using_udp {
                             // For UDP transports, we can continue if data is still flowing
                             gst::info!(CAT, "TCP connection lost but using UDP transport, continuing...");
@@ -4766,10 +4925,10 @@ impl RtspSrc {
                             // This allows UDP data to continue flowing
                             continue;
                         }
-                        
+
                         // For TCP transport, we need to reconnect
                         gst::error!(CAT, "TCP connection lost, initiating reconnection...");
-                        
+
                         // Signal that we need to reconnect
                         return Err(RtspError::Network(super::error::NetworkError::ConnectionReset).into());
                     }
@@ -4784,7 +4943,7 @@ impl RtspSrc {
                             self.post_cancelled("request", "PLAY request cancelled");
                         })?;
                         expected_response = Some((Method::Play, cseq));
-                        // Save playing state  
+                        // Save playing state
                         state.playback_state = PlaybackState::Playing {
                             position: None,
                             rate: 1.0,
@@ -4819,7 +4978,7 @@ impl RtspSrc {
                             self.post_cancelled("request", "SEEK request cancelled");
                         })?;
                         expected_response = Some((Method::Play, cseq));
-                        
+
                         // Update playback state with new position
                         state.playback_state = PlaybackState::Playing {
                             position: Some(position),
