@@ -180,7 +180,7 @@ impl BackupManager {
                     .unwrap_or_else(|_| chrono::Utc::now());
                 
                 sqlx::query(
-                    "INSERT INTO recordings (stream_id, file_path, size_bytes, created_at) VALUES (?, ?, ?, ?)"
+                    "INSERT INTO recordings (stream_id, path, size_bytes, created_at) VALUES (?, ?, ?, ?)"
                 )
                 .bind(&file_info.stream_id)
                 .bind(&file_path)
@@ -207,7 +207,7 @@ impl BackupManager {
         let mut db_entries_removed = 0;
 
         // Get all recording entries from database
-        let db_recordings = sqlx::query("SELECT id, file_path FROM recordings")
+        let db_recordings = sqlx::query("SELECT id, path FROM recordings")
             .fetch_all(database.pool())
             .await
             .map_err(|e| RecoveryError::DatabaseError(e.to_string()))?;
@@ -215,7 +215,7 @@ impl BackupManager {
         // Check each database entry against filesystem
         for record in db_recordings {
             let id: i64 = record.get("id");
-            let file_path: Option<String> = record.get("file_path");
+            let file_path: Option<String> = record.get("path");
             
             if let Some(file_path) = file_path {
                 let path = PathBuf::from(&file_path);
@@ -245,7 +245,7 @@ impl BackupManager {
                     let file_path = path.to_string_lossy().to_string();
                     
                     // Check if file is in database
-                    let row = sqlx::query("SELECT COUNT(*) as count FROM recordings WHERE file_path = ?")
+                    let row = sqlx::query("SELECT COUNT(*) as count FROM recordings WHERE path = ?")
                         .bind(&file_path)
                         .fetch_one(database.pool())
                         .await
@@ -259,7 +259,7 @@ impl BackupManager {
                             .map_err(|e| RecoveryError::IoError(e.to_string()))?;
                         
                         sqlx::query(
-                            "INSERT INTO recordings (stream_id, file_path, size_bytes, created_at) VALUES (?, ?, ?, ?)"
+                            "INSERT INTO recordings (stream_id, path, size_bytes, created_at) VALUES (?, ?, ?, ?)"
                         )
                         .bind("unknown")
                         .bind(&file_path)

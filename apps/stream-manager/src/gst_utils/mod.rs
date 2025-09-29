@@ -15,8 +15,12 @@ const REQUIRED_ELEMENTS: &[&str] = &[
     // From gst-plugins-rs
     "fallbacksrc",
     "togglerecord",
-    "intersink",
-    "intersrc",
+    "interaudiosink",
+    "interaudiosrc",
+    "intersubsink",
+    "intersubsrc",
+    "intervideosink",
+    "intervideosrc",
     
     // Video elements
     "videoconvert",

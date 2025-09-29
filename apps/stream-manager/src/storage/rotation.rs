@@ -195,12 +195,31 @@ impl DiskRotationManager {
             }
         })?;
         
-        // Watch mount points
+        // Watch mount points - only watch directories that exist
         #[cfg(target_os = "linux")]
         {
-            watcher.watch(Path::new("/media"), RecursiveMode::NonRecursive)?;
-            watcher.watch(Path::new("/mnt"), RecursiveMode::NonRecursive)?;
-            watcher.watch(Path::new("/run/media"), RecursiveMode::Recursive)?;
+            let watch_paths = [
+                ("/media", RecursiveMode::NonRecursive),
+                ("/mnt", RecursiveMode::NonRecursive),
+                ("/run/media", RecursiveMode::Recursive),
+            ];
+
+            let mut watched_any = false;
+            for (path, mode) in &watch_paths {
+                let path = Path::new(path);
+                if path.exists() {
+                    if let Err(e) = watcher.watch(path, *mode) {
+                        warn!("Failed to watch {:?}: {}", path, e);
+                    } else {
+                        debug!("Watching mount point: {:?}", path);
+                        watched_any = true;
+                    }
+                }
+            }
+
+            if !watched_any {
+                warn!("No mount points available to watch, will rely on polling only");
+            }
         }
         
         #[cfg(target_os = "windows")]
