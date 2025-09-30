@@ -1,23 +1,23 @@
-import clsx from 'clsx';
+import clsx from "clsx";
 
 interface LoadingSpinnerProps {
-  size?: 'sm' | 'md' | 'lg';
+  size?: "sm" | "md" | "lg";
   className?: string;
 }
 
-export default function LoadingSpinner({ size = 'md', className }: LoadingSpinnerProps) {
+export default function LoadingSpinner({ size = "md", className }: LoadingSpinnerProps) {
   const sizeClasses = {
-    sm: 'h-4 w-4',
-    md: 'h-8 w-8',
-    lg: 'h-12 w-12',
+    sm: "h-4 w-4",
+    md: "h-8 w-8",
+    lg: "h-12 w-12",
   };
 
   return (
-    <div className={clsx('flex items-center justify-center', className)}>
+    <div className={clsx("flex items-center justify-center", className)}>
       <div
         className={clsx(
-          'animate-spin rounded-full border-t-2 border-b-2 border-primary-600',
-          sizeClasses[size]
+          "animate-spin rounded-full border-t-2 border-b-2 border-primary-600",
+          sizeClasses[size],
         )}
       />
     </div>

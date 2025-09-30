@@ -1,13 +1,13 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useAPI } from '../contexts/APIContext.tsx';
-import { APIClient } from '../api/client.ts';
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useAPI } from "../contexts/APIContext.tsx";
+import { APIClient } from "../api/client.ts";
 import type {
+  DetailedMetrics,
   Stream,
   StreamListResponse,
+  SystemConfig,
   SystemStatus,
-  DetailedMetrics,
-  SystemConfig
-} from '../api/types/index.ts';
+} from "../api/types/index.ts";
 
 // Generic hook for API calls with loading and error states
 interface UseAPICallResult<T> {
@@ -21,12 +21,12 @@ interface UseAPICallResult<T> {
 function useAPICall<T>(
   apiCall: () => Promise<T>,
   deps: any[] = [],
-  autoFetch = true
+  autoFetch = true,
 ): UseAPICallResult<T> {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(autoFetch);
   const [error, setError] = useState<Error | null>(null);
-  const cancelKey = useRef<string>('');
+  const cancelKey = useRef<string>("");
 
   const fetch = useCallback(async () => {
     setLoading(true);
@@ -71,7 +71,7 @@ export function useStreams(autoFetch = true) {
   return useAPICall<StreamListResponse>(
     () => api.streams.list(),
     [api],
-    autoFetch
+    autoFetch,
   );
 }
 
@@ -84,7 +84,7 @@ export function useStream(id: string | null, autoFetch = true) {
       return api.streams.get(id);
     },
     [api, id],
-    autoFetch && !!id
+    autoFetch && !!id,
   );
 }
 
@@ -94,7 +94,7 @@ export function useSystemStatus(refreshInterval?: number) {
   const result = useAPICall<SystemStatus>(
     () => api.health.getStatus(),
     [api],
-    true
+    true,
   );
 
   useEffect(() => {
@@ -118,7 +118,7 @@ export function useStreamMetrics(id: string | null, refreshInterval?: number) {
       return api.streams.getMetrics(id);
     },
     [api, id],
-    !!id
+    !!id,
   );
 
   useEffect(() => {
@@ -139,7 +139,7 @@ export function useSystemConfig() {
   return useAPICall<SystemConfig>(
     () => api.config.get(),
     [api],
-    true
+    true,
   );
 }
 
@@ -152,7 +152,7 @@ export function useStreamActions() {
   const execute = useCallback(async (
     action: () => Promise<any>,
     onSuccess?: () => void,
-    onError?: (error: Error) => void
+    onError?: (error: Error) => void,
   ) => {
     setLoading(true);
     setError(null);
@@ -201,7 +201,7 @@ export function useStreamActions() {
     restartStream,
     deleteStream,
     startRecording,
-    stopRecording
+    stopRecording,
   };
 }
 
@@ -215,7 +215,7 @@ export function useHealthCheck(interval = 5000) {
     const checkHealth = async () => {
       try {
         const health = await api.health.check();
-        setIsHealthy(health.status === 'healthy');
+        setIsHealthy(health.status === "healthy");
         setLastCheck(new Date());
       } catch {
         setIsHealthy(false);
@@ -240,7 +240,7 @@ export function useWebSocketEvents(eventTypes?: string[]) {
     // TODO: Implement WebSocket connection
     // This is a placeholder for the WebSocket implementation
     // which should be done in a separate PRP
-    console.log('WebSocket events hook - not yet implemented');
+    console.log("WebSocket events hook - not yet implemented");
   }, [eventTypes]);
 
   return { events, connected };

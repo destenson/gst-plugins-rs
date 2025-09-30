@@ -22,7 +22,7 @@ export interface SystemStatus {
 // Stream Types
 export interface StreamRecording {
   enabled: boolean;
-  status?: 'recording' | 'paused' | 'stopped';
+  status?: "recording" | "paused" | "stopped";
   current_file?: string;
   duration?: number;
   total_size?: number;
@@ -86,7 +86,7 @@ export interface StreamReconnect {
 }
 
 export interface StreamPipeline {
-  state: 'playing' | 'paused' | 'stopped' | 'null';
+  state: "playing" | "paused" | "stopped" | "null";
   latency: number;
   buffer_level: number;
 }
@@ -94,7 +94,7 @@ export interface StreamPipeline {
 export interface Stream {
   id: string;
   source_url: string;
-  status: 'active' | 'inactive' | 'error' | 'initializing' | 'starting' | 'stopping' | 'restarting';
+  status: "active" | "inactive" | "error" | "initializing" | "starting" | "stopping" | "restarting";
   created_at?: string;
   last_connected?: string;
   recording?: StreamRecording;
@@ -169,7 +169,7 @@ export interface RecordingConfig {
 
 export interface InferenceConfig {
   enabled: boolean;
-  device: 'cpu' | 'gpu';
+  device: "cpu" | "gpu";
   models_path: string;
 }
 
@@ -185,19 +185,18 @@ export interface UpdateConfigRequest {
   inference?: Partial<InferenceConfig>;
 }
 
-
 // WebSocket Event Types
 export type EventType =
-  | 'stream.started'
-  | 'stream.stopped'
-  | 'stream.error'
-  | 'recording.started'
-  | 'recording.stopped'
-  | 'recording.segment_created'
-  | 'metrics.update'
-  | 'config.reloaded'
-  | 'system.warning'
-  | 'system.error';
+  | "stream.started"
+  | "stream.stopped"
+  | "stream.error"
+  | "recording.started"
+  | "recording.stopped"
+  | "recording.segment_created"
+  | "metrics.update"
+  | "config.reloaded"
+  | "system.warning"
+  | "system.error";
 
 export interface WebSocketEvent {
   type: EventType;
@@ -219,18 +218,18 @@ export interface APIError {
 }
 
 export type ErrorCode =
-  | 'STREAM_NOT_FOUND'
-  | 'STREAM_ALREADY_EXISTS'
-  | 'INVALID_CONFIGURATION'
-  | 'STREAM_BUSY'
-  | 'RECORDING_IN_PROGRESS'
-  | 'NO_RECORDING'
-  | 'UNAUTHORIZED'
-  | 'INTERNAL_ERROR';
+  | "STREAM_NOT_FOUND"
+  | "STREAM_ALREADY_EXISTS"
+  | "INVALID_CONFIGURATION"
+  | "STREAM_BUSY"
+  | "RECORDING_IN_PROGRESS"
+  | "NO_RECORDING"
+  | "UNAUTHORIZED"
+  | "INTERNAL_ERROR";
 
 // Query Parameters
 export interface StreamListQuery {
-  status?: 'active' | 'inactive' | 'error';
+  status?: "active" | "inactive" | "error";
   recording?: boolean;
 }
 
@@ -244,5 +243,5 @@ export interface RecordingListQuery {
 export type APIResponse<T> = T | APIError;
 
 export function isAPIError(response: any): response is APIError {
-  return response && typeof response === 'object' && 'error' in response;
+  return response && typeof response === "object" && "error" in response;
 }

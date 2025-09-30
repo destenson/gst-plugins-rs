@@ -1,15 +1,15 @@
-import { APIClient } from './client.ts';
-import { AuthAPI } from './services/AuthAPI.ts';
-import { DatabaseAPI } from './services/DatabaseAPI.ts';
-import { StreamsAPI } from './services/StreamsAPI.ts';
-import { RecordingsAPI } from './services/RecordingsAPI.ts';
-import { ConfigAPI } from './services/ConfigAPI.ts';
-import { MetricsAPI } from './services/MetricsAPI.ts';
-import { HealthAPI } from './services/HealthAPI.ts';
+import { APIClient } from "./client.ts";
+import { AuthAPI } from "./services/AuthAPI.ts";
+import { DatabaseAPI } from "./services/DatabaseAPI.ts";
+import { StreamsAPI } from "./services/StreamsAPI.ts";
+import { RecordingsAPI } from "./services/RecordingsAPI.ts";
+import { ConfigAPI } from "./services/ConfigAPI.ts";
+import { MetricsAPI } from "./services/MetricsAPI.ts";
+import { HealthAPI } from "./services/HealthAPI.ts";
 
 // Export types
-export * from './types/index.ts';
-export { APIClient, type APIClientConfig } from './client.ts';
+export * from "./types/index.ts";
+export { APIClient, type APIClientConfig } from "./client.ts";
 
 // Main API class that combines all services
 export class StreamManagerAPI {
@@ -52,7 +52,7 @@ export class StreamManagerAPI {
 const api = new StreamManagerAPI();
 
 // Export for browser window access (for debugging)
-if (typeof window !== 'undefined') {
+if (typeof window !== "undefined") {
   (window as any).api = api;
 }
 

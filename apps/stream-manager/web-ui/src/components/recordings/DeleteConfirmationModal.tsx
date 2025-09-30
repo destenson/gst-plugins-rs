@@ -1,5 +1,5 @@
-import React from 'react';
-import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import React from "react";
+import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 
 interface DeleteConfirmationModalProps {
   isOpen: boolean;
@@ -14,7 +14,7 @@ export default function DeleteConfirmationModal({
   onClose,
   onConfirm,
   recordingName,
-  isBulk = false
+  isBulk = false,
 }: DeleteConfirmationModalProps) {
   if (!isOpen) return null;
 
@@ -38,7 +38,7 @@ export default function DeleteConfirmationModal({
               </div>
               <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
                 <h3 className="text-lg font-medium leading-6 text-gray-900 dark:text-white">
-                  Delete {isBulk ? 'Recordings' : 'Recording'}
+                  Delete {isBulk ? "Recordings" : "Recording"}
                 </h3>
                 <div className="mt-2">
                   <p className="text-sm text-gray-500 dark:text-gray-400">

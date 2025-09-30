@@ -1,6 +1,6 @@
-import React from 'react';
-import { TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import { ArrowDownTrayIcon } from '@heroicons/react/24/solid';
+import React from "react";
+import { TrashIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { ArrowDownTrayIcon } from "@heroicons/react/24/solid";
 
 interface BulkActionsToolbarProps {
   selectedCount: number;
@@ -13,14 +13,14 @@ export default function BulkActionsToolbar({
   selectedCount,
   onDownload,
   onDelete,
-  onClear
+  onClear,
 }: BulkActionsToolbarProps) {
   return (
     <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <span className="text-sm font-medium text-blue-900 dark:text-blue-100">
-            {selectedCount} recording{selectedCount !== 1 ? 's' : ''} selected
+            {selectedCount} recording{selectedCount !== 1 ? "s" : ""} selected
           </span>
 
           <div className="flex items-center space-x-2">

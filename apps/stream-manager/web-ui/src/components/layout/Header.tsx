@@ -1,8 +1,8 @@
-import { Bars3Icon, MoonIcon, SunIcon } from '@heroicons/react/24/outline';
-import { useTheme } from '../../contexts/ThemeContext.tsx';
-import { ConnectionStatus } from '../../lib/websocket/index.ts';
-import Breadcrumb from '../Breadcrumb.tsx';
-import UserMenu from '../UserMenu.tsx';
+import { Bars3Icon, MoonIcon, SunIcon } from "@heroicons/react/24/outline";
+import { useTheme } from "../../contexts/ThemeContext.tsx";
+import { ConnectionStatus } from "../../lib/websocket/index.ts";
+import Breadcrumb from "../Breadcrumb.tsx";
+import UserMenu from "../UserMenu.tsx";
 
 interface HeaderProps {
   setSidebarOpen: (open: boolean) => void;
@@ -40,17 +40,18 @@ export default function Header({ setSidebarOpen }: HeaderProps) {
               type="button"
               onClick={toggleDarkMode}
               className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-              aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+              aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
             >
-              {darkMode ? (
-                <SunIcon className="h-5 w-5" aria-hidden="true" />
-              ) : (
-                <MoonIcon className="h-5 w-5" aria-hidden="true" />
-              )}
+              {darkMode
+                ? <SunIcon className="h-5 w-5" aria-hidden="true" />
+                : <MoonIcon className="h-5 w-5" aria-hidden="true" />}
             </button>
 
             {/* Separator */}
-            <div className="hidden lg:block lg:h-6 lg:w-px lg:bg-gray-200 dark:bg-gray-700" aria-hidden="true" />
+            <div
+              className="hidden lg:block lg:h-6 lg:w-px lg:bg-gray-200 dark:bg-gray-700"
+              aria-hidden="true"
+            />
 
             {/* User menu */}
             <UserMenu />

@@ -1,58 +1,58 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import LoadingSpinner from '../components/LoadingSpinner.tsx';
-import clsx from 'clsx';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import LoadingSpinner from "../components/LoadingSpinner.tsx";
+import clsx from "clsx";
 import {
-  PieChart,
-  Pie,
+  Area,
+  AreaChart,
+  CartesianGrid,
   Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
-  Legend,
-  LineChart,
-  Line,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Area,
-  AreaChart
-} from 'recharts';
+} from "recharts";
 import {
-  ArrowUpRight,
+  Activity,
+  AlertCircle,
+  AlertTriangle,
   ArrowDownRight,
   ArrowRight,
-  Server,
-  Activity,
-  HardDrive,
-  Film,
-  Radio,
-  AlertCircle,
-  PlayCircle,
-  RefreshCw,
-  Download,
-  Plus,
-  Settings,
-  Database,
-  Cpu,
-  MemoryStick,
-  Wifi,
+  ArrowUpRight,
   CheckCircle,
+  Cpu,
+  Database,
+  Download,
+  Film,
+  HardDrive,
+  MemoryStick,
+  PlayCircle,
+  Plus,
+  Radio,
+  RefreshCw,
+  Server,
+  Settings,
+  Wifi,
   XCircle,
-  AlertTriangle
-} from 'lucide-react';
-import { useAPI } from '../contexts/APIContext.tsx';
-import { useWebSocketSubscription, useConnectionState } from '../lib/websocket/hooks.ts';
-import { EventType, WebSocketEvent, StatisticsUpdateData } from '../lib/websocket/types.ts';
-import type { SystemStatus, Stream } from '../api/types/index.ts';
-import { formatDistanceToNow } from 'date-fns';
+} from "lucide-react";
+import { useAPI } from "../contexts/APIContext.tsx";
+import { useConnectionState, useWebSocketSubscription } from "../lib/websocket/hooks.ts";
+import { EventType, StatisticsUpdateData, WebSocketEvent } from "../lib/websocket/types.ts";
+import type { Stream, SystemStatus } from "../api/types/index.ts";
+import { formatDistanceToNow } from "date-fns";
 
 interface MetricCard {
   title: string;
   value: string | number;
   change?: number;
-  changeType?: 'increase' | 'decrease' | 'neutral';
+  changeType?: "increase" | "decrease" | "neutral";
   icon: React.ReactNode;
-  status?: 'healthy' | 'warning' | 'error';
+  status?: "healthy" | "warning" | "error";
   unit?: string;
 }
 
@@ -62,10 +62,10 @@ interface RecentEvent {
   type: EventType;
   streamId?: string;
   message: string;
-  level: 'info' | 'warning' | 'error';
+  level: "info" | "warning" | "error";
 }
 
-const STORAGE_COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
+const STORAGE_COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042"];
 const REFRESH_INTERVAL = 30000; // 30 seconds
 
 export default function Dashboard() {
@@ -83,8 +83,8 @@ export default function Dashboard() {
       EventType.RecordingStopped,
       EventType.StatisticsUpdate,
       EventType.SystemAlert,
-      EventType.ErrorOccurred
-    ]
+      EventType.ErrorOccurred,
+    ],
   });
 
   // Get connection state
@@ -96,8 +96,8 @@ export default function Dashboard() {
   const [recentEvents, setRecentEvents] = useState<RecentEvent[]>([]);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(new Date());
-  const [cpuHistory, setCpuHistory] = useState<Array<{time: string, value: number}>>([]);
-  const [memoryHistory, setMemoryHistory] = useState<Array<{time: string, value: number}>>([]);
+  const [cpuHistory, setCpuHistory] = useState<Array<{ time: string; value: number }>>([]);
+  const [memoryHistory, setMemoryHistory] = useState<Array<{ time: string; value: number }>>([]);
   const [backendError, setBackendError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
 
@@ -106,19 +106,19 @@ export default function Dashboard() {
     try {
       setBackendError(null);
       // Check if api has the health property (real API) or if it's a mock
-      if ('health' in api && api.health) {
+      if ("health" in api && api.health) {
         const status = await api.health.getStatus();
         setSystemStatus(status);
-      } else if ('client' in api) {
+      } else if ("client" in api) {
         // Direct client call for compatibility
-        const status = await api.client.get<SystemStatus>('/api/status');
+        const status = await api.client.get<SystemStatus>("/api/status");
         setSystemStatus(status);
       }
       setRetryCount(0);
     } catch (error: any) {
-      console.error('Failed to fetch system status:', error);
-      setBackendError('Backend API is not available');
-      setRetryCount(prev => prev + 1);
+      console.error("Failed to fetch system status:", error);
+      setBackendError("Backend API is not available");
+      setRetryCount((prev) => prev + 1);
       // Stop retrying after 3 attempts
       if (retryCount >= 3) {
         setAutoRefresh(false);
@@ -130,19 +130,19 @@ export default function Dashboard() {
   const fetchStreams = useCallback(async () => {
     try {
       // Check if api has the streams property (real API) or if it's a mock
-      if ('streams' in api && api.streams) {
+      if ("streams" in api && api.streams) {
         const response = await api.streams.list();
         setStreams(response?.streams || []);
-      } else if ('client' in api) {
+      } else if ("client" in api) {
         // Direct client call for compatibility
-        const response = await api.client.get<{streams: Stream[]}>('/api/streams');
+        const response = await api.client.get<{ streams: Stream[] }>("/api/streams");
         setStreams(response?.streams || []);
       }
     } catch (error: any) {
-      console.error('Failed to fetch streams:', error);
+      console.error("Failed to fetch streams:", error);
       // Don't set error again if already set by system status
       if (!backendError) {
-        setBackendError('Backend API is not available');
+        setBackendError("Backend API is not available");
       }
     }
   }, [api, backendError]);
@@ -165,14 +165,14 @@ export default function Dashboard() {
     const latestEvent = events[events.length - 1];
 
     // Update recent events list
-    setRecentEvents(prev => {
+    setRecentEvents((prev) => {
       const newEvent: RecentEvent = {
         id: latestEvent.id,
         timestamp: latestEvent.timestamp,
         type: latestEvent.event_type,
         streamId: latestEvent.stream_id,
         message: getEventMessage(latestEvent),
-        level: getEventLevel(latestEvent.event_type)
+        level: getEventLevel(latestEvent.event_type),
       };
 
       const updated = [newEvent, ...prev].slice(0, 10); // Keep only last 10 events
@@ -185,23 +185,35 @@ export default function Dashboard() {
 
       // Update CPU and memory history
       const timeStr = new Date().toLocaleTimeString();
-      setCpuHistory(prev => [...prev.slice(-19), { time: timeStr, value: stats.system.cpu_usage_percent }]);
-      setMemoryHistory(prev => [...prev.slice(-19), { time: timeStr, value: stats.system.memory_usage_mb }]);
+      setCpuHistory(
+        (prev) => [...prev.slice(-19), { time: timeStr, value: stats.system.cpu_usage_percent }],
+      );
+      setMemoryHistory(
+        (prev) => [...prev.slice(-19), { time: timeStr, value: stats.system.memory_usage_mb }],
+      );
 
       // Update system status
-      setSystemStatus(prev => prev ? {
-        ...prev,
-        cpu_usage: stats.system.cpu_usage_percent,
-        memory_usage: stats.system.memory_usage_mb,
-        disk_usage: {
-          ...prev.disk_usage,
-          used: Math.round(prev.disk_usage.total * stats.system.disk_usage_percent / 100)
-        }
-      } : null);
+      setSystemStatus((prev) =>
+        prev
+          ? {
+            ...prev,
+            cpu_usage: stats.system.cpu_usage_percent,
+            memory_usage: stats.system.memory_usage_mb,
+            disk_usage: {
+              ...prev.disk_usage,
+              used: Math.round(prev.disk_usage.total * stats.system.disk_usage_percent / 100),
+            },
+          }
+          : null
+      );
     }
 
     // Refresh data on relevant events
-    if ([EventType.StreamAdded, EventType.StreamRemoved, EventType.StreamHealthChanged].includes(latestEvent.event_type)) {
+    if (
+      [EventType.StreamAdded, EventType.StreamRemoved, EventType.StreamHealthChanged].includes(
+        latestEvent.event_type,
+      )
+    ) {
       fetchStreams();
     }
   }, [events, fetchStreams]);
@@ -230,9 +242,9 @@ export default function Dashboard() {
 
   // Calculate metrics
   const metrics = useMemo(() => {
-    const activeStreams = streams.filter(s => s.status === 'active').length;
-    const recordingStreams = streams.filter(s => s.recording?.status === 'recording').length;
-    const errorStreams = streams.filter(s => s.status === 'error').length;
+    const activeStreams = streams.filter((s) => s.status === "active").length;
+    const recordingStreams = streams.filter((s) => s.recording?.status === "recording").length;
+    const errorStreams = streams.filter((s) => s.status === "error").length;
 
     return {
       activeStreams,
@@ -242,7 +254,7 @@ export default function Dashboard() {
       storageUsed: systemStatus?.disk_usage.used || 0,
       storageTotal: systemStatus?.disk_usage.total || 0,
       cpuUsage: systemStatus?.cpu_usage || 0,
-      memoryUsage: systemStatus?.memory_usage || 0
+      memoryUsage: systemStatus?.memory_usage || 0,
     };
   }, [streams, systemStatus]);
 
@@ -255,17 +267,19 @@ export default function Dashboard() {
     const free = total - used;
 
     return [
-      { name: 'Used', value: used, percentage: (used / total * 100).toFixed(1) },
-      { name: 'Free', value: free, percentage: (free / total * 100).toFixed(1) }
+      { name: "Used", value: used, percentage: (used / total * 100).toFixed(1) },
+      { name: "Free", value: free, percentage: (free / total * 100).toFixed(1) },
     ];
   }, [systemStatus]);
 
   // System health status
   const systemHealth = useMemo(() => {
-    if (!systemStatus) return 'unknown';
-    if (metrics.cpuUsage > 80 || metrics.memoryUsage > 80 || metrics.errorStreams > 0) return 'warning';
-    if (!connected) return 'error';
-    return 'healthy';
+    if (!systemStatus) return "unknown";
+    if (metrics.cpuUsage > 80 || metrics.memoryUsage > 80 || metrics.errorStreams > 0) {
+      return "warning";
+    }
+    if (!connected) return "error";
+    return "healthy";
   }, [systemStatus, metrics, connected]);
 
   // Loading skeleton
@@ -299,7 +313,8 @@ export default function Dashboard() {
                 Backend Connection Issue
               </h3>
               <p className="text-sm text-red-700 dark:text-red-400 mt-1">
-                Unable to connect to the stream manager backend. The service may be starting up or experiencing issues.
+                Unable to connect to the stream manager backend. The service may be starting up or
+                experiencing issues.
               </p>
               {retryCount >= 3 && (
                 <p className="text-xs text-red-600 dark:text-red-500 mt-2">
@@ -338,11 +353,11 @@ export default function Dashboard() {
               "inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
               autoRefresh
                 ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                : "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+                : "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300",
             )}
           >
             <RefreshCw className={clsx("w-4 h-4 mr-1.5", autoRefresh && "animate-spin")} />
-            {autoRefresh ? 'Auto-refresh ON' : 'Auto-refresh OFF'}
+            {autoRefresh ? "Auto-refresh ON" : "Auto-refresh OFF"}
           </button>
           <button
             type="button"
@@ -367,10 +382,18 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
         <StatusCard
           title="System Health"
-          value={systemHealth === 'healthy' ? 'Operational' : systemHealth === 'warning' ? 'Degraded' : 'Critical'}
-          icon={systemHealth === 'healthy' ? <CheckCircle className="w-5 h-5" /> : systemHealth === 'warning' ? <AlertTriangle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
-          status={systemHealth as 'healthy' | 'warning' | 'error'}
-          subtitle={connected ? 'Connected' : 'Disconnected'}
+          value={systemHealth === "healthy"
+            ? "Operational"
+            : systemHealth === "warning"
+            ? "Degraded"
+            : "Critical"}
+          icon={systemHealth === "healthy"
+            ? <CheckCircle className="w-5 h-5" />
+            : systemHealth === "warning"
+            ? <AlertTriangle className="w-5 h-5" />
+            : <XCircle className="w-5 h-5" />}
+          status={systemHealth as "healthy" | "warning" | "error"}
+          subtitle={connected ? "Connected" : "Disconnected"}
         />
 
         <StatusCard
@@ -378,7 +401,7 @@ export default function Dashboard() {
           value={metrics.activeStreams}
           total={metrics.totalStreams}
           icon={<Radio className="w-5 h-5" />}
-          status={metrics.activeStreams > 0 ? 'healthy' : 'warning'}
+          status={metrics.activeStreams > 0 ? "healthy" : "warning"}
           trend={calculateTrend(metrics.activeStreams, metrics.totalStreams)}
         />
 
@@ -386,7 +409,7 @@ export default function Dashboard() {
           title="Recording"
           value={metrics.recordingStreams}
           icon={<Film className="w-5 h-5" />}
-          status={metrics.recordingStreams > 0 ? 'healthy' : 'neutral'}
+          status={metrics.recordingStreams > 0 ? "healthy" : "neutral"}
           subtitle={`${metrics.recordingStreams} active`}
         />
 
@@ -395,8 +418,12 @@ export default function Dashboard() {
           value={`${formatBytes(metrics.storageUsed)}`}
           subtitle={`of ${formatBytes(metrics.storageTotal)}`}
           icon={<HardDrive className="w-5 h-5" />}
-          status={metrics.storageTotal > 0 && metrics.storageUsed / metrics.storageTotal > 0.8 ? 'warning' : 'healthy'}
-          percentage={metrics.storageTotal > 0 ? (metrics.storageUsed / metrics.storageTotal * 100).toFixed(0) : '0'}
+          status={metrics.storageTotal > 0 && metrics.storageUsed / metrics.storageTotal > 0.8
+            ? "warning"
+            : "healthy"}
+          percentage={metrics.storageTotal > 0
+            ? (metrics.storageUsed / metrics.storageTotal * 100).toFixed(0)
+            : "0"}
         />
       </div>
 
@@ -406,23 +433,33 @@ export default function Dashboard() {
         <div className="lg:col-span-2 space-y-6">
           {/* Resource Usage Charts */}
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Resource Usage</h3>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+              Resource Usage
+            </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* CPU Chart */}
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm text-gray-600 dark:text-gray-400">CPU Usage</span>
-                  <span className="text-sm font-medium text-gray-900 dark:text-white">{metrics.cpuUsage.toFixed(1)}%</span>
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">
+                    {metrics.cpuUsage.toFixed(1)}%
+                  </span>
                 </div>
                 <ResponsiveContainer width="100%" height={100}>
                   <AreaChart data={cpuHistory}>
                     <defs>
                       <linearGradient id="cpuGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
+                        <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <Area type="monotone" dataKey="value" stroke="#3B82F6" fill="url(#cpuGradient)" strokeWidth={2} />
+                    <Area
+                      type="monotone"
+                      dataKey="value"
+                      stroke="#3B82F6"
+                      fill="url(#cpuGradient)"
+                      strokeWidth={2}
+                    />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -431,17 +468,25 @@ export default function Dashboard() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm text-gray-600 dark:text-gray-400">Memory Usage</span>
-                  <span className="text-sm font-medium text-gray-900 dark:text-white">{formatBytes(metrics.memoryUsage * 1024 * 1024)}</span>
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">
+                    {formatBytes(metrics.memoryUsage * 1024 * 1024)}
+                  </span>
                 </div>
                 <ResponsiveContainer width="100%" height={100}>
                   <AreaChart data={memoryHistory}>
                     <defs>
                       <linearGradient id="memGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10B981" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
+                        <stop offset="5%" stopColor="#10B981" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <Area type="monotone" dataKey="value" stroke="#10B981" fill="url(#memGradient)" strokeWidth={2} />
+                    <Area
+                      type="monotone"
+                      dataKey="value"
+                      stroke="#10B981"
+                      fill="url(#memGradient)"
+                      strokeWidth={2}
+                    />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -461,41 +506,58 @@ export default function Dashboard() {
               </Link>
             </div>
             <div className="space-y-3">
-              {streams.slice(0, 5).map(stream => (
-                <div key={stream.id} className="flex items-center justify-between py-2 border-b border-gray-200 dark:border-gray-700 last:border-0">
+              {streams.slice(0, 5).map((stream) => (
+                <div
+                  key={stream.id}
+                  className="flex items-center justify-between py-2 border-b border-gray-200 dark:border-gray-700 last:border-0"
+                >
                   <div className="flex items-center space-x-3">
-                    <span className={clsx(
-                      "w-2 h-2 rounded-full",
-                      stream.status === 'active' ? "bg-green-500" :
-                      stream.status === 'error' ? "bg-red-500" :
-                      "bg-yellow-500"
-                    )} />
+                    <span
+                      className={clsx(
+                        "w-2 h-2 rounded-full",
+                        stream.status === "active"
+                          ? "bg-green-500"
+                          : stream.status === "error"
+                          ? "bg-red-500"
+                          : "bg-yellow-500",
+                      )}
+                    />
                     <div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{stream.id}</p>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">
+                        {stream.id}
+                      </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {stream.metrics?.bitrate ? `${(stream.metrics.bitrate / 1000).toFixed(1)} Kbps` : 'No data'}
+                        {stream.metrics?.bitrate
+                          ? `${(stream.metrics.bitrate / 1000).toFixed(1)} Kbps`
+                          : "No data"}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center space-x-2">
-                    {stream.recording?.status === 'recording' && (
+                    {stream.recording?.status === "recording" && (
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
                         REC
                       </span>
                     )}
-                    <span className={clsx(
-                      "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium",
-                      stream.status === 'active' ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" :
-                      stream.status === 'error' ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200" :
-                      "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
-                    )}>
+                    <span
+                      className={clsx(
+                        "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium",
+                        stream.status === "active"
+                          ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                          : stream.status === "error"
+                          ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                          : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+                      )}
+                    >
                       {stream.status}
                     </span>
                   </div>
                 </div>
               ))}
               {streams.length === 0 && (
-                <p className="text-center text-gray-500 dark:text-gray-400 py-4">No streams configured</p>
+                <p className="text-center text-gray-500 dark:text-gray-400 py-4">
+                  No streams configured
+                </p>
               )}
             </div>
           </div>
@@ -505,31 +567,38 @@ export default function Dashboard() {
         <div className="space-y-6">
           {/* Storage Usage Chart */}
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Storage Overview</h3>
-            {storageData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie
-                    data={storageData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={2}
-                    dataKey="value"
-                  >
-                    {storageData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={STORAGE_COLORS[index % STORAGE_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value: number) => formatBytes(value)} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-[200px] flex items-center justify-center text-gray-500 dark:text-gray-400">
-                No data available
-              </div>
-            )}
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+              Storage Overview
+            </h3>
+            {storageData.length > 0
+              ? (
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie
+                      data={storageData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={2}
+                      dataKey="value"
+                    >
+                      {storageData.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={STORAGE_COLORS[index % STORAGE_COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value: number) => formatBytes(value)} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )
+              : (
+                <div className="h-[200px] flex items-center justify-center text-gray-500 dark:text-gray-400">
+                  No data available
+                </div>
+              )}
             <div className="mt-4 space-y-2">
               {storageData.map((item, index) => (
                 <div key={item.name} className="flex items-center justify-between">
@@ -555,16 +624,25 @@ export default function Dashboard() {
               <span className="text-xs text-gray-500 dark:text-gray-400">Live</span>
             </div>
             <div className="space-y-2 max-h-[300px] overflow-y-auto">
-              {recentEvents.map(event => (
-                <div key={event.id} className="flex items-start space-x-2 py-2 border-b border-gray-200 dark:border-gray-700 last:border-0">
-                  <span className={clsx(
-                    "mt-1 w-2 h-2 rounded-full flex-shrink-0",
-                    event.level === 'error' ? "bg-red-500" :
-                    event.level === 'warning' ? "bg-yellow-500" :
-                    "bg-blue-500"
-                  )} />
+              {recentEvents.map((event) => (
+                <div
+                  key={event.id}
+                  className="flex items-start space-x-2 py-2 border-b border-gray-200 dark:border-gray-700 last:border-0"
+                >
+                  <span
+                    className={clsx(
+                      "mt-1 w-2 h-2 rounded-full flex-shrink-0",
+                      event.level === "error"
+                        ? "bg-red-500"
+                        : event.level === "warning"
+                        ? "bg-yellow-500"
+                        : "bg-blue-500",
+                    )}
+                  />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-gray-900 dark:text-white break-words">{event.message}</p>
+                    <p className="text-sm text-gray-900 dark:text-white break-words">
+                      {event.message}
+                    </p>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                       {formatDistanceToNow(new Date(event.timestamp), { addSuffix: true })}
                       {event.streamId && ` • ${event.streamId}`}
@@ -573,7 +651,9 @@ export default function Dashboard() {
                 </div>
               ))}
               {recentEvents.length === 0 && (
-                <p className="text-center text-gray-500 dark:text-gray-400 py-4">No recent events</p>
+                <p className="text-center text-gray-500 dark:text-gray-400 py-4">
+                  No recent events
+                </p>
               )}
             </div>
           </div>
@@ -587,32 +667,32 @@ export default function Dashboard() {
           <QuickActionButton
             label="Add Stream"
             icon={<Plus className="w-5 h-5" />}
-            onClick={() => navigate('/streams?action=add')}
+            onClick={() => navigate("/streams?action=add")}
           />
           <QuickActionButton
             label="Start Recording"
             icon={<PlayCircle className="w-5 h-5" />}
-            onClick={() => navigate('/streams?action=record')}
+            onClick={() => navigate("/streams?action=record")}
           />
           <QuickActionButton
             label="View Recordings"
             icon={<Film className="w-5 h-5" />}
-            onClick={() => navigate('/recordings')}
+            onClick={() => navigate("/recordings")}
           />
           <QuickActionButton
             label="System Metrics"
             icon={<Activity className="w-5 h-5" />}
-            onClick={() => navigate('/metrics')}
+            onClick={() => navigate("/metrics")}
           />
           <QuickActionButton
             label="Configuration"
             icon={<Settings className="w-5 h-5" />}
-            onClick={() => navigate('/configuration')}
+            onClick={() => navigate("/configuration")}
           />
           <QuickActionButton
             label="Database"
             icon={<Database className="w-5 h-5" />}
-            onClick={() => navigate('/database')}
+            onClick={() => navigate("/database")}
           />
         </div>
       </div>
@@ -632,25 +712,25 @@ function StatusCard({
   value,
   subtitle,
   icon,
-  status = 'neutral',
+  status = "neutral",
   trend,
   total,
-  percentage
+  percentage,
 }: {
   title: string;
   value: string | number;
   subtitle?: string;
   icon: React.ReactNode;
-  status?: 'healthy' | 'warning' | 'error' | 'neutral';
-  trend?: 'up' | 'down' | 'neutral';
+  status?: "healthy" | "warning" | "error" | "neutral";
+  trend?: "up" | "down" | "neutral";
   total?: number;
   percentage?: string;
 }) {
   const statusColors = {
-    healthy: 'text-green-600 bg-green-100 dark:text-green-400 dark:bg-green-900',
-    warning: 'text-yellow-600 bg-yellow-100 dark:text-yellow-400 dark:bg-yellow-900',
-    error: 'text-red-600 bg-red-100 dark:text-red-400 dark:bg-red-900',
-    neutral: 'text-gray-600 bg-gray-100 dark:text-gray-400 dark:bg-gray-700'
+    healthy: "text-green-600 bg-green-100 dark:text-green-400 dark:bg-green-900",
+    warning: "text-yellow-600 bg-yellow-100 dark:text-yellow-400 dark:bg-yellow-900",
+    error: "text-red-600 bg-red-100 dark:text-red-400 dark:bg-red-900",
+    neutral: "text-gray-600 bg-gray-100 dark:text-gray-400 dark:bg-gray-700",
   };
 
   return (
@@ -666,24 +746,28 @@ function StatusCard({
           <span className="text-2xl font-bold text-gray-900 dark:text-white">
             {value}
             {total !== undefined && (
-              <span className="text-base font-normal text-gray-500 dark:text-gray-400">/{total}</span>
+              <span className="text-base font-normal text-gray-500 dark:text-gray-400">
+                /{total}
+              </span>
             )}
           </span>
-          {subtitle && (
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{subtitle}</p>
-          )}
+          {subtitle && <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{subtitle}</p>}
         </div>
         {(trend || percentage) && (
           <div className="text-right">
             {trend && (
-              <span className={clsx(
-                "inline-flex items-center text-sm font-medium",
-                trend === 'up' ? "text-green-600 dark:text-green-400" :
-                trend === 'down' ? "text-red-600 dark:text-red-400" :
-                "text-gray-500 dark:text-gray-400"
-              )}>
-                {trend === 'up' && <ArrowUpRight className="w-4 h-4" />}
-                {trend === 'down' && <ArrowDownRight className="w-4 h-4" />}
+              <span
+                className={clsx(
+                  "inline-flex items-center text-sm font-medium",
+                  trend === "up"
+                    ? "text-green-600 dark:text-green-400"
+                    : trend === "down"
+                    ? "text-red-600 dark:text-red-400"
+                    : "text-gray-500 dark:text-gray-400",
+                )}
+              >
+                {trend === "up" && <ArrowUpRight className="w-4 h-4" />}
+                {trend === "down" && <ArrowDownRight className="w-4 h-4" />}
               </span>
             )}
             {percentage && (
@@ -700,7 +784,7 @@ function StatusCard({
 function QuickActionButton({
   label,
   icon,
-  onClick
+  onClick,
 }: {
   label: string;
   icon: React.ReactNode;
@@ -720,17 +804,17 @@ function QuickActionButton({
 
 // Helper Functions
 function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
+  if (bytes === 0) return "0 B";
   const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const sizes = ["B", "KB", "MB", "GB", "TB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 }
 
-function calculateTrend(current: number, previous: number): 'up' | 'down' | 'neutral' {
-  if (current > previous) return 'up';
-  if (current < previous) return 'down';
-  return 'neutral';
+function calculateTrend(current: number, previous: number): "up" | "down" | "neutral" {
+  if (current > previous) return "up";
+  if (current < previous) return "down";
+  return "neutral";
 }
 
 function getEventMessage(event: WebSocketEvent): string {
@@ -746,41 +830,41 @@ function getEventMessage(event: WebSocketEvent): string {
     case EventType.RecordingStopped:
       return `Recording stopped for ${event.stream_id}`;
     case EventType.StatisticsUpdate:
-      return 'Statistics updated';
+      return "Statistics updated";
     case EventType.SystemAlert:
-      return event.data.message || 'System alert';
+      return event.data.message || "System alert";
     case EventType.ConfigChanged:
       return `Configuration changed: ${event.data.section}`;
     case EventType.ErrorOccurred:
       return `Error: ${event.data.error}`;
     default:
-      return 'Unknown event';
+      return "Unknown event";
   }
 }
 
-function getEventLevel(type: EventType): 'info' | 'warning' | 'error' {
+function getEventLevel(type: EventType): "info" | "warning" | "error" {
   switch (type) {
     case EventType.ErrorOccurred:
-      return 'error';
+      return "error";
     case EventType.StreamHealthChanged:
     case EventType.SystemAlert:
-      return 'warning';
+      return "warning";
     default:
-      return 'info';
+      return "info";
   }
 }
 
 function exportData(): void {
   // TODO: Implement data export functionality
-  console.log('Exporting dashboard data...');
+  console.log("Exporting dashboard data...");
   const data = {
     timestamp: new Date().toISOString(),
     // Add relevant data here
   };
 
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+  const a = document.createElement("a");
   a.href = url;
   a.download = `dashboard-export-${Date.now()}.json`;
   document.body.appendChild(a);

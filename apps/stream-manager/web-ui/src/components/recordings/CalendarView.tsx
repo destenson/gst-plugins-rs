@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { ChevronLeftIcon, ChevronRightIcon, FilmIcon } from '@heroicons/react/24/outline';
+import React, { useMemo, useState } from "react";
+import { ChevronLeftIcon, ChevronRightIcon, FilmIcon } from "@heroicons/react/24/outline";
 
 interface CalendarViewProps {
   recordings: Array<{
@@ -13,7 +13,9 @@ interface CalendarViewProps {
   onRecordingClick: (recording: any) => void;
 }
 
-export default function CalendarView({ recordings, onDateSelect, onRecordingClick }: CalendarViewProps) {
+export default function CalendarView(
+  { recordings, onDateSelect, onRecordingClick }: CalendarViewProps,
+) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
@@ -21,7 +23,7 @@ export default function CalendarView({ recordings, onDateSelect, onRecordingClic
   const recordingsByDate = useMemo(() => {
     const grouped = new Map<string, typeof recordings>();
 
-    recordings.forEach(recording => {
+    recordings.forEach((recording) => {
       const date = new Date(recording.created_at);
       const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 
@@ -55,7 +57,7 @@ export default function CalendarView({ recordings, onDateSelect, onRecordingClic
   }, [currentMonth]);
 
   const handlePrevMonth = () => {
-    setCurrentMonth(prev => {
+    setCurrentMonth((prev) => {
       const newMonth = new Date(prev);
       newMonth.setMonth(newMonth.getMonth() - 1);
       return newMonth;
@@ -63,7 +65,7 @@ export default function CalendarView({ recordings, onDateSelect, onRecordingClic
   };
 
   const handleNextMonth = () => {
-    setCurrentMonth(prev => {
+    setCurrentMonth((prev) => {
       const newMonth = new Date(prev);
       newMonth.setMonth(newMonth.getMonth() + 1);
       return newMonth;
@@ -83,15 +85,15 @@ export default function CalendarView({ recordings, onDateSelect, onRecordingClic
   const isToday = (date: Date) => {
     const today = new Date();
     return date.getDate() === today.getDate() &&
-           date.getMonth() === today.getMonth() &&
-           date.getFullYear() === today.getFullYear();
+      date.getMonth() === today.getMonth() &&
+      date.getFullYear() === today.getFullYear();
   };
 
   const isSelectedDate = (date: Date) => {
     if (!selectedDate) return false;
     return date.getDate() === selectedDate.getDate() &&
-           date.getMonth() === selectedDate.getMonth() &&
-           date.getFullYear() === selectedDate.getFullYear();
+      date.getMonth() === selectedDate.getMonth() &&
+      date.getFullYear() === selectedDate.getFullYear();
   };
 
   const isCurrentMonth = (date: Date) => {
@@ -99,16 +101,16 @@ export default function CalendarView({ recordings, onDateSelect, onRecordingClic
   };
 
   const formatMonth = (date: Date) => {
-    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
   };
 
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
   };
 
   const formatSize = (bytes: number) => {
-    const units = ['B', 'KB', 'MB', 'GB'];
+    const units = ["B", "KB", "MB", "GB"];
     let size = bytes;
     let unitIndex = 0;
     while (size >= 1024 && unitIndex < units.length - 1) {
@@ -146,8 +148,11 @@ export default function CalendarView({ recordings, onDateSelect, onRecordingClic
         <div className="flex-1 p-4">
           {/* Day Headers */}
           <div className="grid grid-cols-7 gap-1 mb-2">
-            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-              <div key={day} className="text-center text-xs font-medium text-gray-500 dark:text-gray-400 py-2">
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+              <div
+                key={day}
+                className="text-center text-xs font-medium text-gray-500 dark:text-gray-400 py-2"
+              >
                 {day}
               </div>
             ))}
@@ -165,26 +170,32 @@ export default function CalendarView({ recordings, onDateSelect, onRecordingClic
                   onClick={() => handleDateClick(date)}
                   className={`
                     relative min-h-[80px] p-2 border rounded-lg transition-all
-                    ${isCurrentMonth(date)
-                      ? 'bg-white dark:bg-gray-800'
-                      : 'bg-gray-50 dark:bg-gray-900 opacity-50'}
-                    ${isToday(date)
-                      ? 'border-blue-500 dark:border-blue-400'
-                      : 'border-gray-200 dark:border-gray-700'}
-                    ${isSelectedDate(date)
-                      ? 'ring-2 ring-blue-500 dark:ring-blue-400'
-                      : ''}
-                    ${hasRecordings
-                      ? 'hover:bg-blue-50 dark:hover:bg-blue-900/20'
-                      : 'hover:bg-gray-50 dark:hover:bg-gray-700'}
+                    ${
+                    isCurrentMonth(date)
+                      ? "bg-white dark:bg-gray-800"
+                      : "bg-gray-50 dark:bg-gray-900 opacity-50"
+                  }
+                    ${
+                    isToday(date)
+                      ? "border-blue-500 dark:border-blue-400"
+                      : "border-gray-200 dark:border-gray-700"
+                  }
+                    ${isSelectedDate(date) ? "ring-2 ring-blue-500 dark:ring-blue-400" : ""}
+                    ${
+                    hasRecordings
+                      ? "hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                      : "hover:bg-gray-50 dark:hover:bg-gray-700"
+                  }
                   `}
                 >
                   <div className="flex flex-col items-start w-full">
-                    <span className={`text-sm font-medium ${
-                      isToday(date)
-                        ? 'text-blue-600 dark:text-blue-400'
-                        : 'text-gray-900 dark:text-white'
-                    }`}>
+                    <span
+                      className={`text-sm font-medium ${
+                        isToday(date)
+                          ? "text-blue-600 dark:text-blue-400"
+                          : "text-gray-900 dark:text-white"
+                      }`}
+                    >
                       {date.getDate()}
                     </span>
 
@@ -212,49 +223,51 @@ export default function CalendarView({ recordings, onDateSelect, onRecordingClic
         {selectedDate && (
           <div className="w-80 border-l border-gray-200 dark:border-gray-700 p-4">
             <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
-              {selectedDate.toLocaleDateString('en-US', {
-                weekday: 'long',
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
+              {selectedDate.toLocaleDateString("en-US", {
+                weekday: "long",
+                year: "numeric",
+                month: "long",
+                day: "numeric",
               })}
             </h4>
 
             <div className="space-y-2 max-h-[500px] overflow-y-auto">
-              {getRecordingsForDate(selectedDate).length === 0 ? (
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  No recordings for this date
-                </p>
-              ) : (
-                getRecordingsForDate(selectedDate).map(recording => (
-                  <button
-                    key={recording.filename}
-                    onClick={() => onRecordingClick(recording)}
-                    className="w-full p-3 bg-gray-50 dark:bg-gray-900 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-left"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center">
-                          <FilmIcon className="h-4 w-4 text-gray-400 mr-2" />
-                          <span className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                            {recording.filename}
-                          </span>
-                        </div>
-                        {recording.stream_id && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                            Stream: {recording.stream_id}
-                          </p>
-                        )}
-                        <div className="flex items-center mt-1 text-xs text-gray-500 dark:text-gray-400">
-                          <span>{formatTime(recording.created_at)}</span>
-                          <span className="mx-2">•</span>
-                          <span>{formatSize(recording.size)}</span>
+              {getRecordingsForDate(selectedDate).length === 0
+                ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    No recordings for this date
+                  </p>
+                )
+                : (
+                  getRecordingsForDate(selectedDate).map((recording) => (
+                    <button
+                      key={recording.filename}
+                      onClick={() => onRecordingClick(recording)}
+                      className="w-full p-3 bg-gray-50 dark:bg-gray-900 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-left"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center">
+                            <FilmIcon className="h-4 w-4 text-gray-400 mr-2" />
+                            <span className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                              {recording.filename}
+                            </span>
+                          </div>
+                          {recording.stream_id && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              Stream: {recording.stream_id}
+                            </p>
+                          )}
+                          <div className="flex items-center mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            <span>{formatTime(recording.created_at)}</span>
+                            <span className="mx-2">•</span>
+                            <span>{formatSize(recording.size)}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </button>
-                ))
-              )}
+                    </button>
+                  ))
+                )}
             </div>
           </div>
         )}

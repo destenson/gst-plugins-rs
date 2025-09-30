@@ -1,115 +1,117 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
-  useReactTable,
+  ColumnDef,
+  FilterFn,
+  flexRender,
   getCoreRowModel,
+  getFilteredRowModel,
   getPaginationRowModel,
   getSortedRowModel,
-  getFilteredRowModel,
-  flexRender,
-  ColumnDef,
-  SortingState,
-  FilterFn,
   RowSelectionState,
+  SortingState,
+  useReactTable,
   VisibilityState,
-} from '@tanstack/react-table';
-import Select, { MultiValue } from 'react-select';
+} from "@tanstack/react-table";
+import Select, { MultiValue } from "react-select";
 import {
-  Play,
-  Square,
-  RotateCw,
-  Trash2,
-  Download,
-  Plus,
-  MoreVertical,
-  Circle,
-  Video,
-  Wifi,
-  WifiOff,
+  Activity,
   AlertCircle,
   CheckCircle,
-  Clock,
-  HardDrive,
-  Activity,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  Search,
+  Circle,
+  Clock,
+  Download,
+  Eye,
+  FileDown,
   Filter,
   Grid,
+  HardDrive,
   List,
-  FileDown,
-  Settings,
-  Eye,
-  PauseCircle,
-  PlayCircle,
-  StopCircle,
   Loader2,
-} from 'lucide-react';
-import { format } from 'date-fns';
-import { useAPI } from '../contexts/APIContext.tsx';
-import { useWebSocketSubscription } from '../lib/websocket/hooks.ts';
-import { EventType } from '../lib/websocket/types.ts';
-import type { Stream } from '../api/types/index.ts';
-import type { WebSocketEvent } from '../lib/websocket/types.ts';
-import { cn } from '../lib/utils.ts';
+  MoreVertical,
+  PauseCircle,
+  Play,
+  PlayCircle,
+  Plus,
+  RotateCw,
+  Search,
+  Settings,
+  Square,
+  StopCircle,
+  Trash2,
+  Video,
+  Wifi,
+  WifiOff,
+} from "lucide-react";
+import { format } from "date-fns";
+import { useAPI } from "../contexts/APIContext.tsx";
+import { useWebSocketSubscription } from "../lib/websocket/hooks.ts";
+import { EventType } from "../lib/websocket/types.ts";
+import type { Stream } from "../api/types/index.ts";
+import type { WebSocketEvent } from "../lib/websocket/types.ts";
+import { cn } from "../lib/utils.ts";
 
-type ViewMode = 'table' | 'card';
+type ViewMode = "table" | "card";
 type FilterOption = { value: string; label: string };
 
 const statusColors: Record<string, { bg: string; text: string; icon: React.ReactNode }> = {
   active: {
-    bg: 'bg-green-100 dark:bg-green-900/20',
-    text: 'text-green-800 dark:text-green-300',
+    bg: "bg-green-100 dark:bg-green-900/20",
+    text: "text-green-800 dark:text-green-300",
     icon: <CheckCircle className="h-4 w-4" />,
   },
   inactive: {
-    bg: 'bg-gray-100 dark:bg-gray-800',
-    text: 'text-gray-600 dark:text-gray-400',
+    bg: "bg-gray-100 dark:bg-gray-800",
+    text: "text-gray-600 dark:text-gray-400",
     icon: <Circle className="h-4 w-4" />,
   },
   error: {
-    bg: 'bg-red-100 dark:bg-red-900/20',
-    text: 'text-red-800 dark:text-red-300',
+    bg: "bg-red-100 dark:bg-red-900/20",
+    text: "text-red-800 dark:text-red-300",
     icon: <AlertCircle className="h-4 w-4" />,
   },
   initializing: {
-    bg: 'bg-blue-100 dark:bg-blue-900/20',
-    text: 'text-blue-800 dark:text-blue-300',
+    bg: "bg-blue-100 dark:bg-blue-900/20",
+    text: "text-blue-800 dark:text-blue-300",
     icon: <Loader2 className="h-4 w-4 animate-spin" />,
   },
   starting: {
-    bg: 'bg-yellow-100 dark:bg-yellow-900/20',
-    text: 'text-yellow-800 dark:text-yellow-300',
+    bg: "bg-yellow-100 dark:bg-yellow-900/20",
+    text: "text-yellow-800 dark:text-yellow-300",
     icon: <PlayCircle className="h-4 w-4" />,
   },
   stopping: {
-    bg: 'bg-orange-100 dark:bg-orange-900/20',
-    text: 'text-orange-800 dark:text-orange-300',
+    bg: "bg-orange-100 dark:bg-orange-900/20",
+    text: "text-orange-800 dark:text-orange-300",
     icon: <StopCircle className="h-4 w-4" />,
   },
   restarting: {
-    bg: 'bg-purple-100 dark:bg-purple-900/20',
-    text: 'text-purple-800 dark:text-purple-300',
+    bg: "bg-purple-100 dark:bg-purple-900/20",
+    text: "text-purple-800 dark:text-purple-300",
     icon: <RotateCw className="h-4 w-4 animate-spin" />,
   },
 };
 
 const healthIndicators: Record<string, { color: string; label: string }> = {
-  good: { color: 'text-green-500', label: 'Healthy' },
-  warning: { color: 'text-yellow-500', label: 'Warning' },
-  error: { color: 'text-red-500', label: 'Error' },
+  good: { color: "text-green-500", label: "Healthy" },
+  warning: { color: "text-yellow-500", label: "Warning" },
+  error: { color: "text-red-500", label: "Error" },
 };
 
 function StatusBadge({ status }: { status: string }) {
   const config = statusColors[status] || statusColors.inactive;
   return (
-    <span className={cn(
-      'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium',
-      config.bg,
-      config.text
-    )}>
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium",
+        config.bg,
+        config.text,
+      )}
+    >
       {config.icon}
       {status}
     </span>
@@ -118,16 +120,16 @@ function StatusBadge({ status }: { status: string }) {
 
 function HealthIndicator({ stream }: { stream: Stream }) {
   const health = useMemo(() => {
-    if (stream.errors && stream.errors.length > 0) return 'error';
-    if (stream.metrics?.packets_lost && stream.metrics.packets_lost > 100) return 'warning';
-    if (stream.status === 'active') return 'good';
-    return 'error';
+    if (stream.errors && stream.errors.length > 0) return "error";
+    if (stream.metrics?.packets_lost && stream.metrics.packets_lost > 100) return "warning";
+    if (stream.status === "active") return "good";
+    return "error";
   }, [stream]);
 
   const config = healthIndicators[health];
   return (
     <span title={config.label}>
-      <Activity className={cn('h-4 w-4', config.color)} />
+      <Activity className={cn("h-4 w-4", config.color)} />
     </span>
   );
 }
@@ -135,7 +137,7 @@ function HealthIndicator({ stream }: { stream: Stream }) {
 function RecordingStatus({ stream }: { stream: Stream }) {
   if (!stream.recording?.enabled) return <span className="text-gray-400 text-sm">-</span>;
 
-  const status = stream.recording.status || 'stopped';
+  const status = stream.recording.status || "stopped";
   const icons = {
     recording: <Circle className="h-3 w-3 text-red-500 fill-red-500 animate-pulse" />,
     paused: <PauseCircle className="h-3 w-3 text-yellow-500" />,
@@ -150,7 +152,9 @@ function RecordingStatus({ stream }: { stream: Stream }) {
   );
 }
 
-function QuickActions({ stream, onAction }: { stream: Stream; onAction: (action: string, id: string) => void }) {
+function QuickActions(
+  { stream, onAction }: { stream: Stream; onAction: (action: string, id: string) => void },
+) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -160,8 +164,8 @@ function QuickActions({ stream, onAction }: { stream: Stream; onAction: (action:
         setOpen(false);
       }
     }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   return (
@@ -177,58 +181,82 @@ function QuickActions({ stream, onAction }: { stream: Stream; onAction: (action:
       {open && (
         <div className="absolute right-0 z-10 mt-1 w-48 rounded-md shadow-lg bg-white dark:bg-gray-900 ring-1 ring-black ring-opacity-5">
           <div className="py-1">
-            {stream.status === 'active' ? (
-              <button
-                type="button"
-                onClick={() => { onAction('stop', stream.id); setOpen(false); }}
-                className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-              >
-                <Square className="h-4 w-4 mr-2" />
-                Stop Stream
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => { onAction('start', stream.id); setOpen(false); }}
-                className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-              >
-                <Play className="h-4 w-4 mr-2" />
-                Start Stream
-              </button>
-            )}
+            {stream.status === "active"
+              ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onAction("stop", stream.id);
+                    setOpen(false);
+                  }}
+                  className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  <Square className="h-4 w-4 mr-2" />
+                  Stop Stream
+                </button>
+              )
+              : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onAction("start", stream.id);
+                    setOpen(false);
+                  }}
+                  className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  <Play className="h-4 w-4 mr-2" />
+                  Start Stream
+                </button>
+              )}
 
             <button
               type="button"
-              onClick={() => { onAction('restart', stream.id); setOpen(false); }}
+              onClick={() => {
+                onAction("restart", stream.id);
+                setOpen(false);
+              }}
               className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
             >
               <RotateCw className="h-4 w-4 mr-2" />
               Restart Stream
             </button>
 
-            {stream.recording?.enabled && stream.recording.status !== 'recording' ? (
-              <button
-                type="button"
-                onClick={() => { onAction('startRecording', stream.id); setOpen(false); }}
-                className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-              >
-                <Circle className="h-4 w-4 mr-2 text-red-500" />
-                Start Recording
-              </button>
-            ) : stream.recording?.enabled && stream.recording.status === 'recording' ? (
-              <button
-                type="button"
-                onClick={() => { onAction('stopRecording', stream.id); setOpen(false); }}
-                className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-              >
-                <Square className="h-4 w-4 mr-2" />
-                Stop Recording
-              </button>
-            ) : null}
+            {stream.recording?.enabled && stream.recording.status !== "recording"
+              ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onAction("startRecording", stream.id);
+                    setOpen(false);
+                  }}
+                  className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  <Circle className="h-4 w-4 mr-2 text-red-500" />
+                  Start Recording
+                </button>
+              )
+              : stream.recording?.enabled && stream.recording.status === "recording"
+              ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onAction("stopRecording", stream.id);
+                    setOpen(false);
+                  }}
+                  className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  <Square className="h-4 w-4 mr-2" />
+                  Stop Recording
+                </button>
+              )
+              : null}
 
             <button
               type="button"
-              onClick={() => { onAction('preview', stream.id); setOpen(false); }}
+              onClick={() => {
+                onAction("preview", stream.id);
+                setOpen(false);
+              }}
               className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
             >
               <Eye className="h-4 w-4 mr-2" />
@@ -237,7 +265,10 @@ function QuickActions({ stream, onAction }: { stream: Stream; onAction: (action:
 
             <button
               type="button"
-              onClick={() => { onAction('settings', stream.id); setOpen(false); }}
+              onClick={() => {
+                onAction("settings", stream.id);
+                setOpen(false);
+              }}
               className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
             >
               <Settings className="h-4 w-4 mr-2" />
@@ -247,7 +278,10 @@ function QuickActions({ stream, onAction }: { stream: Stream; onAction: (action:
             <div className="border-t dark:border-gray-800">
               <button
                 type="button"
-                onClick={() => { onAction('delete', stream.id); setOpen(false); }}
+                onClick={() => {
+                  onAction("delete", stream.id);
+                  setOpen(false);
+                }}
                 className="flex items-center w-full px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/10"
               >
                 <Trash2 className="h-4 w-4 mr-2" />
@@ -270,11 +304,13 @@ function StreamCard({ stream, selected, onSelect, onAction }: {
   const [previewHover, setPreviewHover] = useState(false);
 
   return (
-    <div className={cn(
-      'bg-white dark:bg-gray-900 rounded-lg shadow-sm border p-4 space-y-3 transition-all',
-      selected ? 'ring-2 ring-blue-500 border-blue-500' : 'border-gray-200 dark:border-gray-800',
-      'hover:shadow-md'
-    )}>
+    <div
+      className={cn(
+        "bg-white dark:bg-gray-900 rounded-lg shadow-sm border p-4 space-y-3 transition-all",
+        selected ? "ring-2 ring-blue-500 border-blue-500" : "border-gray-200 dark:border-gray-800",
+        "hover:shadow-md",
+      )}
+    >
       <div className="flex items-start justify-between">
         <div className="flex items-start gap-3">
           <input
@@ -286,7 +322,7 @@ function StreamCard({ stream, selected, onSelect, onAction }: {
           <div>
             <button
               type="button"
-              onClick={() => onAction('preview', stream.id)}
+              onClick={() => onAction("preview", stream.id)}
               className="font-medium text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 text-left"
             >
               {stream.id}
@@ -324,7 +360,7 @@ function StreamCard({ stream, selected, onSelect, onAction }: {
         className="relative h-32 bg-gray-100 dark:bg-gray-800 rounded overflow-hidden cursor-pointer group"
         onMouseEnter={() => setPreviewHover(true)}
         onMouseLeave={() => setPreviewHover(false)}
-        onClick={() => onAction('preview', stream.id)}
+        onClick={() => onAction("preview", stream.id)}
       >
         <div className="absolute inset-0 flex items-center justify-center">
           <Video className="h-8 w-8 text-gray-400" />
@@ -345,8 +381,8 @@ function AddStreamModal({ isOpen, onClose, onAdd }: {
   onAdd: (data: any) => void;
 }) {
   const [formData, setFormData] = useState({
-    id: '',
-    source_url: '',
+    id: "",
+    source_url: "",
     recording: {
       enabled: false,
       segment_duration: 600,
@@ -363,8 +399,8 @@ function AddStreamModal({ isOpen, onClose, onAdd }: {
     e.preventDefault();
     onAdd(formData);
     setFormData({
-      id: '',
-      source_url: '',
+      id: "",
+      source_url: "",
       recording: {
         enabled: false,
         segment_duration: 600,
@@ -419,10 +455,11 @@ function AddStreamModal({ isOpen, onClose, onAdd }: {
                 <input
                   type="checkbox"
                   checked={formData.recording.enabled}
-                  onChange={(e) => setFormData({
-                    ...formData,
-                    recording: { ...formData.recording, enabled: e.target.checked }
-                  })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      recording: { ...formData.recording, enabled: e.target.checked },
+                    })}
                   className="rounded"
                 />
                 <span className="text-sm font-medium">Enable Recording</span>
@@ -437,10 +474,14 @@ function AddStreamModal({ isOpen, onClose, onAdd }: {
                     <input
                       type="number"
                       value={formData.recording.segment_duration}
-                      onChange={(e) => setFormData({
-                        ...formData,
-                        recording: { ...formData.recording, segment_duration: Number(e.target.value) }
-                      })}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          recording: {
+                            ...formData.recording,
+                            segment_duration: Number(e.target.value),
+                          },
+                        })}
                       className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-700 rounded"
                     />
                   </div>
@@ -452,10 +493,14 @@ function AddStreamModal({ isOpen, onClose, onAdd }: {
                     <input
                       type="number"
                       value={formData.recording.retention_days}
-                      onChange={(e) => setFormData({
-                        ...formData,
-                        recording: { ...formData.recording, retention_days: Number(e.target.value) }
-                      })}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          recording: {
+                            ...formData.recording,
+                            retention_days: Number(e.target.value),
+                          },
+                        })}
                       className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-700 rounded"
                     />
                   </div>
@@ -468,10 +513,11 @@ function AddStreamModal({ isOpen, onClose, onAdd }: {
                 <input
                   type="checkbox"
                   checked={formData.reconnect.enabled}
-                  onChange={(e) => setFormData({
-                    ...formData,
-                    reconnect: { ...formData.reconnect, enabled: e.target.checked }
-                  })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      reconnect: { ...formData.reconnect, enabled: e.target.checked },
+                    })}
                   className="rounded"
                 />
                 <span className="text-sm font-medium">Auto-Reconnect</span>
@@ -486,10 +532,14 @@ function AddStreamModal({ isOpen, onClose, onAdd }: {
                     <input
                       type="number"
                       value={formData.reconnect.max_attempts}
-                      onChange={(e) => setFormData({
-                        ...formData,
-                        reconnect: { ...formData.reconnect, max_attempts: Number(e.target.value) }
-                      })}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          reconnect: {
+                            ...formData.reconnect,
+                            max_attempts: Number(e.target.value),
+                          },
+                        })}
                       className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-700 rounded"
                     />
                   </div>
@@ -501,10 +551,11 @@ function AddStreamModal({ isOpen, onClose, onAdd }: {
                     <input
                       type="number"
                       value={formData.reconnect.backoff_ms}
-                      onChange={(e) => setFormData({
-                        ...formData,
-                        reconnect: { ...formData.reconnect, backoff_ms: Number(e.target.value) }
-                      })}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          reconnect: { ...formData.reconnect, backoff_ms: Number(e.target.value) },
+                        })}
                       className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-700 rounded"
                     />
                   </div>
@@ -544,15 +595,15 @@ export default function StreamList() {
       EventType.StreamHealthChanged,
       EventType.RecordingStarted,
       EventType.RecordingStopped,
-      EventType.StatisticsUpdate
-    ]
+      EventType.StatisticsUpdate,
+    ],
   });
   const [streams, setStreams] = useState<Stream[]>([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<ViewMode>('table');
+  const [viewMode, setViewMode] = useState<ViewMode>("table");
   const [showAddModal, setShowAddModal] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<MultiValue<FilterOption>>([]);
   const [recordingFilter, setRecordingFilter] = useState<FilterOption | null>(null);
   const [healthFilter, setHealthFilter] = useState<FilterOption | null>(null);
@@ -585,7 +636,7 @@ export default function StreamList() {
       const response = await api.streams.list();
       setStreams(response.streams);
     } catch (error) {
-      console.error('Failed to load streams:', error);
+      console.error("Failed to load streams:", error);
     } finally {
       setLoading(false);
     }
@@ -598,9 +649,7 @@ export default function StreamList() {
   // Handle WebSocket events for real-time updates
   useEffect(() => {
     const updateStream = (streamId: string, updates: Partial<Stream>) => {
-      setStreams(prev => prev.map(s =>
-        s.id === streamId ? { ...s, ...updates } : s
-      ));
+      setStreams((prev) => prev.map((s) => s.id === streamId ? { ...s, ...updates } : s));
     };
 
     events.forEach((event: WebSocketEvent) => {
@@ -614,8 +663,11 @@ export default function StreamList() {
         case EventType.StreamHealthChanged:
           if (event.stream_id && event.data?.health) {
             updateStream(event.stream_id, {
-              status: event.data.health === 'healthy' ? 'active' :
-                      event.data.health === 'unhealthy' ? 'error' : 'inactive'
+              status: event.data.health === "healthy"
+                ? "active"
+                : event.data.health === "unhealthy"
+                ? "error"
+                : "inactive",
             });
           }
           break;
@@ -624,9 +676,9 @@ export default function StreamList() {
             updateStream(event.stream_id, {
               recording: {
                 enabled: true,
-                status: 'recording',
-                current_file: event.data?.filename
-              }
+                status: "recording",
+                current_file: event.data?.filename,
+              },
             });
           }
           break;
@@ -635,8 +687,8 @@ export default function StreamList() {
             updateStream(event.stream_id, {
               recording: {
                 enabled: true,
-                status: 'stopped'
-              }
+                status: "stopped",
+              },
             });
           }
           break;
@@ -647,8 +699,8 @@ export default function StreamList() {
                 bitrate: event.data.metrics.bitrate || 0,
                 framerate: event.data.metrics.framerate || 0,
                 packets_received: event.data.metrics.packets_received || 0,
-                packets_lost: event.data.metrics.packets_lost || 0
-              }
+                packets_lost: event.data.metrics.packets_lost || 0,
+              },
             });
           }
           break;
@@ -660,31 +712,31 @@ export default function StreamList() {
   const handleAction = useCallback(async (action: string, streamId: string) => {
     try {
       switch (action) {
-        case 'start':
+        case "start":
           await api.streams.start(streamId);
           break;
-        case 'stop':
+        case "stop":
           await api.streams.stop(streamId);
           break;
-        case 'restart':
+        case "restart":
           await api.streams.restart(streamId);
           break;
-        case 'delete':
+        case "delete":
           if (confirm(`Are you sure you want to delete stream ${streamId}?`)) {
             await api.streams.delete(streamId);
             loadStreams();
           }
           break;
-        case 'startRecording':
+        case "startRecording":
           await api.streams.startRecording(streamId);
           break;
-        case 'stopRecording':
+        case "stopRecording":
           await api.streams.stopRecording(streamId);
           break;
-        case 'preview':
+        case "preview":
           navigate(`/streams/${streamId}`);
           break;
-        case 'settings':
+        case "settings":
           navigate(`/streams/${streamId}?tab=config`);
           break;
       }
@@ -695,23 +747,23 @@ export default function StreamList() {
 
   // Handle bulk actions
   const handleBulkAction = useCallback(async (action: string) => {
-    const selectedIds = Object.keys(rowSelection).filter(id => rowSelection[id]);
+    const selectedIds = Object.keys(rowSelection).filter((id) => rowSelection[id]);
     if (selectedIds.length === 0) return;
 
     try {
       switch (action) {
-        case 'start':
-          await Promise.all(selectedIds.map(id => api.streams.start(id)));
+        case "start":
+          await Promise.all(selectedIds.map((id) => api.streams.start(id)));
           break;
-        case 'stop':
-          await Promise.all(selectedIds.map(id => api.streams.stop(id)));
+        case "stop":
+          await Promise.all(selectedIds.map((id) => api.streams.stop(id)));
           break;
-        case 'restart':
-          await Promise.all(selectedIds.map(id => api.streams.restart(id)));
+        case "restart":
+          await Promise.all(selectedIds.map((id) => api.streams.restart(id)));
           break;
-        case 'delete':
+        case "delete":
           if (confirm(`Are you sure you want to delete ${selectedIds.length} streams?`)) {
-            await Promise.all(selectedIds.map(id => api.streams.delete(id)));
+            await Promise.all(selectedIds.map((id) => api.streams.delete(id)));
             loadStreams();
           }
           break;
@@ -728,29 +780,37 @@ export default function StreamList() {
       await api.streams.create(data);
       loadStreams();
     } catch (error) {
-      console.error('Failed to add stream:', error);
+      console.error("Failed to add stream:", error);
     }
   }, [api, loadStreams]);
 
   // Export to CSV
   const exportToCSV = useCallback(() => {
-    const headers = ['ID', 'Source URL', 'Status', 'Recording', 'Bitrate', 'Framerate', 'Created At'];
-    const rows = streams.map(stream => [
+    const headers = [
+      "ID",
+      "Source URL",
+      "Status",
+      "Recording",
+      "Bitrate",
+      "Framerate",
+      "Created At",
+    ];
+    const rows = streams.map((stream) => [
       stream.id,
       stream.source_url,
       stream.status,
-      stream.recording?.status || 'Not Recording',
+      stream.recording?.status || "Not Recording",
       stream.metrics?.bitrate || 0,
       stream.metrics?.framerate || 0,
-      stream.created_at || '',
+      stream.created_at || "",
     ]);
 
-    const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const csv = [headers, ...rows].map((row) => row.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.href = url;
-    link.download = `streams-${format(new Date(), 'yyyy-MM-dd-HH-mm')}.csv`;
+    link.download = `streams-${format(new Date(), "yyyy-MM-dd-HH-mm")}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   }, [streams]);
@@ -767,7 +827,7 @@ export default function StreamList() {
 
     // Apply search filter
     if (debouncedSearch) {
-      data = data.filter(stream =>
+      data = data.filter((stream) =>
         stream.id.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
         stream.source_url.toLowerCase().includes(debouncedSearch.toLowerCase())
       );
@@ -775,33 +835,31 @@ export default function StreamList() {
 
     // Apply status filter
     if (statusFilter.length > 0) {
-      data = data.filter(stream =>
-        statusFilter.some(filter => filter.value === stream.status)
-      );
+      data = data.filter((stream) => statusFilter.some((filter) => filter.value === stream.status));
     }
 
     // Apply recording filter
     if (recordingFilter) {
-      if (recordingFilter.value === 'recording') {
-        data = data.filter(stream => stream.recording?.status === 'recording');
-      } else if (recordingFilter.value === 'enabled') {
-        data = data.filter(stream => stream.recording?.enabled);
-      } else if (recordingFilter.value === 'disabled') {
-        data = data.filter(stream => !stream.recording?.enabled);
+      if (recordingFilter.value === "recording") {
+        data = data.filter((stream) => stream.recording?.status === "recording");
+      } else if (recordingFilter.value === "enabled") {
+        data = data.filter((stream) => stream.recording?.enabled);
+      } else if (recordingFilter.value === "disabled") {
+        data = data.filter((stream) => !stream.recording?.enabled);
       }
     }
 
     // Apply health filter
     if (healthFilter) {
-      data = data.filter(stream => {
+      data = data.filter((stream) => {
         const hasErrors = stream.errors && stream.errors.length > 0;
         const hasWarnings = stream.metrics?.packets_lost && stream.metrics.packets_lost > 100;
 
-        if (healthFilter.value === 'healthy') {
-          return stream.status === 'active' && !hasErrors && !hasWarnings;
-        } else if (healthFilter.value === 'warning') {
+        if (healthFilter.value === "healthy") {
+          return stream.status === "active" && !hasErrors && !hasWarnings;
+        } else if (healthFilter.value === "warning") {
           return hasWarnings && !hasErrors;
-        } else if (healthFilter.value === 'error') {
+        } else if (healthFilter.value === "error") {
           return hasErrors;
         }
         return true;
@@ -814,7 +872,7 @@ export default function StreamList() {
   // Table columns
   const columns: ColumnDef<Stream>[] = useMemo(() => [
     {
-      id: 'select',
+      id: "select",
       header: ({ table }) => (
         <input
           type="checkbox"
@@ -834,8 +892,8 @@ export default function StreamList() {
       size: 40,
     },
     {
-      accessorKey: 'id',
-      header: 'Stream ID',
+      accessorKey: "id",
+      header: "Stream ID",
       cell: ({ row }) => (
         <button
           type="button"
@@ -847,8 +905,8 @@ export default function StreamList() {
       ),
     },
     {
-      accessorKey: 'source_url',
-      header: 'Source URL',
+      accessorKey: "source_url",
+      header: "Source URL",
       cell: ({ row }) => (
         <div className="text-sm text-gray-600 dark:text-gray-400 truncate max-w-xs">
           {row.original.source_url}
@@ -856,41 +914,41 @@ export default function StreamList() {
       ),
     },
     {
-      accessorKey: 'status',
-      header: 'Status',
+      accessorKey: "status",
+      header: "Status",
       cell: ({ row }) => <StatusBadge status={row.original.status} />,
     },
     {
-      id: 'health',
-      header: 'Health',
+      id: "health",
+      header: "Health",
       cell: ({ row }) => <HealthIndicator stream={row.original} />,
     },
     {
-      id: 'recording',
-      header: 'Recording',
+      id: "recording",
+      header: "Recording",
       cell: ({ row }) => <RecordingStatus stream={row.original} />,
     },
     {
-      id: 'bitrate',
-      header: 'Bitrate',
+      id: "bitrate",
+      header: "Bitrate",
       cell: ({ row }) => (
         <span className="text-sm">
-          {row.original.metrics ? `${(row.original.metrics.bitrate / 1000).toFixed(1)} kbps` : '-'}
+          {row.original.metrics ? `${(row.original.metrics.bitrate / 1000).toFixed(1)} kbps` : "-"}
         </span>
       ),
     },
     {
-      id: 'fps',
-      header: 'FPS',
+      id: "fps",
+      header: "FPS",
       cell: ({ row }) => (
         <span className="text-sm">
-          {row.original.metrics ? `${row.original.metrics.framerate} fps` : '-'}
+          {row.original.metrics ? `${row.original.metrics.framerate} fps` : "-"}
         </span>
       ),
     },
     {
-      id: 'uptime',
-      header: 'Uptime',
+      id: "uptime",
+      header: "Uptime",
       cell: ({ row }) => {
         if (!row.original.last_connected) return <span className="text-sm text-gray-400">-</span>;
         const uptime = Date.now() - new Date(row.original.last_connected).getTime();
@@ -898,17 +956,16 @@ export default function StreamList() {
         const minutes = Math.floor((uptime % (1000 * 60 * 60)) / (1000 * 60));
         return (
           <span className="text-sm">
-            {hours > 0 ? `${hours}h ` : ''}{minutes}m
+            {hours > 0 ? `${hours}h ` : ""}
+            {minutes}m
           </span>
         );
       },
     },
     {
-      id: 'actions',
-      header: 'Actions',
-      cell: ({ row }) => (
-        <QuickActions stream={row.original} onAction={handleAction} />
-      ),
+      id: "actions",
+      header: "Actions",
+      cell: ({ row }) => <QuickActions stream={row.original} onAction={handleAction} />,
       size: 60,
     },
   ], [handleAction]);
@@ -931,25 +988,25 @@ export default function StreamList() {
     globalFilterFn: globalFilter,
   });
 
-  const selectedCount = Object.keys(rowSelection).filter(id => rowSelection[id]).length;
+  const selectedCount = Object.keys(rowSelection).filter((id) => rowSelection[id]).length;
 
   const statusOptions: FilterOption[] = [
-    { value: 'active', label: 'Active' },
-    { value: 'inactive', label: 'Inactive' },
-    { value: 'error', label: 'Error' },
-    { value: 'initializing', label: 'Initializing' },
+    { value: "active", label: "Active" },
+    { value: "inactive", label: "Inactive" },
+    { value: "error", label: "Error" },
+    { value: "initializing", label: "Initializing" },
   ];
 
   const recordingOptions: FilterOption[] = [
-    { value: 'recording', label: 'Recording' },
-    { value: 'enabled', label: 'Enabled' },
-    { value: 'disabled', label: 'Disabled' },
+    { value: "recording", label: "Recording" },
+    { value: "enabled", label: "Enabled" },
+    { value: "disabled", label: "Disabled" },
   ];
 
   const healthOptions: FilterOption[] = [
-    { value: 'healthy', label: 'Healthy' },
-    { value: 'warning', label: 'Warning' },
-    { value: 'error', label: 'Error' },
+    { value: "healthy", label: "Healthy" },
+    { value: "warning", label: "Warning" },
+    { value: "error", label: "Error" },
   ];
 
   if (loading) {
@@ -1014,7 +1071,7 @@ export default function StreamList() {
                 ...theme,
                 colors: {
                   ...theme.colors,
-                  primary: '#3b82f6',
+                  primary: "#3b82f6",
                 },
               })}
             />
@@ -1031,7 +1088,7 @@ export default function StreamList() {
                 ...theme,
                 colors: {
                   ...theme.colors,
-                  primary: '#3b82f6',
+                  primary: "#3b82f6",
                 },
               })}
             />
@@ -1048,7 +1105,7 @@ export default function StreamList() {
                 ...theme,
                 colors: {
                   ...theme.colors,
-                  primary: '#3b82f6',
+                  primary: "#3b82f6",
                 },
               })}
             />
@@ -1058,11 +1115,11 @@ export default function StreamList() {
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => setViewMode(viewMode === 'table' ? 'card' : 'table')}
+              onClick={() => setViewMode(viewMode === "table" ? "card" : "table")}
               className="p-2 border border-gray-300 dark:border-gray-700 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
-              title={viewMode === 'table' ? 'Card View' : 'Table View'}
+              title={viewMode === "table" ? "Card View" : "Table View"}
             >
-              {viewMode === 'table' ? <Grid className="h-4 w-4" /> : <List className="h-4 w-4" />}
+              {viewMode === "table" ? <Grid className="h-4 w-4" /> : <List className="h-4 w-4" />}
             </button>
 
             <button
@@ -1080,34 +1137,34 @@ export default function StreamList() {
         {selectedCount > 0 && (
           <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md flex items-center justify-between">
             <span className="text-sm font-medium text-blue-800 dark:text-blue-300">
-              {selectedCount} stream{selectedCount !== 1 ? 's' : ''} selected
+              {selectedCount} stream{selectedCount !== 1 ? "s" : ""} selected
             </span>
 
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => handleBulkAction('start')}
+                onClick={() => handleBulkAction("start")}
                 className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
               >
                 Start All
               </button>
               <button
                 type="button"
-                onClick={() => handleBulkAction('stop')}
+                onClick={() => handleBulkAction("stop")}
                 className="px-3 py-1 text-sm bg-orange-600 text-white rounded hover:bg-orange-700"
               >
                 Stop All
               </button>
               <button
                 type="button"
-                onClick={() => handleBulkAction('restart')}
+                onClick={() => handleBulkAction("restart")}
                 className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
               >
                 Restart All
               </button>
               <button
                 type="button"
-                onClick={() => handleBulkAction('delete')}
+                onClick={() => handleBulkAction("delete")}
                 className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700"
               >
                 Delete All
@@ -1119,124 +1176,129 @@ export default function StreamList() {
 
       {/* Content */}
       <div className="bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800">
-        {viewMode === 'table' ? (
-          <>
-            {/* Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
-                  {table.getHeaderGroups().map(headerGroup => (
-                    <tr key={headerGroup.id}>
-                      {headerGroup.headers.map(header => (
-                        <th
-                          key={header.id}
-                          className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-                        >
-                          {header.isPlaceholder ? null : (
-                            <div
-                              className={cn(
-                                'flex items-center gap-2',
-                                header.column.getCanSort() && 'cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200'
-                              )}
-                              onClick={header.column.getToggleSortingHandler()}
-                            >
-                              {flexRender(header.column.columnDef.header, header.getContext())}
-                              {header.column.getCanSort() && (
-                                <span className="text-gray-400">
-                                  {{
-                                    asc: '↑',
-                                    desc: '↓',
-                                  }[header.column.getIsSorted() as string] ?? '↕'}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </th>
-                      ))}
-                    </tr>
-                  ))}
-                </thead>
-                <tbody className="divide-y dark:divide-gray-800">
-                  {table.getRowModel().rows.map(row => (
-                    <tr
-                      key={row.id}
-                      className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-                    >
-                      {row.getVisibleCells().map(cell => (
-                        <td key={cell.id} className="px-4 py-3">
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination */}
-            <div className="px-4 py-3 border-t dark:border-gray-800 flex items-center justify-between">
-              <div className="text-sm text-gray-700 dark:text-gray-300">
-                Showing {table.getState().pagination.pageIndex * table.getState().pagination.pageSize + 1} to{' '}
-                {Math.min(
-                  (table.getState().pagination.pageIndex + 1) * table.getState().pagination.pageSize,
-                  filteredData.length
-                )}{' '}
-                of {filteredData.length} results
+        {viewMode === "table"
+          ? (
+            <>
+              {/* Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
+                    {table.getHeaderGroups().map((headerGroup) => (
+                      <tr key={headerGroup.id}>
+                        {headerGroup.headers.map((header) => (
+                          <th
+                            key={header.id}
+                            className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+                          >
+                            {header.isPlaceholder ? null : (
+                              <div
+                                className={cn(
+                                  "flex items-center gap-2",
+                                  header.column.getCanSort() &&
+                                    "cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200",
+                                )}
+                                onClick={header.column.getToggleSortingHandler()}
+                              >
+                                {flexRender(header.column.columnDef.header, header.getContext())}
+                                {header.column.getCanSort() && (
+                                  <span className="text-gray-400">
+                                    {{
+                                      asc: "↑",
+                                      desc: "↓",
+                                    }[header.column.getIsSorted() as string] ?? "↕"}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </th>
+                        ))}
+                      </tr>
+                    ))}
+                  </thead>
+                  <tbody className="divide-y dark:divide-gray-800">
+                    {table.getRowModel().rows.map((row) => (
+                      <tr
+                        key={row.id}
+                        className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                      >
+                        {row.getVisibleCells().map((cell) => (
+                          <td key={cell.id} className="px-4 py-3">
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
 
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => table.setPageIndex(0)}
-                  disabled={!table.getCanPreviousPage()}
-                  className="p-1.5 border border-gray-300 dark:border-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
-                >
-                  <ChevronsLeft className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => table.previousPage()}
-                  disabled={!table.getCanPreviousPage()}
-                  className="p-1.5 border border-gray-300 dark:border-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                <span className="px-3 py-1.5 text-sm">
-                  Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => table.nextPage()}
-                  disabled={!table.getCanNextPage()}
-                  className="p-1.5 border border-gray-300 dark:border-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => table.setPageIndex(table.getPageCount() - 1)}
-                  disabled={!table.getCanNextPage()}
-                  className="p-1.5 border border-gray-300 dark:border-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
-                >
-                  <ChevronsRight className="h-4 w-4" />
-                </button>
+              {/* Pagination */}
+              <div className="px-4 py-3 border-t dark:border-gray-800 flex items-center justify-between">
+                <div className="text-sm text-gray-700 dark:text-gray-300">
+                  Showing{" "}
+                  {table.getState().pagination.pageIndex * table.getState().pagination.pageSize + 1}
+                  {" "}
+                  to {Math.min(
+                    (table.getState().pagination.pageIndex + 1) *
+                      table.getState().pagination.pageSize,
+                    filteredData.length,
+                  )} of {filteredData.length} results
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => table.setPageIndex(0)}
+                    disabled={!table.getCanPreviousPage()}
+                    className="p-1.5 border border-gray-300 dark:border-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
+                  >
+                    <ChevronsLeft className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => table.previousPage()}
+                    disabled={!table.getCanPreviousPage()}
+                    className="p-1.5 border border-gray-300 dark:border-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <span className="px-3 py-1.5 text-sm">
+                    Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => table.nextPage()}
+                    disabled={!table.getCanNextPage()}
+                    className="p-1.5 border border-gray-300 dark:border-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => table.setPageIndex(table.getPageCount() - 1)}
+                    disabled={!table.getCanNextPage()}
+                    className="p-1.5 border border-gray-300 dark:border-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
+                  >
+                    <ChevronsRight className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
+            </>
+          )
+          : (
+            /* Card View */
+            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {table.getRowModel().rows.map((row) => (
+                <StreamCard
+                  key={row.id}
+                  stream={row.original}
+                  selected={row.getIsSelected()}
+                  onSelect={(checked) => row.toggleSelected(checked)}
+                  onAction={handleAction}
+                />
+              ))}
             </div>
-          </>
-        ) : (
-          /* Card View */
-          <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {table.getRowModel().rows.map(row => (
-              <StreamCard
-                key={row.id}
-                stream={row.original}
-                selected={row.getIsSelected()}
-                onSelect={(checked) => row.toggleSelected(checked)}
-                onAction={handleAction}
-              />
-            ))}
-          </div>
-        )}
+          )}
       </div>
 
       {/* Add Stream Modal */}

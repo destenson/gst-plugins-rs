@@ -1,11 +1,11 @@
-import { Fragment, useState, useMemo } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Dialog, Transition } from '@headlessui/react';
-import { XMarkIcon, Bars3Icon } from '@heroicons/react/24/outline';
-import { navigationItems } from '../../utils/navigation.ts';
-import { useAuth } from '../../contexts/AuthContext.tsx';
-import { Database } from 'lucide-react';
-import clsx from 'clsx';
+import { Fragment, useMemo, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
+import { Dialog, Transition } from "@headlessui/react";
+import { Bars3Icon, XMarkIcon } from "@heroicons/react/24/outline";
+import { navigationItems } from "../../utils/navigation.ts";
+import { useAuth } from "../../contexts/AuthContext.tsx";
+import { Database } from "lucide-react";
+import clsx from "clsx";
 
 interface SidebarProps {
   sidebarOpen: boolean;
@@ -21,10 +21,10 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }: SidebarProps) {
     const items = [...navigationItems];
     if (isDevelopmentMode) {
       items.push({
-        name: 'Database',
-        path: '/database',
+        name: "Database",
+        path: "/database",
         icon: Database as any,
-        description: 'Database viewer (Dev Only)',
+        description: "Database viewer (Dev Only)",
       });
     }
     return items;
@@ -96,17 +96,17 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }: SidebarProps) {
                                 onClick={() => setSidebarOpen(false)}
                                 className={clsx(
                                   location.pathname === item.path
-                                    ? 'bg-gray-100 dark:bg-gray-800 text-primary-600 dark:text-primary-400'
-                                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800',
-                                  'group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold'
+                                    ? "bg-gray-100 dark:bg-gray-800 text-primary-600 dark:text-primary-400"
+                                    : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800",
+                                  "group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold",
                                 )}
                               >
                                 <item.icon
                                   className={clsx(
                                     location.pathname === item.path
-                                      ? 'text-primary-600 dark:text-primary-400'
-                                      : 'text-gray-400 group-hover:text-primary-600 dark:group-hover:text-primary-400',
-                                    'h-6 w-6 shrink-0'
+                                      ? "text-primary-600 dark:text-primary-400"
+                                      : "text-gray-400 group-hover:text-primary-600 dark:group-hover:text-primary-400",
+                                    "h-6 w-6 shrink-0",
                                   )}
                                   aria-hidden="true"
                                 />
@@ -143,18 +143,18 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }: SidebarProps) {
                         to={item.path}
                         className={clsx(
                           location.pathname === item.path
-                            ? 'bg-gray-100 dark:bg-gray-800 text-primary-600 dark:text-primary-400'
-                            : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800',
-                          'group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold'
+                            ? "bg-gray-100 dark:bg-gray-800 text-primary-600 dark:text-primary-400"
+                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800",
+                          "group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold",
                         )}
                         title={item.description}
                       >
                         <item.icon
                           className={clsx(
                             location.pathname === item.path
-                              ? 'text-primary-600 dark:text-primary-400'
-                              : 'text-gray-400 group-hover:text-primary-600 dark:group-hover:text-primary-400',
-                            'h-6 w-6 shrink-0'
+                              ? "text-primary-600 dark:text-primary-400"
+                              : "text-gray-400 group-hover:text-primary-600 dark:group-hover:text-primary-400",
+                            "h-6 w-6 shrink-0",
                           )}
                           aria-hidden="true"
                         />

@@ -1,14 +1,9 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { useWebSocketContext } from './context.tsx';
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useWebSocketContext } from "./context.tsx";
 
 // Re-export for convenience
 export { useWebSocketContext };
-import {
-  WebSocketEvent,
-  EventType,
-  ConnectionState,
-  SubscriptionRequest,
-} from './types.ts';
+import { ConnectionState, EventType, SubscriptionRequest, WebSocketEvent } from "./types.ts";
 
 // Hook to access the WebSocket client and connection state
 export function useWebSocket() {
@@ -29,7 +24,7 @@ export function useWebSocket() {
 export function useWebSocketEvent<T = any>(
   eventType: EventType | EventType[],
   handler: (event: WebSocketEvent<T>) => void,
-  deps: React.DependencyList = []
+  deps: React.DependencyList = [],
 ) {
   const { client } = useWebSocketContext();
   const handlerRef = useRef(handler);
@@ -50,10 +45,10 @@ export function useWebSocketEvent<T = any>(
       }
     };
 
-    client.on('message', messageHandler);
+    client.on("message", messageHandler);
 
     return () => {
-      client.removeListener('message', messageHandler);
+      client.removeListener("message", messageHandler);
     };
   }, [client, eventType, ...deps]);
 }
@@ -61,7 +56,7 @@ export function useWebSocketEvent<T = any>(
 // Hook to subscribe to WebSocket events with automatic subscription management
 export function useWebSocketSubscription(
   request: SubscriptionRequest,
-  onEvent?: (event: WebSocketEvent) => void
+  onEvent?: (event: WebSocketEvent) => void,
 ) {
   const { client, subscribe, isConnected } = useWebSocketContext();
   const [events, setEvents] = useState<WebSocketEvent[]>([]);
@@ -89,15 +84,15 @@ export function useWebSocketSubscription(
         (event.stream_id && request.stream_ids.includes(event.stream_id));
 
       if (matchesEventType && matchesStreamId) {
-        setEvents(prev => [...prev, event]);
+        setEvents((prev) => [...prev, event]);
         onEvent?.(event);
       }
     };
 
-    client.on('message', handleMessage);
+    client.on("message", handleMessage);
 
     return () => {
-      client.removeListener('message', handleMessage);
+      client.removeListener("message", handleMessage);
     };
   }, [client, request, onEvent]);
 
@@ -110,23 +105,25 @@ export function useWebSocketSubscription(
 
 // Hook to track connection state changes
 export function useConnectionState(
-  onStateChange?: (state: ConnectionState) => void
+  onStateChange?: (state: ConnectionState) => void,
 ) {
   const { connectionState, client } = useWebSocketContext();
-  const [stateHistory, setStateHistory] = useState<Array<{ state: ConnectionState; timestamp: Date }>>([]);
+  const [stateHistory, setStateHistory] = useState<
+    Array<{ state: ConnectionState; timestamp: Date }>
+  >([]);
 
   useEffect(() => {
     if (!client) return;
 
     const handleStateChange = (state: ConnectionState) => {
-      setStateHistory(prev => [...prev, { state, timestamp: new Date() }]);
+      setStateHistory((prev) => [...prev, { state, timestamp: new Date() }]);
       onStateChange?.(state);
     };
 
-    client.on('connectionStateChange', handleStateChange);
+    client.on("connectionStateChange", handleStateChange);
 
     return () => {
-      client.removeListener('connectionStateChange', handleStateChange);
+      client.removeListener("connectionStateChange", handleStateChange);
     };
   }, [client, onStateChange]);
 
@@ -154,7 +151,7 @@ export function useStreamEvents(streamId: string) {
         setLastHealth(event.data.health);
       }
     },
-    [streamId]
+    [streamId],
   );
 
   // Listen for recording events
@@ -165,7 +162,7 @@ export function useStreamEvents(streamId: string) {
         setIsRecording(event.event_type === EventType.RecordingStarted);
       }
     },
-    [streamId]
+    [streamId],
   );
 
   // Listen for statistics
@@ -176,7 +173,7 @@ export function useStreamEvents(streamId: string) {
         setStatistics(event.data.streams[streamId]);
       }
     },
-    [streamId]
+    [streamId],
   );
 
   return {
@@ -188,32 +185,36 @@ export function useStreamEvents(streamId: string) {
 
 // Hook for system-wide events
 export function useSystemEvents() {
-  const [alerts, setAlerts] = useState<Array<{ message: string; level?: string; timestamp: Date }>>([]);
-  const [errors, setErrors] = useState<Array<{ error: string; details?: string; timestamp: Date }>>([]);
+  const [alerts, setAlerts] = useState<Array<{ message: string; level?: string; timestamp: Date }>>(
+    [],
+  );
+  const [errors, setErrors] = useState<Array<{ error: string; details?: string; timestamp: Date }>>(
+    [],
+  );
   const [systemStats, setSystemStats] = useState<any>(null);
 
   // Listen for system alerts
   useWebSocketEvent(
     EventType.SystemAlert,
     (event) => {
-      setAlerts(prev => [...prev, {
+      setAlerts((prev) => [...prev, {
         message: event.data.message,
         level: event.data.level,
         timestamp: new Date(event.timestamp),
       }]);
-    }
+    },
   );
 
   // Listen for errors
   useWebSocketEvent(
     EventType.ErrorOccurred,
     (event) => {
-      setErrors(prev => [...prev, {
+      setErrors((prev) => [...prev, {
         error: event.data.error,
         details: event.data.details,
         timestamp: new Date(event.timestamp),
       }]);
-    }
+    },
   );
 
   // Listen for system statistics
@@ -223,7 +224,7 @@ export function useSystemEvents() {
       if (event.data.system) {
         setSystemStats(event.data.system);
       }
-    }
+    },
   );
 
   const clearAlerts = useCallback(() => setAlerts([]), []);

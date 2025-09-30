@@ -1,17 +1,17 @@
-import { useState, useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
-import Sidebar from './Sidebar.tsx';
-import Header from './Header.tsx';
-import { useKeyboardNavigation } from '../../hooks/useKeyboardNavigation.ts';
+import { useEffect, useState } from "react";
+import { Outlet } from "react-router-dom";
+import Sidebar from "./Sidebar.tsx";
+import Header from "./Header.tsx";
+import { useKeyboardNavigation } from "../../hooks/useKeyboardNavigation.ts";
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(() => {
-    const saved = localStorage.getItem('sidebarOpen');
-    return saved ? saved === 'true' : false;
+    const saved = localStorage.getItem("sidebarOpen");
+    return saved ? saved === "true" : false;
   });
 
   useEffect(() => {
-    localStorage.setItem('sidebarOpen', sidebarOpen.toString());
+    localStorage.setItem("sidebarOpen", sidebarOpen.toString());
   }, [sidebarOpen]);
 
   useKeyboardNavigation(sidebarOpen, setSidebarOpen);

@@ -1,7 +1,7 @@
-import React from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext.tsx';
-import LoadingSpinner from './LoadingSpinner.tsx';
+import React from "react";
+import { Navigate, useLocation } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext.tsx";
+import LoadingSpinner from "./LoadingSpinner.tsx";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -12,7 +12,7 @@ interface ProtectedRouteProps {
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   children,
   requireAuth = true,
-  redirectTo = '/login'
+  redirectTo = "/login",
 }) => {
   const { isAuthenticated, isLoading } = useAuth();
   const location = useLocation();

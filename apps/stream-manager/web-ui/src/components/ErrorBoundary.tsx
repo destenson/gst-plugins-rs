@@ -1,5 +1,5 @@
-import React, { Component, ReactNode } from 'react';
-import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import React, { Component, ReactNode } from "react";
+import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 
 interface Props {
   children: ReactNode;
@@ -21,7 +21,7 @@ export default class ErrorBoundary extends Component<Props, State> {
   }
 
   override componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Error caught by boundary:', error, errorInfo);
+    console.error("Error caught by boundary:", error, errorInfo);
   }
 
   override render() {
@@ -35,7 +35,7 @@ export default class ErrorBoundary extends Component<Props, State> {
                 Something went wrong
               </h1>
               <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                {this.state.error?.message || 'An unexpected error occurred'}
+                {this.state.error?.message || "An unexpected error occurred"}
               </p>
               <button
                 type="button"

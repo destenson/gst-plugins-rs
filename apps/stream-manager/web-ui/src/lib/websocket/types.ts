@@ -1,15 +1,15 @@
 // WebSocket Event Types matching backend implementation
 
 export enum EventType {
-  StreamAdded = 'stream_added',
-  StreamRemoved = 'stream_removed',
-  StreamHealthChanged = 'stream_health_changed',
-  RecordingStarted = 'recording_started',
-  RecordingStopped = 'recording_stopped',
-  StatisticsUpdate = 'statistics_update',
-  SystemAlert = 'system_alert',
-  ConfigChanged = 'config_changed',
-  ErrorOccurred = 'error_occurred',
+  StreamAdded = "stream_added",
+  StreamRemoved = "stream_removed",
+  StreamHealthChanged = "stream_health_changed",
+  RecordingStarted = "recording_started",
+  RecordingStopped = "recording_stopped",
+  StatisticsUpdate = "statistics_update",
+  SystemAlert = "system_alert",
+  ConfigChanged = "config_changed",
+  ErrorOccurred = "error_occurred",
 }
 
 export interface WebSocketEvent<T = any> {
@@ -38,7 +38,7 @@ export interface StreamRemovedData {
 }
 
 export interface StreamHealthChangedData {
-  health: 'healthy' | 'degraded' | 'unhealthy' | 'unknown';
+  health: "healthy" | "degraded" | "unhealthy" | "unknown";
   message?: string;
   metrics?: {
     dropped_frames?: number;
@@ -80,7 +80,7 @@ export interface StatisticsUpdateData {
 
 export interface SystemAlertData {
   message: string;
-  level?: 'info' | 'warning' | 'error';
+  level?: "info" | "warning" | "error";
   client_id?: string;
   event_types?: EventType[];
   stream_ids?: string[];
@@ -99,49 +99,67 @@ export interface ErrorOccurredData {
 }
 
 // Type guards
-export function isStreamAddedEvent(event: WebSocketEvent): event is WebSocketEvent<StreamAddedData> {
+export function isStreamAddedEvent(
+  event: WebSocketEvent,
+): event is WebSocketEvent<StreamAddedData> {
   return event.event_type === EventType.StreamAdded;
 }
 
-export function isStreamRemovedEvent(event: WebSocketEvent): event is WebSocketEvent<StreamRemovedData> {
+export function isStreamRemovedEvent(
+  event: WebSocketEvent,
+): event is WebSocketEvent<StreamRemovedData> {
   return event.event_type === EventType.StreamRemoved;
 }
 
-export function isStreamHealthChangedEvent(event: WebSocketEvent): event is WebSocketEvent<StreamHealthChangedData> {
+export function isStreamHealthChangedEvent(
+  event: WebSocketEvent,
+): event is WebSocketEvent<StreamHealthChangedData> {
   return event.event_type === EventType.StreamHealthChanged;
 }
 
-export function isRecordingStartedEvent(event: WebSocketEvent): event is WebSocketEvent<RecordingStartedData> {
+export function isRecordingStartedEvent(
+  event: WebSocketEvent,
+): event is WebSocketEvent<RecordingStartedData> {
   return event.event_type === EventType.RecordingStarted;
 }
 
-export function isRecordingStoppedEvent(event: WebSocketEvent): event is WebSocketEvent<RecordingStoppedData> {
+export function isRecordingStoppedEvent(
+  event: WebSocketEvent,
+): event is WebSocketEvent<RecordingStoppedData> {
   return event.event_type === EventType.RecordingStopped;
 }
 
-export function isStatisticsUpdateEvent(event: WebSocketEvent): event is WebSocketEvent<StatisticsUpdateData> {
+export function isStatisticsUpdateEvent(
+  event: WebSocketEvent,
+): event is WebSocketEvent<StatisticsUpdateData> {
   return event.event_type === EventType.StatisticsUpdate;
 }
 
-export function isSystemAlertEvent(event: WebSocketEvent): event is WebSocketEvent<SystemAlertData> {
+export function isSystemAlertEvent(
+  event: WebSocketEvent,
+): event is WebSocketEvent<SystemAlertData> {
   return event.event_type === EventType.SystemAlert;
 }
 
-export function isConfigChangedEvent(event: WebSocketEvent): event is WebSocketEvent<ConfigChangedData> {
+export function isConfigChangedEvent(
+  event: WebSocketEvent,
+): event is WebSocketEvent<ConfigChangedData> {
   return event.event_type === EventType.ConfigChanged;
 }
 
-export function isErrorOccurredEvent(event: WebSocketEvent): event is WebSocketEvent<ErrorOccurredData> {
+export function isErrorOccurredEvent(
+  event: WebSocketEvent,
+): event is WebSocketEvent<ErrorOccurredData> {
   return event.event_type === EventType.ErrorOccurred;
 }
 
 // Connection states
 export enum ConnectionState {
-  Connecting = 'connecting',
-  Connected = 'connected',
-  Disconnected = 'disconnected',
-  Reconnecting = 'reconnecting',
-  Error = 'error',
+  Connecting = "connecting",
+  Connected = "connected",
+  Disconnected = "disconnected",
+  Reconnecting = "reconnecting",
+  Error = "error",
 }
 
 // WebSocket client configuration
@@ -160,7 +178,7 @@ export interface WebSocketConfig {
 
 export const DEFAULT_CONFIG: WebSocketConfig = {
   port: 8080,
-  path: '/ws',
+  path: "/ws",
   reconnect: true,
   reconnectAttempts: 10,
   reconnectInterval: 1000,

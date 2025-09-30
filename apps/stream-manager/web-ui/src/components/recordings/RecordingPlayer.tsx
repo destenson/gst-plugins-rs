@@ -1,11 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { XMarkIcon, PlayIcon, PauseIcon, ArrowPathIcon } from '@heroicons/react/24/solid';
+import React, { useEffect, useRef, useState } from "react";
+import { ArrowPathIcon, PauseIcon, PlayIcon, XMarkIcon } from "@heroicons/react/24/solid";
 import {
+  ArrowsPointingInIcon,
+  ArrowsPointingOutIcon,
   SpeakerWaveIcon,
   SpeakerXMarkIcon,
-  ArrowsPointingOutIcon,
-  ArrowsPointingInIcon
-} from '@heroicons/react/24/outline';
+} from "@heroicons/react/24/outline";
 
 interface RecordingPlayerProps {
   recording: {
@@ -41,18 +41,18 @@ export default function RecordingPlayer({ recording, onClose }: RecordingPlayerP
       setCurrentTime(0);
     };
 
-    video.addEventListener('timeupdate', updateTime);
-    video.addEventListener('loadedmetadata', updateDuration);
-    video.addEventListener('play', handlePlay);
-    video.addEventListener('pause', handlePause);
-    video.addEventListener('ended', handleEnded);
+    video.addEventListener("timeupdate", updateTime);
+    video.addEventListener("loadedmetadata", updateDuration);
+    video.addEventListener("play", handlePlay);
+    video.addEventListener("pause", handlePause);
+    video.addEventListener("ended", handleEnded);
 
     return () => {
-      video.removeEventListener('timeupdate', updateTime);
-      video.removeEventListener('loadedmetadata', updateDuration);
-      video.removeEventListener('play', handlePlay);
-      video.removeEventListener('pause', handlePause);
-      video.removeEventListener('ended', handleEnded);
+      video.removeEventListener("timeupdate", updateTime);
+      video.removeEventListener("loadedmetadata", updateDuration);
+      video.removeEventListener("play", handlePlay);
+      video.removeEventListener("pause", handlePause);
+      video.removeEventListener("ended", handleEnded);
     };
   }, []);
 
@@ -61,9 +61,9 @@ export default function RecordingPlayer({ recording, onClose }: RecordingPlayerP
       setIsFullscreen(!!document.fullscreenElement);
     };
 
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
     };
   }, []);
 
@@ -111,7 +111,7 @@ export default function RecordingPlayer({ recording, onClose }: RecordingPlayerP
   };
 
   const toggleFullscreen = () => {
-    const container = document.getElementById('player-container');
+    const container = document.getElementById("player-container");
     if (!container) return;
 
     if (!isFullscreen) {
@@ -127,9 +127,9 @@ export default function RecordingPlayer({ recording, onClose }: RecordingPlayerP
     const secs = Math.floor(seconds % 60);
 
     if (hours > 0) {
-      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+      return `${hours}:${minutes.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
     }
-    return `${minutes}:${secs.toString().padStart(2, '0')}`;
+    return `${minutes}:${secs.toString().padStart(2, "0")}`;
   };
 
   const handleMouseMove = () => {
@@ -145,7 +145,9 @@ export default function RecordingPlayer({ recording, onClose }: RecordingPlayerP
   };
 
   // Construct video URL - assuming the backend serves recordings from /api/v1/recordings/{filename}/stream
-  const videoUrl = `${(window as any).VITE_API_URL || ''}/api/v1/recordings/${recording.filename}/stream`;
+  const videoUrl = `${
+    (window as any).VITE_API_URL || ""
+  }/api/v1/recordings/${recording.filename}/stream`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90">
@@ -174,9 +176,11 @@ export default function RecordingPlayer({ recording, onClose }: RecordingPlayerP
         />
 
         {/* Controls Overlay */}
-        <div className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-4 transition-opacity duration-300 ${
-          showControls ? 'opacity-100' : 'opacity-0'
-        }`}>
+        <div
+          className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-4 transition-opacity duration-300 ${
+            showControls ? "opacity-100" : "opacity-0"
+          }`}
+        >
           {/* Progress Bar */}
           <div className="mb-4">
             <input
@@ -187,7 +191,9 @@ export default function RecordingPlayer({ recording, onClose }: RecordingPlayerP
               onChange={handleSeek}
               className="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer slider-thumb"
               style={{
-                background: `linear-gradient(to right, #3B82F6 0%, #3B82F6 ${(currentTime / duration) * 100}%, #4B5563 ${(currentTime / duration) * 100}%, #4B5563 100%)`
+                background: `linear-gradient(to right, #3B82F6 0%, #3B82F6 ${
+                  (currentTime / duration) * 100
+                }%, #4B5563 ${(currentTime / duration) * 100}%, #4B5563 100%)`,
               }}
             />
             <div className="flex justify-between text-xs text-white mt-1">
@@ -204,11 +210,9 @@ export default function RecordingPlayer({ recording, onClose }: RecordingPlayerP
                 onClick={handlePlayPause}
                 className="p-2 bg-white bg-opacity-20 rounded-lg hover:bg-opacity-30 transition-all"
               >
-                {isPlaying ? (
-                  <PauseIcon className="h-6 w-6 text-white" />
-                ) : (
-                  <PlayIcon className="h-6 w-6 text-white" />
-                )}
+                {isPlaying
+                  ? <PauseIcon className="h-6 w-6 text-white" />
+                  : <PlayIcon className="h-6 w-6 text-white" />}
               </button>
 
               {/* Volume Controls */}
@@ -217,11 +221,9 @@ export default function RecordingPlayer({ recording, onClose }: RecordingPlayerP
                   onClick={toggleMute}
                   className="p-2 bg-white bg-opacity-20 rounded-lg hover:bg-opacity-30 transition-all"
                 >
-                  {isMuted || volume === 0 ? (
-                    <SpeakerXMarkIcon className="h-5 w-5 text-white" />
-                  ) : (
-                    <SpeakerWaveIcon className="h-5 w-5 text-white" />
-                  )}
+                  {isMuted || volume === 0
+                    ? <SpeakerXMarkIcon className="h-5 w-5 text-white" />
+                    : <SpeakerWaveIcon className="h-5 w-5 text-white" />}
                 </button>
                 <input
                   type="range"
@@ -232,7 +234,9 @@ export default function RecordingPlayer({ recording, onClose }: RecordingPlayerP
                   onChange={handleVolumeChange}
                   className="w-24 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer"
                   style={{
-                    background: `linear-gradient(to right, #3B82F6 0%, #3B82F6 ${(isMuted ? 0 : volume) * 100}%, #4B5563 ${(isMuted ? 0 : volume) * 100}%, #4B5563 100%)`
+                    background: `linear-gradient(to right, #3B82F6 0%, #3B82F6 ${
+                      (isMuted ? 0 : volume) * 100
+                    }%, #4B5563 ${(isMuted ? 0 : volume) * 100}%, #4B5563 100%)`,
                   }}
                 />
               </div>
@@ -251,11 +255,9 @@ export default function RecordingPlayer({ recording, onClose }: RecordingPlayerP
               onClick={toggleFullscreen}
               className="p-2 bg-white bg-opacity-20 rounded-lg hover:bg-opacity-30 transition-all"
             >
-              {isFullscreen ? (
-                <ArrowsPointingInIcon className="h-5 w-5 text-white" />
-              ) : (
-                <ArrowsPointingOutIcon className="h-5 w-5 text-white" />
-              )}
+              {isFullscreen
+                ? <ArrowsPointingInIcon className="h-5 w-5 text-white" />
+                : <ArrowsPointingOutIcon className="h-5 w-5 text-white" />}
             </button>
           </div>
         </div>
