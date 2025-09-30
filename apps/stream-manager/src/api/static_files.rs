@@ -11,7 +11,6 @@ use tracing::{debug, warn};
 
 #[derive(RustEmbed)]
 #[folder = "static/"]
-#[prefix = "/"]
 struct StaticAssets;
 
 /// Configure static file serving for the web UI using embedded files
