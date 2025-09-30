@@ -167,6 +167,7 @@ function QuickActions({ stream, onAction }: { stream: Stream; onAction: (action:
   return (
     <div className="relative" ref={menuRef}>
       <button
+        type="button"
         onClick={() => setOpen(!open)}
         className="p-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
       >
@@ -178,6 +179,7 @@ function QuickActions({ stream, onAction }: { stream: Stream; onAction: (action:
           <div className="py-1">
             {stream.status === 'active' ? (
               <button
+                type="button"
                 onClick={() => { onAction('stop', stream.id); setOpen(false); }}
                 className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
               >
@@ -186,6 +188,7 @@ function QuickActions({ stream, onAction }: { stream: Stream; onAction: (action:
               </button>
             ) : (
               <button
+                type="button"
                 onClick={() => { onAction('start', stream.id); setOpen(false); }}
                 className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
               >
@@ -195,6 +198,7 @@ function QuickActions({ stream, onAction }: { stream: Stream; onAction: (action:
             )}
 
             <button
+              type="button"
               onClick={() => { onAction('restart', stream.id); setOpen(false); }}
               className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
             >
@@ -204,6 +208,7 @@ function QuickActions({ stream, onAction }: { stream: Stream; onAction: (action:
 
             {stream.recording?.enabled && stream.recording.status !== 'recording' ? (
               <button
+                type="button"
                 onClick={() => { onAction('startRecording', stream.id); setOpen(false); }}
                 className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
               >
@@ -212,6 +217,7 @@ function QuickActions({ stream, onAction }: { stream: Stream; onAction: (action:
               </button>
             ) : stream.recording?.enabled && stream.recording.status === 'recording' ? (
               <button
+                type="button"
                 onClick={() => { onAction('stopRecording', stream.id); setOpen(false); }}
                 className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
               >
@@ -221,6 +227,7 @@ function QuickActions({ stream, onAction }: { stream: Stream; onAction: (action:
             ) : null}
 
             <button
+              type="button"
               onClick={() => { onAction('preview', stream.id); setOpen(false); }}
               className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
             >
@@ -229,6 +236,7 @@ function QuickActions({ stream, onAction }: { stream: Stream; onAction: (action:
             </button>
 
             <button
+              type="button"
               onClick={() => { onAction('settings', stream.id); setOpen(false); }}
               className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
             >
@@ -238,6 +246,7 @@ function QuickActions({ stream, onAction }: { stream: Stream; onAction: (action:
 
             <div className="border-t dark:border-gray-800">
               <button
+                type="button"
                 onClick={() => { onAction('delete', stream.id); setOpen(false); }}
                 className="flex items-center w-full px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/10"
               >
@@ -276,6 +285,7 @@ function StreamCard({ stream, selected, onSelect, onAction }: {
           />
           <div>
             <button
+              type="button"
               onClick={() => onAction('preview', stream.id)}
               className="font-medium text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 text-left"
             >
@@ -828,6 +838,7 @@ export default function StreamList() {
       header: 'Stream ID',
       cell: ({ row }) => (
         <button
+          type="button"
           onClick={() => navigate(`/streams/${row.original.id}`)}
           className="font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
         >
@@ -963,6 +974,7 @@ export default function StreamList() {
         </div>
 
         <button
+          type="button"
           onClick={() => setShowAddModal(true)}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
         >
@@ -1045,6 +1057,7 @@ export default function StreamList() {
           {/* View Mode & Export */}
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={() => setViewMode(viewMode === 'table' ? 'card' : 'table')}
               className="p-2 border border-gray-300 dark:border-gray-700 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
               title={viewMode === 'table' ? 'Card View' : 'Table View'}
@@ -1053,6 +1066,7 @@ export default function StreamList() {
             </button>
 
             <button
+              type="button"
               onClick={exportToCSV}
               className="p-2 border border-gray-300 dark:border-gray-700 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
               title="Export to CSV"
@@ -1071,24 +1085,28 @@ export default function StreamList() {
 
             <div className="flex gap-2">
               <button
+                type="button"
                 onClick={() => handleBulkAction('start')}
                 className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
               >
                 Start All
               </button>
               <button
+                type="button"
                 onClick={() => handleBulkAction('stop')}
                 className="px-3 py-1 text-sm bg-orange-600 text-white rounded hover:bg-orange-700"
               >
                 Stop All
               </button>
               <button
+                type="button"
                 onClick={() => handleBulkAction('restart')}
                 className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
               >
                 Restart All
               </button>
               <button
+                type="button"
                 onClick={() => handleBulkAction('delete')}
                 className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700"
               >
@@ -1168,6 +1186,7 @@ export default function StreamList() {
 
               <div className="flex gap-2">
                 <button
+                  type="button"
                   onClick={() => table.setPageIndex(0)}
                   disabled={!table.getCanPreviousPage()}
                   className="p-1.5 border border-gray-300 dark:border-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
@@ -1175,6 +1194,7 @@ export default function StreamList() {
                   <ChevronsLeft className="h-4 w-4" />
                 </button>
                 <button
+                  type="button"
                   onClick={() => table.previousPage()}
                   disabled={!table.getCanPreviousPage()}
                   className="p-1.5 border border-gray-300 dark:border-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
@@ -1185,6 +1205,7 @@ export default function StreamList() {
                   Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
                 </span>
                 <button
+                  type="button"
                   onClick={() => table.nextPage()}
                   disabled={!table.getCanNextPage()}
                   className="p-1.5 border border-gray-300 dark:border-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
@@ -1192,6 +1213,7 @@ export default function StreamList() {
                   <ChevronRight className="h-4 w-4" />
                 </button>
                 <button
+                  type="button"
                   onClick={() => table.setPageIndex(table.getPageCount() - 1)}
                   disabled={!table.getCanNextPage()}
                   className="p-1.5 border border-gray-300 dark:border-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
