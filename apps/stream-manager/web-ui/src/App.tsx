@@ -10,6 +10,7 @@ import Layout from './components/layout/Layout.tsx';
 import Login from './pages/Login.tsx';
 import Dashboard from './pages/Dashboard.tsx';
 import Streams from './pages/Streams.tsx';
+import StreamDetail from './pages/StreamDetail.tsx';
 import Recordings from './pages/Recordings.tsx';
 import Configuration from './pages/Configuration.tsx';
 import Metrics from './pages/Metrics.tsx';
@@ -34,6 +35,7 @@ const router = createBrowserRouter(
       children: [
         { index: true, element: <Dashboard /> },
         { path: "streams", element: <Streams /> },
+        { path: "streams/:id", element: <StreamDetail /> },
         { path: "recordings", element: <Recordings /> },
         { path: "configuration", element: <Configuration /> },
         { path: "metrics", element: <Metrics /> },
