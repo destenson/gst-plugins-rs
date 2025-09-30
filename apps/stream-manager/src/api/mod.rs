@@ -170,13 +170,7 @@ pub async fn start_server(
             .configure(routes::configure_routes)
             // Then configure static file serving for everything else
             .configure(|cfg| {
-                if development_mode && static_dir.exists() {
-                    // In development mode, serve from disk if available
-                    static_files::configure_development(cfg, static_dir.clone())
-                } else {
-                    // In production or if static dir doesn't exist, use embedded files
-                    static_files::configure(cfg, enable_cache)
-                }
+                static_files::configure_static_assets(cfg, static_dir.clone(), enable_cache);
             })
     })
     .bind(&bind_address)?

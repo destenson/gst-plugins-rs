@@ -116,3 +116,4 @@ mockito = "1.7.0"
 default = []
 nvidia = []  # For NVIDIA inference support (PRP-21)
 cpu-inference = ["ort", "image", "imageproc", "rayon", "ndarray"]  # For CPU inference support (PRP-22)
+serve-static-from-fs = []  # Prefer loading static assets from disk even in release builds
