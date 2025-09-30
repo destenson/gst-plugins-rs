@@ -167,7 +167,7 @@ mod tests {
         ).await;
         
         let req = test::TestRequest::get()
-            .uri("/rotation/disks")
+            .uri("/api/v1/rotation/disks")
             .to_request();
             
         let resp = test::call_service(&app, req).await;
@@ -185,7 +185,7 @@ mod tests {
         ).await;
         
         let req = test::TestRequest::get()
-            .uri("/rotation/status")
+            .uri("/api/v1/rotation/status")
             .to_request();
             
         let resp = test::call_service(&app, req).await;
