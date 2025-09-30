@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   useReactTable,
   getCoreRowModel,
@@ -274,7 +275,12 @@ function StreamCard({ stream, selected, onSelect, onAction }: {
             className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
           />
           <div>
-            <h3 className="font-medium text-gray-900 dark:text-white">{stream.id}</h3>
+            <button
+              onClick={() => onAction('preview', stream.id)}
+              className="font-medium text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 text-left"
+            >
+              {stream.id}
+            </button>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 truncate max-w-xs">
               {stream.source_url}
             </p>
@@ -520,6 +526,7 @@ function AddStreamModal({ isOpen, onClose, onAdd }: {
 
 export default function StreamList() {
   const { api } = useAPI();
+  const navigate = useNavigate();
   const { events } = useWebSocketSubscription({
     event_types: [
       EventType.StreamAdded,
@@ -665,12 +672,10 @@ export default function StreamList() {
           await api.streams.stopRecording(streamId);
           break;
         case 'preview':
-          // TODO: Implement preview
-          console.log('Preview stream:', streamId);
+          navigate(`/streams/${streamId}`);
           break;
         case 'settings':
-          // TODO: Implement settings
-          console.log('Stream settings:', streamId);
+          navigate(`/streams/${streamId}?tab=config`);
           break;
       }
     } catch (error) {
@@ -822,7 +827,12 @@ export default function StreamList() {
       accessorKey: 'id',
       header: 'Stream ID',
       cell: ({ row }) => (
-        <div className="font-medium text-gray-900 dark:text-white">{row.original.id}</div>
+        <button
+          onClick={() => navigate(`/streams/${row.original.id}`)}
+          className="font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+        >
+          {row.original.id}
+        </button>
       ),
     },
     {

@@ -2,6 +2,7 @@ import { APIClient } from './client.ts';
 import { AuthAPI } from './services/AuthAPI.ts';
 import { DatabaseAPI } from './services/DatabaseAPI.ts';
 import { StreamsAPI } from './services/StreamsAPI.ts';
+import { RecordingsAPI } from './services/RecordingsAPI.ts';
 import { ConfigAPI } from './services/ConfigAPI.ts';
 import { MetricsAPI } from './services/MetricsAPI.ts';
 import { HealthAPI } from './services/HealthAPI.ts';
@@ -16,6 +17,7 @@ export class StreamManagerAPI {
   public auth: AuthAPI;
   public database: DatabaseAPI;
   public streams: StreamsAPI;
+  public recordings: RecordingsAPI;
   public config: ConfigAPI;
   public metrics: MetricsAPI;
   public health: HealthAPI;
@@ -27,6 +29,7 @@ export class StreamManagerAPI {
     this.auth = new AuthAPI(this.client);
     this.database = new DatabaseAPI(this.client);
     this.streams = new StreamsAPI(this.client);
+    this.recordings = new RecordingsAPI(this.client);
     this.config = new ConfigAPI(this.client);
     this.metrics = new MetricsAPI(this.client);
     this.health = new HealthAPI(this.client);
