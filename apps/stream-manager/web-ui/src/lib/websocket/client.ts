@@ -122,25 +122,25 @@ export class WebSocketClient extends EventEmitter {
   }
 
   // Event emitter type-safe wrappers
-  public on<K extends keyof WebSocketClientEvents>(
+  public override on<K extends keyof WebSocketClientEvents>(
     event: K,
     listener: WebSocketClientEvents[K]
   ): this {
     return super.on(event, listener);
   }
 
-  public emit<K extends keyof WebSocketClientEvents>(
+  public override emit<K extends keyof WebSocketClientEvents>(
     event: K,
     ...args: Parameters<WebSocketClientEvents[K]>
   ): boolean {
     return super.emit(event, ...args);
   }
 
-  public removeListener(event: string, listener: any): this {
+  public override removeListener(event: string, listener: any): this {
     return super.removeListener(event, listener);
   }
 
-  public removeAllListeners(event?: string): this {
+  public override removeAllListeners(event?: string): this {
     return super.removeAllListeners(event);
   }
 
