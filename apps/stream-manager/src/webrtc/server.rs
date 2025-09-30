@@ -132,7 +132,8 @@ impl WebRtcServer {
             gst_webrtc::WebRTCSDPType::Offer,
             offer,
         );
-        webrtcbin.emit_by_name::<()>("set-remote-description", &[&offer_webrtc]);
+        let promise = gst::Promise::new();
+        webrtcbin.emit_by_name::<()>("set-remote-description", &[&offer_webrtc, &promise]);
 
         // Create answer
         let promise = gst::Promise::with_change_func(move |reply| {
