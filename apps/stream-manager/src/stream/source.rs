@@ -8,7 +8,7 @@ use futures::stream::StreamExt;
 use crate::config::StreamConfig;
 
 /// Source type detection based on URI scheme
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum SourceType {
     Rtsp,
     Http,
@@ -19,9 +19,14 @@ pub enum SourceType {
 impl SourceType {
     pub fn from_uri(uri: &str) -> Self {
         match uri.split(':').next() {
-            Some("rtsp") | Some("rtsps") => Self::Rtsp,
-            Some("http") | Some("https") => Self::Http,
-            Some("file") => Self::File,
+            Some(p) => {
+                match p.to_lowercase().as_str() {
+                    "rtsp" | "rtsps" | "rtspt"  | "rtspu" => Self::Rtsp,
+                    "http" | "https" => Self::Http,
+                    "file" => Self::File,
+                    _ => Self::Unknown,
+                }
+            }
             _ => Self::Unknown,
         }
     }
@@ -433,7 +438,7 @@ impl StreamSource {
 
     /// Get source type
     pub fn get_source_type(&self) -> SourceType {
-        self.source_type.clone()
+        self.source_type
     }
 
     /// Get source URI
@@ -486,7 +491,7 @@ mod tests {
         assert_eq!(SourceType::from_uri("http://example.com/stream.m3u8"), SourceType::Http);
         assert_eq!(SourceType::from_uri("https://example.com/stream.m3u8"), SourceType::Http);
         assert_eq!(SourceType::from_uri("file:///path/to/video.mp4"), SourceType::File);
-        assert_eq!(SourceType::from_uri("unknown://example.com"), SourceType::Unknown);
+        assert_eq!(SourceType::from_uri("ftp://example.com"), SourceType::Unknown);
     }
 
     #[test]
