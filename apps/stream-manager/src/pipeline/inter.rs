@@ -72,12 +72,12 @@ impl InterPipelineManager {
     ) -> Result<gst::Element, InterPipelineError> {
         info!("Registering inter-pipeline producer: {}", producer_id);
 
-        // Create intersink element
-        let intersink = gst::ElementFactory::make("intersink")
+        // Create intervideosink element (using video as default for compatibility)
+        let intersink = gst::ElementFactory::make("intervideosink")
             .name(&format!("intersink-{}", producer_id))
-            .property("producer-name", producer_id)
+            .property("channel", producer_id)
             .build()
-            .map_err(|_| InterPipelineError::ElementCreation("intersink".to_string()))?;
+            .map_err(|_| InterPipelineError::ElementCreation("intervideosink".to_string()))?;
 
         // Add to pipeline
         pipeline
@@ -121,12 +121,12 @@ impl InterPipelineManager {
             .name(&format!("consumer-{}-{}", producer_id, consumer_name))
             .build();
 
-        // Create intersrc element
-        let intersrc = gst::ElementFactory::make("intersrc")
+        // Create intervideosrc element
+        let intersrc = gst::ElementFactory::make("intervideosrc")
             .name(&format!("intersrc-{}-{}", producer_id, consumer_name))
-            .property("producer-name", producer_id)
+            .property("channel", producer_id)
             .build()
-            .map_err(|_| InterPipelineError::ElementCreation("intersrc".to_string()))?;
+            .map_err(|_| InterPipelineError::ElementCreation("intervideosrc".to_string()))?;
 
         // Add to consumer pipeline
         pipeline
