@@ -552,7 +552,7 @@ export default function StreamDetail() {
   };
 
   const copyShareLink = () => {
-    const url = `${window.location.origin}/streams/${id}`;
+    const url = `${globalThis.location.origin}/streams/${id}`;
     navigator.clipboard.writeText(url);
   };
 
@@ -817,7 +817,7 @@ export default function StreamDetail() {
                       recording={recording}
                       onDownload={() => {
                         // Download implementation
-                        window.open(`http://localhost:8080/recordings/${recording.filename}/download`, '_blank');
+                        globalThis.open(`http://localhost:8080/recordings/${recording.filename}/download`, '_blank');
                       }}
                       onDelete={async () => {
                         if (confirm(`Delete recording ${recording.filename}?`)) {
