@@ -6,7 +6,7 @@ use actix_web::{
     web, Error, HttpRequest, HttpResponse, HttpResponseBuilder,
 };
 use rust_embed::RustEmbed;
-use std::borrow::Cow;
+use std::{borrow::Cow, path::PathBuf};
 use tracing::{debug, warn};
 
 #[derive(RustEmbed)]
@@ -52,6 +52,22 @@ pub fn configure(cfg: &mut web::ServiceConfig, enable_cache: bool) {
                 .default_service(default_service)
         );
     }
+}
+
+/// Configure static file serving based on compile-time configuration.
+///
+/// In debug builds (or when the `serve-static-from-fs` feature is enabled), we
+/// prefer serving files directly from the filesystem to speed up development
+/// iterations. In release builds we fall back to the embedded assets.
+#[cfg(any(feature = "serve-static-from-fs", debug_assertions))]
+pub fn configure_static_assets(cfg: &mut web::ServiceConfig, static_dir: PathBuf, _enable_cache: bool) {
+    configure_development(cfg, static_dir);
+}
+
+/// Release-build variant that always serves the embedded assets.
+#[cfg(not(any(feature = "serve-static-from-fs", debug_assertions)))]
+pub fn configure_static_assets(cfg: &mut web::ServiceConfig, _static_dir: PathBuf, enable_cache: bool) {
+    configure(cfg, enable_cache);
 }
 
 /// Serve embedded files or fall back to index.html for SPA routing
@@ -169,7 +185,7 @@ fn serve_embedded_content(
 
 /// Alternative implementation using actix-files for development
 /// This can be used when static files are available on disk
-pub fn configure_development(cfg: &mut web::ServiceConfig, static_dir: std::path::PathBuf) {
+pub fn configure_development(cfg: &mut web::ServiceConfig, static_dir: PathBuf) {
     use actix_files::{Files, NamedFile};
 
     debug!("Configuring development static file serving from: {:?}", static_dir);
@@ -208,7 +224,7 @@ pub fn configure_development(cfg: &mut web::ServiceConfig, static_dir: std::path
 /// SPA fallback handler for development mode
 async fn spa_fallback_dev(
     req: ServiceRequest,
-    static_dir: std::path::PathBuf,
+    static_dir: PathBuf,
 ) -> Result<ServiceResponse, Error> {
     use actix_files::NamedFile;
 
