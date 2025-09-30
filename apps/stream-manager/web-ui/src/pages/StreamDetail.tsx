@@ -168,6 +168,7 @@ function VideoPlayer({ streamId, sourceUrl, status }: { streamId: string; source
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 opacity-0 group-hover:opacity-100 transition-opacity">
         <div className="flex items-center gap-4">
           <button
+            type="button"
             onClick={togglePlay}
             className="text-white hover:text-blue-400 transition-colors"
           >
@@ -175,6 +176,7 @@ function VideoPlayer({ streamId, sourceUrl, status }: { streamId: string; source
           </button>
 
           <button
+            type="button"
             onClick={toggleMute}
             className="text-white hover:text-blue-400 transition-colors"
           >
@@ -184,6 +186,7 @@ function VideoPlayer({ streamId, sourceUrl, status }: { streamId: string; source
           <div className="flex-1" />
 
           <button
+            type="button"
             onClick={toggleFullscreen}
             className="text-white hover:text-blue-400 transition-colors"
           >
@@ -374,6 +377,7 @@ function RecordingItem({ recording, onDownload, onDelete }: {
       </div>
       <div className="flex items-center gap-2 ml-4">
         <button
+          type="button"
           onClick={onDownload}
           className="p-1.5 text-gray-600 hover:text-blue-600 transition-colors"
           title="Download"
@@ -381,6 +385,7 @@ function RecordingItem({ recording, onDownload, onDelete }: {
           <Download className="h-4 w-4" />
         </button>
         <button
+          type="button"
           onClick={onDelete}
           className="p-1.5 text-gray-600 hover:text-red-600 transition-colors"
           title="Delete"
@@ -592,6 +597,7 @@ export default function StreamDetail() {
           <div className="flex items-center gap-3">
             <StatusBadge status={stream.status} />
             <button
+              type="button"
               onClick={copyShareLink}
               className="p-2 text-gray-600 hover:text-blue-600 transition-colors"
               title="Copy share link"
@@ -605,6 +611,7 @@ export default function StreamDetail() {
         <div className="flex flex-wrap gap-3">
           {stream.status === 'active' ? (
             <button
+              type="button"
               onClick={handleStop}
               className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
             >
@@ -613,6 +620,7 @@ export default function StreamDetail() {
             </button>
           ) : (
             <button
+              type="button"
               onClick={handleStart}
               className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
             >
@@ -622,6 +630,7 @@ export default function StreamDetail() {
           )}
 
           <button
+            type="button"
             onClick={handleRestart}
             className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
           >
@@ -633,6 +642,7 @@ export default function StreamDetail() {
             <>
               {stream.recording.status === 'recording' ? (
                 <button
+                  type="button"
                   onClick={handleStopRecording}
                   className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
                 >
@@ -641,6 +651,7 @@ export default function StreamDetail() {
                 </button>
               ) : (
                 <button
+                  type="button"
                   onClick={handleStartRecording}
                   className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
                 >
@@ -654,6 +665,7 @@ export default function StreamDetail() {
           <div className="flex-1" />
 
           <button
+            type="button"
             onClick={handleDelete}
             className="flex items-center gap-2 px-4 py-2 border border-red-300 text-red-600 rounded-md hover:bg-red-50 dark:hover:bg-red-900/10"
           >
@@ -674,6 +686,7 @@ export default function StreamDetail() {
         <div className="border-b dark:border-gray-800">
           <nav className="flex -mb-px">
             <button
+              type="button"
               onClick={() => setActiveTab('overview')}
               className={cn(
                 'px-6 py-3 text-sm font-medium border-b-2 transition-colors',
@@ -686,6 +699,7 @@ export default function StreamDetail() {
               Overview
             </button>
             <button
+              type="button"
               onClick={() => setActiveTab('recordings')}
               className={cn(
                 'px-6 py-3 text-sm font-medium border-b-2 transition-colors',
@@ -698,6 +712,7 @@ export default function StreamDetail() {
               Recordings
             </button>
             <button
+              type="button"
               onClick={() => setActiveTab('config')}
               className={cn(
                 'px-6 py-3 text-sm font-medium border-b-2 transition-colors',
@@ -710,6 +725,7 @@ export default function StreamDetail() {
               Configuration
             </button>
             <button
+              type="button"
               onClick={() => setActiveTab('events')}
               className={cn(
                 'px-6 py-3 text-sm font-medium border-b-2 transition-colors',
@@ -839,6 +855,7 @@ export default function StreamDetail() {
                 {configEditing ? (
                   <div className="flex gap-2">
                     <button
+                      type="button"
                       onClick={handleSaveConfig}
                       className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                     >
@@ -846,6 +863,7 @@ export default function StreamDetail() {
                       Save
                     </button>
                     <button
+                      type="button"
                       onClick={() => {
                         setConfigData(JSON.stringify(stream, null, 2));
                         setConfigEditing(false);
@@ -858,6 +876,7 @@ export default function StreamDetail() {
                   </div>
                 ) : (
                   <button
+                    type="button"
                     onClick={() => setConfigEditing(true)}
                     className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
                   >
@@ -888,6 +907,7 @@ export default function StreamDetail() {
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold">Event Log</h3>
                 <button
+                  type="button"
                   onClick={() => {
                     // Refresh events
                     loadStream();

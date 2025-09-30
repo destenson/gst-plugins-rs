@@ -305,6 +305,7 @@ export default function Dashboard() {
                 <p className="text-xs text-red-600 dark:text-red-500 mt-2">
                   Auto-refresh has been disabled after multiple failed attempts.
                   <button
+                    type="button"
                     onClick={() => {
                       setRetryCount(0);
                       setAutoRefresh(true);
@@ -331,6 +332,7 @@ export default function Dashboard() {
         </div>
         <div className="flex items-center gap-3">
           <button
+            type="button"
             onClick={() => setAutoRefresh(!autoRefresh)}
             className={clsx(
               "inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
@@ -343,6 +345,7 @@ export default function Dashboard() {
             {autoRefresh ? 'Auto-refresh ON' : 'Auto-refresh OFF'}
           </button>
           <button
+            type="button"
             onClick={loadData}
             className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white bg-primary-600 rounded-md hover:bg-primary-700 transition-colors"
           >
@@ -350,6 +353,7 @@ export default function Dashboard() {
             Refresh Now
           </button>
           <button
+            type="button"
             onClick={() => exportData()}
             className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700 transition-colors"
           >
@@ -704,6 +708,7 @@ function QuickActionButton({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       className="flex flex-col items-center justify-center p-4 text-gray-700 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-600 transition-colors"
     >
