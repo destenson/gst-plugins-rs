@@ -7,8 +7,8 @@ builddir
 .meson-subproject-wrap-hash.txt
 **/*.local.*
 **/target/
-**/.*/**
 **/static/
 **/node_modules/
+**/.vite/
 stream_manager.db*
 
