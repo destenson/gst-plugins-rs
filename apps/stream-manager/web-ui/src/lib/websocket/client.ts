@@ -84,7 +84,7 @@ export class WebSocketClient extends EventEmitter {
     this.setConnectionState(ConnectionState.Reconnecting);
     this.emit('reconnect', this.reconnectAttempt);
 
-    this.reconnectTimer = window.setTimeout(() => {
+    this.reconnectTimer = globalThis.setTimeout(() => {
       this.connect();
     }, delay);
   }
@@ -150,8 +150,8 @@ export class WebSocketClient extends EventEmitter {
       return this.config.url;
     }
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.hostname;
+    const protocol = globalThis.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = globalThis.location.hostname;
     const port = this.config.port;
     const path = this.config.path;
 
@@ -250,7 +250,7 @@ export class WebSocketClient extends EventEmitter {
   }
 
   private startConnectionTimeout(): void {
-    window.setTimeout(() => {
+    globalThis.setTimeout(() => {
       if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
         this.debug('Connection timeout');
         this.ws.close();
@@ -260,7 +260,7 @@ export class WebSocketClient extends EventEmitter {
 
   private stopReconnectTimer(): void {
     if (this.reconnectTimer) {
-      window.clearTimeout(this.reconnectTimer);
+      globalThis.clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
   }
@@ -282,7 +282,7 @@ export class WebSocketClient extends EventEmitter {
       return;
     }
 
-    this.heartbeatTimer = window.setInterval(() => {
+    this.heartbeatTimer = globalThis.setInterval(() => {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         // Check if we've received a pong recently
         const timeSinceLastPong = Date.now() - this.lastPongReceived;
@@ -306,7 +306,7 @@ export class WebSocketClient extends EventEmitter {
 
   private stopHeartbeat(): void {
     if (this.heartbeatTimer) {
-      window.clearInterval(this.heartbeatTimer);
+      globalThis.clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
   }

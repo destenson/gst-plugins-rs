@@ -52,7 +52,7 @@ export function useKeyboardNavigation(
       }
     }
 
-    window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
+    globalThis.addEventListener('keydown', handleKeyPress);
+    return () => globalThis.removeEventListener('keydown', handleKeyPress);
   }, [navigate, location, sidebarOpen, setSidebarOpen]);
 }

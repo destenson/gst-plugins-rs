@@ -13,7 +13,7 @@ export function useBreakpoint() {
 
   useEffect(() => {
     function handleResize() {
-      const width = window.innerWidth;
+      const width = globalThis.innerWidth;
       if (width < breakpoints.sm) setBreakpoint('sm');
       else if (width < breakpoints.md) setBreakpoint('md');
       else if (width < breakpoints.lg) setBreakpoint('lg');
@@ -22,8 +22,8 @@ export function useBreakpoint() {
     }
 
     handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    globalThis.addEventListener('resize', handleResize);
+    return () => globalThis.removeEventListener('resize', handleResize);
   }, []);
 
   return breakpoint;

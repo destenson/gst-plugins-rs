@@ -222,7 +222,7 @@ export class APIClient {
     this.config.token = null;
 
     // Dispatch custom event for auth failure
-    window.dispatchEvent(new CustomEvent('auth:failed'));
+    globalThis.dispatchEvent(new CustomEvent('auth:failed'));
   }
 
   // Public methods
