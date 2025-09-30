@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { StreamManagerAPI } from '../api/index.ts';
+import React, { createContext, ReactNode, useContext, useEffect, useState } from "react";
+import { StreamManagerAPI } from "../api/index.ts";
 
 interface APIContextValue {
   api: StreamManagerAPI;
@@ -17,8 +17,8 @@ interface APIProviderProps {
 
 export const APIProvider: React.FC<APIProviderProps> = ({
   children,
-  baseURL = (globalThis as any).VITE_API_URL || '',
-  initialToken
+  baseURL = (globalThis as any).VITE_API_URL || "",
+  initialToken,
 }) => {
   const [, setTokenState] = useState<string | null>(initialToken || null);
   const [isAuthenticated, setIsAuthenticated] = useState(!!initialToken);
@@ -30,7 +30,7 @@ export const APIProvider: React.FC<APIProviderProps> = ({
 
   useEffect(() => {
     // Check for stored token on mount
-    const storedToken = localStorage.getItem('api_token');
+    const storedToken = localStorage.getItem("api_token");
     if (storedToken && !initialToken) {
       setTokenState(storedToken);
       setIsAuthenticated(true);
@@ -44,9 +44,9 @@ export const APIProvider: React.FC<APIProviderProps> = ({
     api.setToken(newToken);
 
     if (newToken) {
-      localStorage.setItem('api_token', newToken);
+      localStorage.setItem("api_token", newToken);
     } else {
-      localStorage.removeItem('api_token');
+      localStorage.removeItem("api_token");
     }
   };
 
@@ -55,7 +55,7 @@ export const APIProvider: React.FC<APIProviderProps> = ({
       value={{
         api,
         isAuthenticated,
-        setToken
+        setToken,
       }}
     >
       {children}
@@ -66,7 +66,7 @@ export const APIProvider: React.FC<APIProviderProps> = ({
 export const useAPI = (): APIContextValue => {
   const context = useContext(APIContext);
   if (!context) {
-    throw new Error('useAPI must be used within an APIProvider');
+    throw new Error("useAPI must be used within an APIProvider");
   }
   return context;
 };

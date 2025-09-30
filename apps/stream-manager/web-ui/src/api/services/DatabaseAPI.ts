@@ -1,4 +1,4 @@
-import { APIClient } from '../client.ts';
+import { APIClient } from "../client.ts";
 
 export interface TableInfo {
   name: string;
@@ -22,7 +22,7 @@ export class DatabaseAPI {
    * List all tables in the database
    */
   async listTables(): Promise<TableInfo[]> {
-    return this.client.get<TableInfo[]>('/api/v1/database/tables');
+    return this.client.get<TableInfo[]>("/api/v1/database/tables");
   }
 
   /**
@@ -35,28 +35,49 @@ export class DatabaseAPI {
   /**
    * Update a record in a table
    */
-  async updateRecord(tableName: string, request: UpdateRequest): Promise<{ rows_affected: number }> {
-    return this.client.post<{ rows_affected: number }>(`/api/v1/database/tables/${tableName}/update`, request);
+  async updateRecord(
+    tableName: string,
+    request: UpdateRequest,
+  ): Promise<{ rows_affected: number }> {
+    return this.client.post<{ rows_affected: number }>(
+      `/api/v1/database/tables/${tableName}/update`,
+      request,
+    );
   }
 
   /**
    * Insert a new record into a table
    */
-  async insertRecord(tableName: string, data: DatabaseRecord): Promise<{ rows_affected: number; last_insert_rowid?: number }> {
-    return this.client.post<{ rows_affected: number; last_insert_rowid?: number }>(`/api/v1/database/tables/${tableName}/insert`, data);
+  async insertRecord(
+    tableName: string,
+    data: DatabaseRecord,
+  ): Promise<{ rows_affected: number; last_insert_rowid?: number }> {
+    return this.client.post<{ rows_affected: number; last_insert_rowid?: number }>(
+      `/api/v1/database/tables/${tableName}/insert`,
+      data,
+    );
   }
 
   /**
    * Delete a record from a table
    */
-  async deleteRecord(tableName: string, whereClause: DatabaseRecord): Promise<{ rows_affected: number }> {
-    return this.client.post<{ rows_affected: number }>(`/api/v1/database/tables/${tableName}/delete`, whereClause);
+  async deleteRecord(
+    tableName: string,
+    whereClause: DatabaseRecord,
+  ): Promise<{ rows_affected: number }> {
+    return this.client.post<{ rows_affected: number }>(
+      `/api/v1/database/tables/${tableName}/delete`,
+      whereClause,
+    );
   }
 
   /**
    * Clear all data from a table
    */
   async clearTable(tableName: string): Promise<{ rows_affected: number }> {
-    return this.client.post<{ rows_affected: number }>(`/api/v1/database/tables/${tableName}/clear`, {});
+    return this.client.post<{ rows_affected: number }>(
+      `/api/v1/database/tables/${tableName}/clear`,
+      {},
+    );
   }
 }

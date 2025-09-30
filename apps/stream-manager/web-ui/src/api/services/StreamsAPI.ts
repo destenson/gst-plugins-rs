@@ -1,17 +1,17 @@
-import { APIClient } from '../client.ts';
+import { APIClient } from "../client.ts";
 import type {
-  Stream,
-  StreamListResponse,
   CreateStreamRequest,
-  UpdateStreamRequest,
-  StreamListQuery,
+  DetailedMetrics,
+  RecordingListQuery,
+  RecordingListResponse,
   StartRecordingRequest,
   StartRecordingResponse,
   StopRecordingResponse,
-  RecordingListResponse,
-  RecordingListQuery,
-  DetailedMetrics
-} from '../types/index.ts';
+  Stream,
+  StreamListQuery,
+  StreamListResponse,
+  UpdateStreamRequest,
+} from "../types/index.ts";
 
 export class StreamsAPI {
   constructor(private client: APIClient) {}
@@ -19,20 +19,20 @@ export class StreamsAPI {
   // Stream Management
 
   async list(query?: StreamListQuery): Promise<StreamListResponse> {
-    return this.client.get<StreamListResponse>('/api/v1/streams', {
+    return this.client.get<StreamListResponse>("/api/v1/streams", {
       params: query,
-      cancelKey: 'streams-list'
+      cancelKey: "streams-list",
     });
   }
 
   async get(id: string): Promise<Stream> {
     return this.client.get<Stream>(`/api/v1/streams/${id}`, {
-      cancelKey: `stream-${id}`
+      cancelKey: `stream-${id}`,
     });
   }
 
   async create(data: CreateStreamRequest): Promise<Stream> {
-    return this.client.post<Stream>('/api/v1/streams', data);
+    return this.client.post<Stream>("/api/v1/streams", data);
   }
 
   async update(id: string, data: UpdateStreamRequest): Promise<void> {
@@ -62,7 +62,7 @@ export class StreamsAPI {
   async startRecording(id: string, data?: StartRecordingRequest): Promise<StartRecordingResponse> {
     return this.client.post<StartRecordingResponse>(
       `/api/v1/streams/${id}/record/start`,
-      data
+      data,
     );
   }
 
@@ -81,7 +81,7 @@ export class StreamsAPI {
   async listRecordings(id: string, query?: RecordingListQuery): Promise<RecordingListResponse> {
     return this.client.get<RecordingListResponse>(`/api/v1/streams/${id}/recordings`, {
       params: query,
-      cancelKey: `recordings-${id}`
+      cancelKey: `recordings-${id}`,
     });
   }
 
@@ -89,7 +89,7 @@ export class StreamsAPI {
 
   async getMetrics(id: string): Promise<DetailedMetrics> {
     return this.client.get<DetailedMetrics>(`/api/v1/streams/${id}/metrics`, {
-      cancelKey: `metrics-${id}`
+      cancelKey: `metrics-${id}`,
     });
   }
 
@@ -99,8 +99,8 @@ export class StreamsAPI {
     const { streams } = await this.list();
     await Promise.all(
       streams
-        .filter((s: Stream) => s.status === 'inactive')
-        .map((s: Stream) => this.start(s.id))
+        .filter((s: Stream) => s.status === "inactive")
+        .map((s: Stream) => this.start(s.id)),
     );
   }
 
@@ -108,8 +108,8 @@ export class StreamsAPI {
     const { streams } = await this.list();
     await Promise.all(
       streams
-        .filter((s: Stream) => s.status === 'active')
-        .map((s: Stream) => this.stop(s.id))
+        .filter((s: Stream) => s.status === "active")
+        .map((s: Stream) => this.stop(s.id)),
     );
   }
 }

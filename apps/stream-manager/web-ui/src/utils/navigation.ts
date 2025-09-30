@@ -1,13 +1,13 @@
 import {
-  HomeIcon,
-  VideoCameraIcon,
-  FolderIcon,
-  Cog6ToothIcon,
   ChartBarIcon,
+  Cog6ToothIcon,
   DocumentTextIcon,
+  FolderIcon,
+  HomeIcon,
   QuestionMarkCircleIcon,
-} from '@heroicons/react/24/outline';
-import { ComponentType } from 'react';
+  VideoCameraIcon,
+} from "@heroicons/react/24/outline";
+import { ComponentType } from "react";
 
 export interface NavItem {
   name: string;
@@ -18,45 +18,45 @@ export interface NavItem {
 
 export const navigationItems: NavItem[] = [
   {
-    name: 'Dashboard',
-    path: '/',
+    name: "Dashboard",
+    path: "/",
     icon: HomeIcon,
-    description: 'System overview and status',
+    description: "System overview and status",
   },
   {
-    name: 'Streams',
-    path: '/streams',
+    name: "Streams",
+    path: "/streams",
     icon: VideoCameraIcon,
-    description: 'Manage video streams',
+    description: "Manage video streams",
   },
   {
-    name: 'Recordings',
-    path: '/recordings',
+    name: "Recordings",
+    path: "/recordings",
     icon: FolderIcon,
-    description: 'Browse and manage recordings',
+    description: "Browse and manage recordings",
   },
   {
-    name: 'Configuration',
-    path: '/configuration',
+    name: "Configuration",
+    path: "/configuration",
     icon: Cog6ToothIcon,
-    description: 'System settings',
+    description: "System settings",
   },
   {
-    name: 'Metrics',
-    path: '/metrics',
+    name: "Metrics",
+    path: "/metrics",
     icon: ChartBarIcon,
-    description: 'Performance monitoring',
+    description: "Performance monitoring",
   },
   {
-    name: 'Logs',
-    path: '/logs',
+    name: "Logs",
+    path: "/logs",
     icon: DocumentTextIcon,
-    description: 'System logs',
+    description: "System logs",
   },
   {
-    name: 'Help',
-    path: '/help',
+    name: "Help",
+    path: "/help",
     icon: QuestionMarkCircleIcon,
-    description: 'Documentation and support',
+    description: "Documentation and support",
   },
 ];

@@ -1,4 +1,4 @@
-import StreamList from './StreamList.tsx';
+import StreamList from "./StreamList.tsx";
 
 export default function Streams() {
   return <StreamList />;

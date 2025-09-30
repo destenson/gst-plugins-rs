@@ -1,26 +1,26 @@
-import { useState, useEffect, useMemo } from 'react';
-import { useAPI } from '../contexts/APIContext.tsx';
-import LoadingSpinner from '../components/LoadingSpinner.tsx';
+import { useEffect, useMemo, useState } from "react";
+import { useAPI } from "../contexts/APIContext.tsx";
+import LoadingSpinner from "../components/LoadingSpinner.tsx";
 import {
-  FilmIcon,
-  TrashIcon,
-  PlayIcon,
+  ArrowDownTrayIcon,
   ExclamationTriangleIcon,
+  FilmIcon,
   FolderIcon,
   MagnifyingGlassIcon,
-  ArrowDownTrayIcon
-} from '@heroicons/react/24/outline';
-import RecordingPlayer from '../components/recordings/RecordingPlayer.tsx';
-import CalendarView from '../components/recordings/CalendarView.tsx';
-import TimelineView from '../components/recordings/TimelineView.tsx';
-import StorageChart from '../components/recordings/StorageChart.tsx';
-import DeleteConfirmationModal from '../components/recordings/DeleteConfirmationModal.tsx';
-import BulkActionsToolbar from '../components/recordings/BulkActionsToolbar.tsx';
-import type { Recording, Stream } from '../api/types/index.ts';
+  PlayIcon,
+  TrashIcon,
+} from "@heroicons/react/24/outline";
+import RecordingPlayer from "../components/recordings/RecordingPlayer.tsx";
+import CalendarView from "../components/recordings/CalendarView.tsx";
+import TimelineView from "../components/recordings/TimelineView.tsx";
+import StorageChart from "../components/recordings/StorageChart.tsx";
+import DeleteConfirmationModal from "../components/recordings/DeleteConfirmationModal.tsx";
+import BulkActionsToolbar from "../components/recordings/BulkActionsToolbar.tsx";
+import type { Recording, Stream } from "../api/types/index.ts";
 
-type ViewMode = 'list' | 'calendar' | 'timeline';
-type SortField = 'filename' | 'size' | 'duration' | 'created_at';
-type SortOrder = 'asc' | 'desc';
+type ViewMode = "list" | "calendar" | "timeline";
+type SortField = "filename" | "size" | "duration" | "created_at";
+type SortOrder = "asc" | "desc";
 
 interface RecordingWithStream extends Recording {
   stream_id?: string;
@@ -33,16 +33,16 @@ export default function Recordings() {
   const [streams, setStreams] = useState<Stream[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [selectedRecordings, setSelectedRecordings] = useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedStream, setSelectedStream] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedStream, setSelectedStream] = useState<string>("all");
   const [dateRange, setDateRange] = useState<{ start: Date | null; end: Date | null }>({
     start: null,
-    end: null
+    end: null,
   });
-  const [sortField, setSortField] = useState<SortField>('created_at');
-  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const [sortField, setSortField] = useState<SortField>("created_at");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   const [playerOpen, setPlayerOpen] = useState(false);
   const [selectedRecording, setSelectedRecording] = useState<RecordingWithStream | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -62,21 +62,21 @@ export default function Recordings() {
         const [recordingsResponse, streamsResponse] = await Promise.all([
           api.recordings.list({
             start_date: dateRange.start?.toISOString(),
-            end_date: dateRange.end?.toISOString()
+            end_date: dateRange.end?.toISOString(),
           }),
-          api.streams.list()
+          api.streams.list(),
         ]);
 
         setStreams(streamsResponse.streams);
 
         // Enhance recordings with stream information
-        const enhancedRecordings = recordingsResponse.recordings.map(rec => {
+        const enhancedRecordings = recordingsResponse.recordings.map((rec) => {
           const streamId = extractStreamIdFromPath(rec.path);
-          const stream = streamsResponse.streams.find(s => s.id === streamId);
+          const stream = streamsResponse.streams.find((s) => s.id === streamId);
           return {
             ...rec,
             stream_id: streamId,
-            stream
+            stream,
           };
         });
 
@@ -84,7 +84,7 @@ export default function Recordings() {
         setTotalSize(recordingsResponse.total_size);
         setTotalDuration(recordingsResponse.total_duration);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load recordings');
+        setError(err instanceof Error ? err.message : "Failed to load recordings");
       } finally {
         setLoading(false);
       }
@@ -105,15 +105,15 @@ export default function Recordings() {
 
     // Filter by search query
     if (searchQuery) {
-      filtered = filtered.filter(rec =>
+      filtered = filtered.filter((rec) =>
         rec.filename.toLowerCase().includes(searchQuery.toLowerCase()) ||
         rec.stream_id?.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
 
     // Filter by selected stream
-    if (selectedStream !== 'all') {
-      filtered = filtered.filter(rec => rec.stream_id === selectedStream);
+    if (selectedStream !== "all") {
+      filtered = filtered.filter((rec) => rec.stream_id === selectedStream);
     }
 
     // Sort recordings
@@ -121,21 +121,21 @@ export default function Recordings() {
       let comparison = 0;
 
       switch (sortField) {
-        case 'filename':
+        case "filename":
           comparison = a.filename.localeCompare(b.filename);
           break;
-        case 'size':
+        case "size":
           comparison = a.size - b.size;
           break;
-        case 'duration':
+        case "duration":
           comparison = a.duration - b.duration;
           break;
-        case 'created_at':
+        case "created_at":
           comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
           break;
       }
 
-      return sortOrder === 'asc' ? comparison : -comparison;
+      return sortOrder === "asc" ? comparison : -comparison;
     });
 
     return filtered;
@@ -157,7 +157,7 @@ export default function Recordings() {
     if (selectedRecordings.size === filteredRecordings.length) {
       setSelectedRecordings(new Set());
     } else {
-      setSelectedRecordings(new Set(filteredRecordings.map(r => r.filename)));
+      setSelectedRecordings(new Set(filteredRecordings.map((r) => r.filename)));
     }
   };
 
@@ -172,7 +172,7 @@ export default function Recordings() {
     try {
       const blob = await api.recordings.download(recording.filename);
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
       a.download = recording.filename;
       document.body.appendChild(a);
@@ -180,15 +180,15 @@ export default function Recordings() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (err) {
-      console.error('Download failed:', err);
-      alert('Failed to download recording');
+      console.error("Download failed:", err);
+      alert("Failed to download recording");
     }
   };
 
   // Handle bulk download
   const handleBulkDownload = async () => {
     for (const filename of selectedRecordings) {
-      const recording = recordings.find(r => r.filename === filename);
+      const recording = recordings.find((r) => r.filename === filename);
       if (recording) {
         await handleDownload(recording);
       }
@@ -215,22 +215,22 @@ export default function Recordings() {
         for (const filename of selectedRecordings) {
           await api.recordings.delete(filename);
         }
-        setRecordings(prev => prev.filter(r => !selectedRecordings.has(r.filename)));
+        setRecordings((prev) => prev.filter((r) => !selectedRecordings.has(r.filename)));
         setSelectedRecordings(new Set());
       } else if (recordingToDelete) {
         await api.recordings.delete(recordingToDelete.filename);
-        setRecordings(prev => prev.filter(r => r.filename !== recordingToDelete.filename));
+        setRecordings((prev) => prev.filter((r) => r.filename !== recordingToDelete.filename));
       }
       setDeleteModalOpen(false);
     } catch (err) {
-      console.error('Delete failed:', err);
-      alert('Failed to delete recording(s)');
+      console.error("Delete failed:", err);
+      alert("Failed to delete recording(s)");
     }
   };
 
   // Format file size
   const formatSize = (bytes: number): string => {
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const units = ["B", "KB", "MB", "GB", "TB"];
     let size = bytes;
     let unitIndex = 0;
 
@@ -271,7 +271,9 @@ export default function Recordings() {
     return (
       <div className="flex flex-col items-center justify-center h-full">
         <ExclamationTriangleIcon className="h-12 w-12 text-red-500 mb-4" />
-        <p className="text-lg font-medium text-gray-900 dark:text-white">Error loading recordings</p>
+        <p className="text-lg font-medium text-gray-900 dark:text-white">
+          Error loading recordings
+        </p>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">{error}</p>
       </div>
     );
@@ -294,33 +296,33 @@ export default function Recordings() {
         <div className="flex items-center space-x-2">
           <button
             type="button"
-            onClick={() => setViewMode('list')}
+            onClick={() => setViewMode("list")}
             className={`px-3 py-2 text-sm font-medium rounded-lg ${
-              viewMode === 'list'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+              viewMode === "list"
+                ? "bg-blue-600 text-white"
+                : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"
             }`}
           >
             List
           </button>
           <button
             type="button"
-            onClick={() => setViewMode('calendar')}
+            onClick={() => setViewMode("calendar")}
             className={`px-3 py-2 text-sm font-medium rounded-lg ${
-              viewMode === 'calendar'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+              viewMode === "calendar"
+                ? "bg-blue-600 text-white"
+                : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"
             }`}
           >
             Calendar
           </button>
           <button
             type="button"
-            onClick={() => setViewMode('timeline')}
+            onClick={() => setViewMode("timeline")}
             className={`px-3 py-2 text-sm font-medium rounded-lg ${
-              viewMode === 'timeline'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+              viewMode === "timeline"
+                ? "bg-blue-600 text-white"
+                : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"
             }`}
           >
             Timeline
@@ -359,7 +361,7 @@ export default function Recordings() {
             className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="all">All Streams</option>
-            {streams.map(stream => (
+            {streams.map((stream) => (
               <option key={stream.id} value={stream.id}>
                 {stream.id}
               </option>
@@ -370,7 +372,7 @@ export default function Recordings() {
           <select
             value={`${sortField}-${sortOrder}`}
             onChange={(e) => {
-              const [field, order] = e.target.value.split('-');
+              const [field, order] = e.target.value.split("-");
               setSortField(field as SortField);
               setSortOrder(order as SortOrder);
             }}
@@ -399,153 +401,163 @@ export default function Recordings() {
       )}
 
       {/* View Content */}
-      {viewMode === 'list' && (
+      {viewMode === "list" && (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-          {filteredRecordings.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12">
-              <FolderIcon className="h-12 w-12 text-gray-400 mb-4" />
-              <p className="text-lg font-medium text-gray-900 dark:text-white">No recordings found</p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                {searchQuery || selectedStream !== 'all'
-                  ? 'Try adjusting your filters'
-                  : 'Start recording streams to see them here'}
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead className="bg-gray-50 dark:bg-gray-900">
-                  <tr>
-                    <th className="px-6 py-3">
-                      <input
-                        type="checkbox"
-                        checked={selectedRecordings.size === filteredRecordings.length}
-                        onChange={selectAllRecordings}
-                        className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500"
-                      />
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Recording
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Stream
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Size
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Duration
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Created
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                  {filteredRecordings.map(recording => (
-                    <tr
-                      key={recording.filename}
-                      className="hover:bg-gray-50 dark:hover:bg-gray-700"
-                    >
-                      <td className="px-6 py-4">
+          {filteredRecordings.length === 0
+            ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <FolderIcon className="h-12 w-12 text-gray-400 mb-4" />
+                <p className="text-lg font-medium text-gray-900 dark:text-white">
+                  No recordings found
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                  {searchQuery || selectedStream !== "all"
+                    ? "Try adjusting your filters"
+                    : "Start recording streams to see them here"}
+                </p>
+              </div>
+            )
+            : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                  <thead className="bg-gray-50 dark:bg-gray-900">
+                    <tr>
+                      <th className="px-6 py-3">
                         <input
                           type="checkbox"
-                          checked={selectedRecordings.has(recording.filename)}
-                          onChange={() => toggleRecordingSelection(recording.filename)}
+                          checked={selectedRecordings.size === filteredRecordings.length}
+                          onChange={selectAllRecordings}
                           className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500"
                         />
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <FilmIcon className="h-5 w-5 text-gray-400 mr-2" />
-                          <div>
-                            <div className="text-sm font-medium text-gray-900 dark:text-white">
-                              {recording.filename}
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Recording
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Stream
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Size
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Duration
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Created
+                      </th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    {filteredRecordings.map((recording) => (
+                      <tr
+                        key={recording.filename}
+                        className="hover:bg-gray-50 dark:hover:bg-gray-700"
+                      >
+                        <td className="px-6 py-4">
+                          <input
+                            type="checkbox"
+                            checked={selectedRecordings.has(recording.filename)}
+                            onChange={() => toggleRecordingSelection(recording.filename)}
+                            className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500"
+                          />
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <FilmIcon className="h-5 w-5 text-gray-400 mr-2" />
+                            <div>
+                              <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                {recording.filename}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {recording.stream ? (
-                          <div className="flex items-center">
-                            <div className={`h-2 w-2 rounded-full mr-2 ${
-                              recording.stream.status === 'active' ? 'bg-green-500' :
-                              recording.stream.status === 'error' ? 'bg-red-500' :
-                              'bg-gray-500'
-                            }`} />
-                            <span className="text-sm text-gray-900 dark:text-white">
-                              {recording.stream.id}
-                            </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {recording.stream
+                            ? (
+                              <div className="flex items-center">
+                                <div
+                                  className={`h-2 w-2 rounded-full mr-2 ${
+                                    recording.stream.status === "active"
+                                      ? "bg-green-500"
+                                      : recording.stream.status === "error"
+                                      ? "bg-red-500"
+                                      : "bg-gray-500"
+                                  }`}
+                                />
+                                <span className="text-sm text-gray-900 dark:text-white">
+                                  {recording.stream.id}
+                                </span>
+                              </div>
+                            )
+                            : (
+                              <span className="text-sm text-gray-500 dark:text-gray-400">
+                                {recording.stream_id || "Unknown"}
+                              </span>
+                            )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                          {formatSize(recording.size)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                          {formatDuration(recording.duration)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                          {formatDate(recording.created_at)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <div className="flex items-center justify-end space-x-2">
+                            <button
+                              type="button"
+                              onClick={() => handlePlay(recording)}
+                              className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                              title="Play"
+                            >
+                              <PlayIcon className="h-5 w-5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDownload(recording)}
+                              className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
+                              title="Download"
+                            >
+                              <ArrowDownTrayIcon className="h-5 w-5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(recording)}
+                              className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
+                              title="Delete"
+                            >
+                              <TrashIcon className="h-5 w-5" />
+                            </button>
                           </div>
-                        ) : (
-                          <span className="text-sm text-gray-500 dark:text-gray-400">
-                            {recording.stream_id || 'Unknown'}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                        {formatSize(recording.size)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                        {formatDuration(recording.duration)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                        {formatDate(recording.created_at)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex items-center justify-end space-x-2">
-                          <button
-                            type="button"
-                            onClick={() => handlePlay(recording)}
-                            className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
-                            title="Play"
-                          >
-                            <PlayIcon className="h-5 w-5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDownload(recording)}
-                            className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
-                            title="Download"
-                          >
-                            <ArrowDownTrayIcon className="h-5 w-5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(recording)}
-                            className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
-                            title="Delete"
-                          >
-                            <TrashIcon className="h-5 w-5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
         </div>
       )}
 
-      {viewMode === 'calendar' && (
+      {viewMode === "calendar" && (
         <CalendarView
           recordings={filteredRecordings}
           onDateSelect={(date) => {
             setDateRange({
               start: date,
-              end: new Date(date.getTime() + 24 * 60 * 60 * 1000)
+              end: new Date(date.getTime() + 24 * 60 * 60 * 1000),
             });
           }}
           onRecordingClick={handlePlay}
         />
       )}
 
-      {viewMode === 'timeline' && (
+      {viewMode === "timeline" && (
         <TimelineView
           recordings={filteredRecordings}
           onRecordingClick={handlePlay}
@@ -568,7 +580,7 @@ export default function Recordings() {
           onConfirm={confirmDelete}
           recordingName={bulkDeleteMode
             ? `${selectedRecordings.size} recordings`
-            : recordingToDelete?.filename || ''}
+            : recordingToDelete?.filename || ""}
           isBulk={bulkDeleteMode}
         />
       )}

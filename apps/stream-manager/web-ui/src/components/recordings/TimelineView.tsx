@@ -1,5 +1,5 @@
-import React, { useMemo, useRef, useEffect, useState } from 'react';
-import { FilmIcon, PlayIcon } from '@heroicons/react/24/outline';
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { FilmIcon, PlayIcon } from "@heroicons/react/24/outline";
 
 interface TimelineViewProps {
   recordings: Array<{
@@ -24,8 +24,8 @@ export default function TimelineView({ recordings, onRecordingClick }: TimelineV
     };
 
     updateWidth();
-    globalThis.addEventListener('resize', updateWidth);
-    return () => globalThis.removeEventListener('resize', updateWidth);
+    globalThis.addEventListener("resize", updateWidth);
+    return () => globalThis.removeEventListener("resize", updateWidth);
   }, []);
 
   // Calculate timeline range and grouping
@@ -40,7 +40,7 @@ export default function TimelineView({ recordings, onRecordingClick }: TimelineV
     }
 
     // Find time range
-    const times = recordings.map(r => new Date(r.created_at).getTime());
+    const times = recordings.map((r) => new Date(r.created_at).getTime());
     const minTime = Math.min(...times);
     const maxTime = Math.max(...times);
 
@@ -52,8 +52,8 @@ export default function TimelineView({ recordings, onRecordingClick }: TimelineV
 
     // Group recordings by stream
     const byStream = new Map<string, typeof recordings>();
-    recordings.forEach(recording => {
-      const streamId = recording.stream_id || 'unknown';
+    recordings.forEach((recording) => {
+      const streamId = recording.stream_id || "unknown";
       if (!byStream.has(streamId)) {
         byStream.set(streamId, []);
       }
@@ -61,7 +61,7 @@ export default function TimelineView({ recordings, onRecordingClick }: TimelineV
     });
 
     // Sort recordings within each stream by time
-    byStream.forEach(streamRecordings => {
+    byStream.forEach((streamRecordings) => {
       streamRecordings.sort((a, b) =>
         new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       );
@@ -79,7 +79,7 @@ export default function TimelineView({ recordings, onRecordingClick }: TimelineV
       timelineData: Array.from(byStream.entries()),
       hourMarkers: hours,
       startTime: start,
-      endTime: end
+      endTime: end,
     };
   }, [recordings]);
 
@@ -99,11 +99,11 @@ export default function TimelineView({ recordings, onRecordingClick }: TimelineV
 
   // Format time for display
   const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
   };
 
   const formatHour = (date: Date) => {
-    return date.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true });
+    return date.toLocaleTimeString("en-US", { hour: "numeric", hour12: true });
   };
 
   const formatDuration = (seconds: number) => {
@@ -120,7 +120,7 @@ export default function TimelineView({ recordings, onRecordingClick }: TimelineV
   };
 
   const formatSize = (bytes: number) => {
-    const units = ['B', 'KB', 'MB', 'GB'];
+    const units = ["B", "KB", "MB", "GB"];
     let size = bytes;
     let unitIndex = 0;
     while (size >= 1024 && unitIndex < units.length - 1) {
@@ -132,14 +132,14 @@ export default function TimelineView({ recordings, onRecordingClick }: TimelineV
 
   // Stream colors
   const streamColors = [
-    'bg-blue-500',
-    'bg-green-500',
-    'bg-purple-500',
-    'bg-yellow-500',
-    'bg-pink-500',
-    'bg-indigo-500',
-    'bg-red-500',
-    'bg-orange-500'
+    "bg-blue-500",
+    "bg-green-500",
+    "bg-purple-500",
+    "bg-yellow-500",
+    "bg-pink-500",
+    "bg-indigo-500",
+    "bg-red-500",
+    "bg-orange-500",
   ];
 
   const getStreamColor = (index: number) => {
@@ -151,7 +151,9 @@ export default function TimelineView({ recordings, onRecordingClick }: TimelineV
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-8">
         <div className="flex flex-col items-center justify-center">
           <FilmIcon className="h-12 w-12 text-gray-400 mb-4" />
-          <p className="text-lg font-medium text-gray-900 dark:text-white">No recordings to display</p>
+          <p className="text-lg font-medium text-gray-900 dark:text-white">
+            No recordings to display
+          </p>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
             Recordings will appear here in timeline view
           </p>
@@ -222,7 +224,11 @@ export default function TimelineView({ recordings, onRecordingClick }: TimelineV
                         transition-opacity cursor-pointer group
                       `}
                       style={{ left: `${left}px`, width: `${width}px` }}
-                      title={`${recording.filename}\n${formatTime(new Date(recording.created_at))}\nDuration: ${formatDuration(recording.duration)}\nSize: ${formatSize(recording.size)}`}
+                      title={`${recording.filename}\n${
+                        formatTime(new Date(recording.created_at))
+                      }\nDuration: ${formatDuration(recording.duration)}\nSize: ${
+                        formatSize(recording.size)
+                      }`}
                     >
                       {/* Show play icon on hover if block is wide enough */}
                       {width > 30 && (
@@ -243,15 +249,20 @@ export default function TimelineView({ recordings, onRecordingClick }: TimelineV
           <div className="flex items-center justify-between text-sm">
             <div className="flex items-center space-x-4">
               <span className="text-gray-500 dark:text-gray-400">
-                Total Recordings: <span className="font-medium text-gray-900 dark:text-white">{recordings.length}</span>
+                Total Recordings:{" "}
+                <span className="font-medium text-gray-900 dark:text-white">
+                  {recordings.length}
+                </span>
               </span>
               <span className="text-gray-500 dark:text-gray-400">
-                Total Size: <span className="font-medium text-gray-900 dark:text-white">
+                Total Size:{" "}
+                <span className="font-medium text-gray-900 dark:text-white">
                   {formatSize(recordings.reduce((sum, r) => sum + r.size, 0))}
                 </span>
               </span>
               <span className="text-gray-500 dark:text-gray-400">
-                Total Duration: <span className="font-medium text-gray-900 dark:text-white">
+                Total Duration:{" "}
+                <span className="font-medium text-gray-900 dark:text-white">
                   {formatDuration(recordings.reduce((sum, r) => sum + r.duration, 0))}
                 </span>
               </span>

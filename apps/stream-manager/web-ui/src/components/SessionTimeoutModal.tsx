@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../contexts/AuthContext.tsx';
-import { Clock, LogOut } from 'lucide-react';
+import React, { useEffect, useState } from "react";
+import { useAuth } from "../contexts/AuthContext.tsx";
+import { Clock, LogOut } from "lucide-react";
 
 const SessionTimeoutModal: React.FC = () => {
   const { sessionTimeoutWarning, extendSession, logout } = useAuth();
@@ -31,7 +31,7 @@ const SessionTimeoutModal: React.FC = () => {
 
   const minutes = Math.floor(timeRemaining / 60);
   const seconds = timeRemaining % 60;
-  const timeDisplay = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  const timeDisplay = `${minutes}:${seconds.toString().padStart(2, "0")}`;
 
   return (
     <>
@@ -53,8 +53,9 @@ const SessionTimeoutModal: React.FC = () => {
                   </h3>
                   <div className="mt-2">
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                      Your session will expire in <span className="font-mono font-semibold">{timeDisplay}</span>.
-                      Would you like to continue working?
+                      Your session will expire in{" "}
+                      <span className="font-mono font-semibold">{timeDisplay}</span>. Would you like
+                      to continue working?
                     </p>
                   </div>
                 </div>

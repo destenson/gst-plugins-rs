@@ -1,5 +1,12 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { useAPI } from './APIContext.tsx';
+import React, {
+  createContext,
+  ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
+import { useAPI } from "./APIContext.tsx";
 
 interface User {
   id: string;
@@ -32,7 +39,7 @@ interface AuthProviderProps {
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({
   children,
-  developmentMode = (globalThis as any).DEV || false
+  developmentMode = (globalThis as any).DEV || false,
 }) => {
   const { api, setToken } = useAPI();
   const [user, setUser] = useState<User | null>(null);
@@ -84,10 +91,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     // Development mode bypass
     if (developmentMode) {
       setUser({
-        id: 'dev-user',
-        username: 'developer',
-        email: 'dev@example.com',
-        role: 'admin'
+        id: "dev-user",
+        username: "developer",
+        email: "dev@example.com",
+        role: "admin",
       });
       setIsAuthenticated(true);
       setIsLoading(false);
@@ -96,12 +103,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
 
     try {
       // Check for stored token
-      const storedToken = localStorage.getItem('api_token');
-      const rememberMe = localStorage.getItem('remember_me') === 'true';
+      const storedToken = localStorage.getItem("api_token");
+      const rememberMe = localStorage.getItem("remember_me") === "true";
 
       if (!storedToken) {
         // Check session storage for non-persistent sessions
-        const sessionToken = sessionStorage.getItem('api_token');
+        const sessionToken = sessionStorage.getItem("api_token");
         if (sessionToken) {
           setToken(sessionToken);
           // Verify token with API
@@ -119,7 +126,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         setupSessionTimers();
       }
     } catch (error) {
-      console.error('Auth check failed:', error);
+      console.error("Auth check failed:", error);
       setUser(null);
       setIsAuthenticated(false);
       setToken(null);
@@ -133,25 +140,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     setIsLoading(true);
 
     // Development mode bypass
-    if (developmentMode && username === 'dev' && password === 'dev') {
+    if (developmentMode && username === "dev" && password === "dev") {
       const devUser = {
-        id: 'dev-user',
-        username: 'developer',
-        email: 'dev@example.com',
-        role: 'admin'
+        id: "dev-user",
+        username: "developer",
+        email: "dev@example.com",
+        role: "admin",
       };
       setUser(devUser);
       setIsAuthenticated(true);
       setIsLoading(false);
 
       // Store token for dev mode
-      const devToken = 'dev-token-' + Date.now();
+      const devToken = "dev-token-" + Date.now();
       if (rememberMe) {
-        localStorage.setItem('api_token', devToken);
-        localStorage.setItem('remember_me', 'true');
+        localStorage.setItem("api_token", devToken);
+        localStorage.setItem("remember_me", "true");
       } else {
-        sessionStorage.setItem('api_token', devToken);
-        localStorage.removeItem('remember_me');
+        sessionStorage.setItem("api_token", devToken);
+        localStorage.removeItem("remember_me");
       }
       setToken(devToken);
       setupSessionTimers();
@@ -168,18 +175,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
 
       // Store token based on remember me preference
       if (rememberMe) {
-        localStorage.setItem('api_token', token);
-        localStorage.setItem('remember_me', 'true');
+        localStorage.setItem("api_token", token);
+        localStorage.setItem("remember_me", "true");
       } else {
-        sessionStorage.setItem('api_token', token);
-        localStorage.removeItem('remember_me');
-        localStorage.removeItem('api_token');
+        sessionStorage.setItem("api_token", token);
+        localStorage.removeItem("remember_me");
+        localStorage.removeItem("api_token");
       }
 
       setupSessionTimers();
     } catch (error: any) {
-      console.error('Login failed:', error);
-      throw new Error(error?.message || 'Invalid credentials');
+      console.error("Login failed:", error);
+      throw new Error(error?.message || "Invalid credentials");
     } finally {
       setIsLoading(false);
     }
@@ -193,7 +200,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         await api.auth.logout();
       }
     } catch (error) {
-      console.error('Logout API call failed:', error);
+      console.error("Logout API call failed:", error);
     } finally {
       // Clear all auth state
       setUser(null);
@@ -201,16 +208,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
       setToken(null);
 
       // Clear storage
-      localStorage.removeItem('api_token');
-      localStorage.removeItem('remember_me');
-      sessionStorage.removeItem('api_token');
+      localStorage.removeItem("api_token");
+      localStorage.removeItem("remember_me");
+      sessionStorage.removeItem("api_token");
 
       // Clear timers
       clearTimers();
       setSessionTimeoutWarning(false);
 
       // Trigger auth:logout event
-      globalThis.dispatchEvent(new Event('auth:logout'));
+      globalThis.dispatchEvent(new Event("auth:logout"));
     }
   }, [isAuthenticated, developmentMode, api, setToken, clearTimers]);
 
@@ -235,7 +242,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     checkAuth,
     sessionTimeoutWarning,
     extendSession,
-    isDevelopmentMode: developmentMode
+    isDevelopmentMode: developmentMode,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -245,7 +252,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
+    throw new Error("useAuth must be used within AuthProvider");
   }
   return context;
 };

@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { ServerStackIcon, CircleStackIcon } from '@heroicons/react/24/outline';
+import React, { useMemo } from "react";
+import { CircleStackIcon, ServerStackIcon } from "@heroicons/react/24/outline";
 
 interface StorageChartProps {
   totalSize: number;
@@ -17,8 +17,8 @@ export default function StorageChart({ totalSize, recordings, streams }: Storage
   const { storageByStream, maxDiskSize } = useMemo(() => {
     const byStream = new Map<string, number>();
 
-    recordings.forEach(recording => {
-      const streamId = recording.stream_id || 'unknown';
+    recordings.forEach((recording) => {
+      const streamId = recording.stream_id || "unknown";
       byStream.set(streamId, (byStream.get(streamId) || 0) + recording.size);
     });
 
@@ -27,12 +27,12 @@ export default function StorageChart({ totalSize, recordings, streams }: Storage
 
     return {
       storageByStream: Array.from(byStream.entries()).sort((a, b) => b[1] - a[1]),
-      maxDiskSize: maxSize
+      maxDiskSize: maxSize,
     };
   }, [recordings]);
 
   const formatSize = (bytes: number): string => {
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const units = ["B", "KB", "MB", "GB", "TB"];
     let size = bytes;
     let unitIndex = 0;
 
@@ -51,14 +51,14 @@ export default function StorageChart({ totalSize, recordings, streams }: Storage
 
   // Stream colors
   const streamColors = [
-    'bg-blue-500',
-    'bg-green-500',
-    'bg-purple-500',
-    'bg-yellow-500',
-    'bg-pink-500',
-    'bg-indigo-500',
-    'bg-red-500',
-    'bg-orange-500'
+    "bg-blue-500",
+    "bg-green-500",
+    "bg-purple-500",
+    "bg-yellow-500",
+    "bg-pink-500",
+    "bg-indigo-500",
+    "bg-red-500",
+    "bg-orange-500",
   ];
 
   const getStreamColor = (index: number) => {
@@ -66,10 +66,13 @@ export default function StorageChart({ totalSize, recordings, streams }: Storage
   };
 
   const usagePercentage = getPercentage(totalSize, maxDiskSize);
-  const usageColor = usagePercentage > 90 ? 'bg-red-500' :
-                     usagePercentage > 75 ? 'bg-yellow-500' :
-                     usagePercentage > 50 ? 'bg-blue-500' :
-                     'bg-green-500';
+  const usageColor = usagePercentage > 90
+    ? "bg-red-500"
+    : usagePercentage > 75
+    ? "bg-yellow-500"
+    : usagePercentage > 50
+    ? "bg-blue-500"
+    : "bg-green-500";
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
@@ -99,7 +102,8 @@ export default function StorageChart({ totalSize, recordings, streams }: Storage
         </div>
         {usagePercentage > 75 && (
           <p className="mt-2 text-sm text-yellow-600 dark:text-yellow-400">
-            ⚠ Storage is {usagePercentage > 90 ? 'critically' : ''} low. Consider deleting old recordings.
+            ⚠ Storage is {usagePercentage > 90 ? "critically" : ""}{" "}
+            low. Consider deleting old recordings.
           </p>
         )}
       </div>
@@ -110,56 +114,62 @@ export default function StorageChart({ totalSize, recordings, streams }: Storage
           Storage by Stream
         </h4>
         <div className="space-y-3">
-          {storageByStream.length === 0 ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              No recordings yet
-            </p>
-          ) : (
-            storageByStream.slice(0, 5).map(([streamId, size], index) => {
-              const percentage = getPercentage(size, totalSize);
-              const stream = streams.find(s => s.id === streamId);
+          {storageByStream.length === 0
+            ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                No recordings yet
+              </p>
+            )
+            : (
+              storageByStream.slice(0, 5).map(([streamId, size], index) => {
+                const percentage = getPercentage(size, totalSize);
+                const stream = streams.find((s) => s.id === streamId);
 
-              return (
-                <div key={streamId} className="flex items-center space-x-3">
-                  {/* Stream Status Indicator */}
-                  <div className="flex-shrink-0">
-                    <div className={`h-2 w-2 rounded-full ${
-                      stream?.status === 'active' ? 'bg-green-500' :
-                      stream?.status === 'error' ? 'bg-red-500' :
-                      'bg-gray-500'
-                    }`} />
-                  </div>
-
-                  {/* Stream Name */}
-                  <div className="flex-shrink-0 w-32">
-                    <span className="text-sm font-medium text-gray-900 dark:text-white truncate block">
-                      {streamId}
-                    </span>
-                  </div>
-
-                  {/* Usage Bar */}
-                  <div className="flex-1">
-                    <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                return (
+                  <div key={streamId} className="flex items-center space-x-3">
+                    {/* Stream Status Indicator */}
+                    <div className="flex-shrink-0">
                       <div
-                        className={`h-full ${getStreamColor(index)}`}
-                        style={{ width: `${percentage}%` }}
+                        className={`h-2 w-2 rounded-full ${
+                          stream?.status === "active"
+                            ? "bg-green-500"
+                            : stream?.status === "error"
+                            ? "bg-red-500"
+                            : "bg-gray-500"
+                        }`}
                       />
                     </div>
-                  </div>
 
-                  {/* Size */}
-                  <div className="flex-shrink-0 text-right">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">
-                      {formatSize(size)}
-                    </span>
-                    <span className="text-xs text-gray-500 dark:text-gray-500 ml-1">
-                      ({percentage.toFixed(1)}%)
-                    </span>
+                    {/* Stream Name */}
+                    <div className="flex-shrink-0 w-32">
+                      <span className="text-sm font-medium text-gray-900 dark:text-white truncate block">
+                        {streamId}
+                      </span>
+                    </div>
+
+                    {/* Usage Bar */}
+                    <div className="flex-1">
+                      <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full ${getStreamColor(index)}`}
+                          style={{ width: `${percentage}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Size */}
+                    <div className="flex-shrink-0 text-right">
+                      <span className="text-sm text-gray-600 dark:text-gray-400">
+                        {formatSize(size)}
+                      </span>
+                      <span className="text-xs text-gray-500 dark:text-gray-500 ml-1">
+                        ({percentage.toFixed(1)}%)
+                      </span>
+                    </div>
                   </div>
-                </div>
-              );
-            })
-          )}
+                );
+              })
+            )}
 
           {storageByStream.length > 5 && (
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">

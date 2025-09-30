@@ -1,12 +1,12 @@
-import { EventEmitter } from 'events';
+import { EventEmitter } from "events";
 import {
-  WebSocketEvent,
   ConnectionState,
-  WebSocketConfig,
   DEFAULT_CONFIG,
   EventType,
   SubscriptionRequest,
-} from './types.ts';
+  WebSocketConfig,
+  WebSocketEvent,
+} from "./types.ts";
 
 export interface WebSocketClientEvents {
   open: () => void;
@@ -38,8 +38,11 @@ export class WebSocketClient extends EventEmitter {
 
   // Connection management
   public connect(): void {
-    if (this.ws && (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)) {
-      this.debug('WebSocket is already connected or connecting');
+    if (
+      this.ws &&
+      (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)
+    ) {
+      this.debug("WebSocket is already connected or connecting");
       return;
     }
 
@@ -60,7 +63,7 @@ export class WebSocketClient extends EventEmitter {
   }
 
   public disconnect(): void {
-    this.debug('Disconnecting WebSocket');
+    this.debug("Disconnecting WebSocket");
     this.isManualClose = true;
     this.cleanup();
   }
@@ -73,16 +76,18 @@ export class WebSocketClient extends EventEmitter {
     if (this.reconnectAttempt >= this.config.reconnectAttempts) {
       this.debug(`Max reconnection attempts reached (${this.config.reconnectAttempts})`);
       this.setConnectionState(ConnectionState.Error);
-      this.emit('error', new Error('Max reconnection attempts reached'));
+      this.emit("error", new Error("Max reconnection attempts reached"));
       return;
     }
 
     this.reconnectAttempt++;
     const delay = this.calculateReconnectDelay();
 
-    this.debug(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempt}/${this.config.reconnectAttempts})`);
+    this.debug(
+      `Reconnecting in ${delay}ms (attempt ${this.reconnectAttempt}/${this.config.reconnectAttempts})`,
+    );
     this.setConnectionState(ConnectionState.Reconnecting);
-    this.emit('reconnect', this.reconnectAttempt);
+    this.emit("reconnect", this.reconnectAttempt);
 
     this.reconnectTimer = globalThis.setTimeout(() => {
       this.connect();
@@ -93,9 +98,9 @@ export class WebSocketClient extends EventEmitter {
   public send(message: string | ArrayBuffer): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(message);
-      this.debug(`Sent message: ${typeof message === 'string' ? message : 'ArrayBuffer'}`);
+      this.debug(`Sent message: ${typeof message === "string" ? message : "ArrayBuffer"}`);
     } else {
-      this.debug('Queuing message (WebSocket not connected)');
+      this.debug("Queuing message (WebSocket not connected)");
       this.messageQueue.push(message);
     }
   }
@@ -124,7 +129,7 @@ export class WebSocketClient extends EventEmitter {
   // Event emitter type-safe wrappers
   public override on<K extends keyof WebSocketClientEvents>(
     event: K,
-    listener: WebSocketClientEvents[K]
+    listener: WebSocketClientEvents[K],
   ): this {
     return super.on(event, listener);
   }
@@ -150,7 +155,7 @@ export class WebSocketClient extends EventEmitter {
       return this.config.url;
     }
 
-    const protocol = globalThis.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const protocol = globalThis.location.protocol === "https:" ? "wss:" : "ws:";
     const host = globalThis.location.hostname;
     const port = this.config.port;
     const path = this.config.path;
@@ -168,10 +173,10 @@ export class WebSocketClient extends EventEmitter {
   }
 
   private handleOpen(): void {
-    this.debug('WebSocket connected');
+    this.debug("WebSocket connected");
     this.reconnectAttempt = 0;
     this.setConnectionState(ConnectionState.Connected);
-    this.emit('open');
+    this.emit("open");
     this.flushMessageQueue();
     this.startHeartbeat();
   }
@@ -179,7 +184,7 @@ export class WebSocketClient extends EventEmitter {
   private handleClose(event: CloseEvent): void {
     this.debug(`WebSocket closed: code=${event.code}, reason=${event.reason}`);
     this.cleanup();
-    this.emit('close', event);
+    this.emit("close", event);
 
     if (!this.isManualClose) {
       this.reconnect();
@@ -187,9 +192,9 @@ export class WebSocketClient extends EventEmitter {
   }
 
   private handleError(error: Error | Event): void {
-    const errorObj = error instanceof Error ? error : new Error('WebSocket error');
+    const errorObj = error instanceof Error ? error : new Error("WebSocket error");
     this.debug(`WebSocket error: ${errorObj.message}`);
-    this.emit('error', errorObj);
+    this.emit("error", errorObj);
   }
 
   private handleMessage(event: MessageEvent): void {
@@ -208,10 +213,10 @@ export class WebSocketClient extends EventEmitter {
         }
       }
 
-      this.emit('message', data);
+      this.emit("message", data);
     } catch (error) {
       this.debug(`Failed to parse message: ${error}`);
-      this.emit('error', new Error(`Failed to parse WebSocket message: ${error}`));
+      this.emit("error", new Error(`Failed to parse WebSocket message: ${error}`));
     }
   }
 
@@ -219,7 +224,7 @@ export class WebSocketClient extends EventEmitter {
     if (this.connectionState !== state) {
       this.debug(`Connection state changed: ${this.connectionState} -> ${state}`);
       this.connectionState = state;
-      this.emit('connectionStateChange', state);
+      this.emit("connectionStateChange", state);
     }
   }
 
@@ -252,7 +257,7 @@ export class WebSocketClient extends EventEmitter {
   private startConnectionTimeout(): void {
     globalThis.setTimeout(() => {
       if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
-        this.debug('Connection timeout');
+        this.debug("Connection timeout");
         this.ws.close();
       }
     }, this.config.timeout);
@@ -270,7 +275,7 @@ export class WebSocketClient extends EventEmitter {
       const message = this.messageQueue.shift();
       if (message) {
         this.ws.send(message);
-        this.debug('Sent queued message');
+        this.debug("Sent queued message");
       }
     }
   }
@@ -287,7 +292,7 @@ export class WebSocketClient extends EventEmitter {
         // Check if we've received a pong recently
         const timeSinceLastPong = Date.now() - this.lastPongReceived;
         if (timeSinceLastPong > this.config.heartbeatInterval * 2) {
-          this.debug('Heartbeat timeout - no pong received');
+          this.debug("Heartbeat timeout - no pong received");
           this.ws.close();
           return;
         }
@@ -295,8 +300,8 @@ export class WebSocketClient extends EventEmitter {
         // Send ping
         try {
           // Send a ping frame (empty string as we're using text frames)
-          this.ws.send('ping');
-          this.debug('Sent heartbeat ping');
+          this.ws.send("ping");
+          this.debug("Sent heartbeat ping");
         } catch (error) {
           this.debug(`Failed to send heartbeat: ${error}`);
         }

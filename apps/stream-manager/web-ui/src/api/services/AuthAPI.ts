@@ -1,4 +1,4 @@
-import { APIClient } from '../client.ts';
+import { APIClient } from "../client.ts";
 
 export interface LoginRequest {
   username: string;
@@ -30,27 +30,27 @@ export class AuthAPI {
    * Login with username and password
    */
   async login(credentials: LoginRequest): Promise<LoginResponse> {
-    return this.client.post<LoginResponse>('/auth/login', credentials);
+    return this.client.post<LoginResponse>("/auth/login", credentials);
   }
 
   /**
    * Logout and invalidate token
    */
   async logout(): Promise<void> {
-    return this.client.post<void>('/auth/logout', {});
+    return this.client.post<void>("/auth/logout", {});
   }
 
   /**
    * Verify current token and get user info
    */
   async verify(): Promise<VerifyResponse> {
-    return this.client.get<VerifyResponse>('/auth/verify');
+    return this.client.get<VerifyResponse>("/auth/verify");
   }
 
   /**
    * Refresh authentication token
    */
   async refresh(): Promise<{ token: string; expiresIn?: number }> {
-    return this.client.post<{ token: string; expiresIn?: number }>('/auth/refresh', {});
+    return this.client.post<{ token: string; expiresIn?: number }>("/auth/refresh", {});
   }
 }

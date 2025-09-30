@@ -1,6 +1,6 @@
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosError, CancelTokenSource } from 'axios';
-import axiosRetry from 'axios-retry';
-import type { APIError } from './types/index.ts';
+import axios, { AxiosError, AxiosInstance, AxiosRequestConfig, CancelTokenSource } from "axios";
+import axiosRetry from "axios-retry";
+import type { APIError } from "./types/index.ts";
 
 // Configuration
 export interface APIClientConfig {
@@ -40,7 +40,7 @@ class ResponseCache {
     this.cache.set(key, {
       data,
       timestamp: Date.now(),
-      maxAge
+      maxAge,
     });
   }
 
@@ -54,7 +54,7 @@ class ResponseCache {
       return;
     }
 
-    Array.from(this.cache.keys()).forEach(key => {
+    Array.from(this.cache.keys()).forEach((key) => {
       if (key.includes(pattern)) {
         this.cache.delete(key);
       }
@@ -71,13 +71,13 @@ export class APIClient {
 
   constructor(config: APIClientConfig = {}) {
     this.config = {
-      baseURL: config.baseURL || '',
+      baseURL: config.baseURL || "",
       timeout: config.timeout || 30000,
       retryAttempts: config.retryAttempts || 1, // Reduce from 3 to 1
       retryDelay: config.retryDelay || 2000, // Increase delay
       cacheEnabled: config.cacheEnabled ?? true,
       cacheMaxAge: config.cacheMaxAge || 60000, // 1 minute default
-      ...config
+      ...config,
     };
 
     this.cache = new ResponseCache();
@@ -87,8 +87,8 @@ export class APIClient {
       baseURL: this.config.baseURL,
       timeout: this.config.timeout,
       headers: {
-        'Content-Type': 'application/json'
-      }
+        "Content-Type": "application/json",
+      },
     });
 
     this.setupInterceptors();
@@ -103,18 +103,18 @@ export class APIClient {
         const token = this.getToken();
         if (token) {
           config.headers = config.headers || {};
-          config.headers['Authorization'] = `Bearer ${token}`;
+          config.headers["Authorization"] = `Bearer ${token}`;
         }
 
         // Add cache check for GET requests
-        if (this.config.cacheEnabled && config.method === 'get') {
+        if (this.config.cacheEnabled && config.method === "get") {
           const cacheKey = this.getCacheKey(config);
           const cachedData = this.cache.get(cacheKey);
           if (cachedData) {
             // Return cached data by rejecting with special flag
             return Promise.reject({
               __cached: true,
-              data: cachedData
+              data: cachedData,
             });
           }
         }
@@ -123,14 +123,14 @@ export class APIClient {
       },
       (error) => {
         return Promise.reject(error);
-      }
+      },
     );
 
     // Response interceptor for error handling and caching
     this.axios.interceptors.response.use(
       (response) => {
         // Cache successful GET responses
-        if (this.config.cacheEnabled && response.config.method === 'get') {
+        if (this.config.cacheEnabled && response.config.method === "get") {
           const cacheKey = this.getCacheKey(response.config);
           this.cache.set(cacheKey, response.data, this.config.cacheMaxAge!);
         }
@@ -143,9 +143,9 @@ export class APIClient {
           return Promise.resolve({
             data: (error as any).data,
             status: 200,
-            statusText: 'OK (Cached)',
+            statusText: "OK (Cached)",
             headers: {},
-            config: {} as any
+            config: {} as any,
           });
         }
 
@@ -161,21 +161,21 @@ export class APIClient {
             code: apiError.code,
             message: apiError.message,
             details: apiError.details,
-            status: error.response.status
+            status: error.response.status,
           });
         }
 
         // Network or timeout errors
         if (!error.response) {
           return Promise.reject({
-            code: 'NETWORK_ERROR',
-            message: error.message || 'Network error occurred',
-            details: { originalError: error }
+            code: "NETWORK_ERROR",
+            message: error.message || "Network error occurred",
+            details: { originalError: error },
           });
         }
 
         return Promise.reject(error);
-      }
+      },
     );
   }
 
@@ -188,16 +188,16 @@ export class APIClient {
       retryCondition: (error) => {
         // Retry on network errors or 5xx errors
         return axiosRetry.isNetworkOrIdempotentRequestError(error) ||
-               (error.response?.status ?? 0) >= 500;
+          (error.response?.status ?? 0) >= 500;
       },
       onRetry: (retryCount, error, requestConfig) => {
         console.log(`Retry attempt ${retryCount} for ${requestConfig.url}`);
-      }
+      },
     });
   }
 
   private getCacheKey(config: AxiosRequestConfig): string {
-    const params = config.params ? JSON.stringify(config.params) : '';
+    const params = config.params ? JSON.stringify(config.params) : "";
     return `${config.method}:${config.url}:${params}`;
   }
 
@@ -208,7 +208,7 @@ export class APIClient {
     }
 
     // Then check localStorage
-    const storedToken = localStorage.getItem('api_token');
+    const storedToken = localStorage.getItem("api_token");
     if (storedToken) {
       return storedToken;
     }
@@ -218,11 +218,11 @@ export class APIClient {
 
   private handleAuthError(): void {
     // Clear token and redirect to login
-    localStorage.removeItem('api_token');
+    localStorage.removeItem("api_token");
     this.config.token = null;
 
     // Dispatch custom event for auth failure
-    globalThis.dispatchEvent(new CustomEvent('auth:failed'));
+    globalThis.dispatchEvent(new CustomEvent("auth:failed"));
   }
 
   // Public methods
@@ -230,9 +230,9 @@ export class APIClient {
   setToken(token: string | null): void {
     this.config.token = token;
     if (token) {
-      localStorage.setItem('api_token', token);
+      localStorage.setItem("api_token", token);
     } else {
-      localStorage.removeItem('api_token');
+      localStorage.removeItem("api_token");
     }
   }
 
@@ -248,14 +248,22 @@ export class APIClient {
     return response.data;
   }
 
-  async post<T>(url: string, data?: any, config?: AxiosRequestConfig & { cancelKey?: string }): Promise<T> {
+  async post<T>(
+    url: string,
+    data?: any,
+    config?: AxiosRequestConfig & { cancelKey?: string },
+  ): Promise<T> {
     this.setupCancellation(config?.cancelKey);
     this.clearCache(url); // Clear cache for this endpoint
     const response = await this.axios.post<T>(url, data, this.getCancelConfig(config));
     return response.data;
   }
 
-  async put<T>(url: string, data?: any, config?: AxiosRequestConfig & { cancelKey?: string }): Promise<T> {
+  async put<T>(
+    url: string,
+    data?: any,
+    config?: AxiosRequestConfig & { cancelKey?: string },
+  ): Promise<T> {
     this.setupCancellation(config?.cancelKey);
     this.clearCache(url); // Clear cache for this endpoint
     const response = await this.axios.put<T>(url, data, this.getCancelConfig(config));
@@ -269,7 +277,11 @@ export class APIClient {
     return response.data;
   }
 
-  async patch<T>(url: string, data?: any, config?: AxiosRequestConfig & { cancelKey?: string }): Promise<T> {
+  async patch<T>(
+    url: string,
+    data?: any,
+    config?: AxiosRequestConfig & { cancelKey?: string },
+  ): Promise<T> {
     this.setupCancellation(config?.cancelKey);
     this.clearCache(url); // Clear cache for this endpoint
     const response = await this.axios.patch<T>(url, data, this.getCancelConfig(config));
@@ -289,7 +301,9 @@ export class APIClient {
     this.cancelTokenSources.set(key, source);
   }
 
-  private getCancelConfig(config?: AxiosRequestConfig & { cancelKey?: string }): AxiosRequestConfig {
+  private getCancelConfig(
+    config?: AxiosRequestConfig & { cancelKey?: string },
+  ): AxiosRequestConfig {
     if (!config?.cancelKey) return config || {};
 
     const source = this.cancelTokenSources.get(config.cancelKey);
@@ -298,7 +312,7 @@ export class APIClient {
     const { cancelKey, ...axiosConfig } = config;
     return {
       ...axiosConfig,
-      cancelToken: source.token
+      cancelToken: source.token,
     };
   }
 

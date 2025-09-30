@@ -1,12 +1,12 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
-import { WebSocketClient } from './client.ts';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { WebSocketClient } from "./client.ts";
 import {
   ConnectionState,
-  WebSocketEvent,
   EventType,
-  WebSocketConfig,
   SubscriptionRequest,
-} from './types.ts';
+  WebSocketConfig,
+  WebSocketEvent,
+} from "./types.ts";
 
 interface WebSocketContextValue {
   client: WebSocketClient | null;
@@ -35,7 +35,9 @@ export function WebSocketProvider({
   autoConnect = true,
 }: WebSocketProviderProps) {
   const [client, setClient] = useState<WebSocketClient | null>(null);
-  const [connectionState, setConnectionState] = useState<ConnectionState>(ConnectionState.Disconnected);
+  const [connectionState, setConnectionState] = useState<ConnectionState>(
+    ConnectionState.Disconnected,
+  );
   const [lastEvent, setLastEvent] = useState<WebSocketEvent | null>(null);
   const [clientId, setClientId] = useState<string | null>(null);
   const clientRef = useRef<WebSocketClient | null>(null);
@@ -45,7 +47,7 @@ export function WebSocketProvider({
     const wsClient = new WebSocketClient(config);
 
     // Set up event listeners
-    wsClient.on('connectionStateChange', (state: ConnectionState) => {
+    wsClient.on("connectionStateChange", (state: ConnectionState) => {
       setConnectionState(state);
       if (state === ConnectionState.Connected) {
         setClientId(wsClient.getClientId());
@@ -54,7 +56,7 @@ export function WebSocketProvider({
       }
     });
 
-    wsClient.on('message', (event: WebSocketEvent) => {
+    wsClient.on("message", (event: WebSocketEvent) => {
       setLastEvent(event);
       // Update client ID if received in system alert
       if (event.event_type === EventType.SystemAlert && (event.data as any)?.client_id) {
@@ -62,8 +64,8 @@ export function WebSocketProvider({
       }
     });
 
-    wsClient.on('error', (error: Error) => {
-      console.error('WebSocket error:', error);
+    wsClient.on("error", (error: Error) => {
+      console.error("WebSocket error:", error);
     });
 
     setClient(wsClient);
@@ -124,7 +126,7 @@ export function WebSocketProvider({
 export function useWebSocketContext(): WebSocketContextValue {
   const context = useContext(WebSocketContext);
   if (!context) {
-    throw new Error('useWebSocketContext must be used within a WebSocketProvider');
+    throw new Error("useWebSocketContext must be used within a WebSocketProvider");
   }
   return context;
 }
