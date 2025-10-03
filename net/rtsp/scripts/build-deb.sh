@@ -117,6 +117,8 @@ build_plugin() {
     if [ ! -f "$lib_file" ]; then
         log_error "Library file not found: $lib_file"
         exit 1
+    else
+        strip "$lib_file"
     fi
     
     log_info "Plugin built successfully: $lib_file"
