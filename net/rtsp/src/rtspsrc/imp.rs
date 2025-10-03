@@ -748,7 +748,7 @@ pub struct RtspSrc {
     task_handle: Mutex<Option<JoinHandle<()>>>,
     command_queue: Mutex<Option<mpsc::Sender<Commands>>>,
     buffer_queue: Arc<Mutex<BufferQueue>>,
-    stop_token: Mutex<Option<CancellationToken>>,
+    stop_token: Arc<Mutex<Option<CancellationToken>>>,
     // TODO: tls_database and tls_interaction properties cannot be properly stored
     // because gio::TlsDatabase and gio::TlsInteraction are not Send+Sync.
     // These properties will need to be implemented after removing Tokio.
@@ -763,7 +763,7 @@ impl Default for RtspSrc {
             task_handle: Mutex::new(None),
             command_queue: Mutex::new(None),
             buffer_queue: Arc::new(Mutex::new(BufferQueue::default())),
-            stop_token: Mutex::new(None),
+            stop_token: Arc::new(Mutex::new(None)),
             #[cfg(feature = "telemetry")]
             metrics: super::telemetry::RtspMetrics::default(),
         }
@@ -3279,9 +3279,31 @@ impl ElementImpl for RtspSrc {
             }
             gst::StateChange::PlayingToPaused => {
                 if let Some(cmd_queue) = self.cmd_queue_opt() {
+                    let cancel_clone = self.stop_token.clone();
                     RUNTIME.spawn(async move {
                         if let Err(err) = cmd_queue.send(Commands::Pause).await {
-                            gst::warning!(CAT, "Failed to enqueue PAUSE command: {err}");
+                            gst::error!(CAT, "Failed to enqueue PAUSE command: {err}");
+                            // self.post_error_message()
+                            let cancel_clone = cancel_clone.lock();
+                            match cancel_clone {
+                                Ok(canceller) => {
+                                    match canceller.as_ref() {
+                                        Some(c) => {
+                                            if c.is_cancelled() {
+                                                gst::error!(CAT, "Changing state while cancelled");
+                                            } else {
+                                                c.cancel();
+                                            }
+                                        }
+                                        None => {
+                                            gst::error!(CAT, "No cancellation available");
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    gst::error!(CAT, "No stop_token available: {e}");
+                                }
+                            }
                         }
                     });
                 } else {
@@ -3814,6 +3836,17 @@ impl RtspSrc {
                                 }
                             }
                         } else {
+                            // Post a message about the reconnection attempt
+                            let msg = gst::message::Element::builder(
+                                gst::Structure::builder("rtsp-reconnection-failed")
+                                .field("attempt", reconnect_count)
+                                .field("error", format!("{err:#?}"))
+                                .build(),
+                            )
+                            .src(&*task_src.obj())
+                            .build();
+                            let _ = task_src.obj().post_message(msg);
+                            
                             gst::error!(CAT, "Maximum reconnection attempts ({}) exceeded", max_reconnect_attempts);
                             break result;
                         }
