@@ -3718,6 +3718,16 @@ impl RtspSrc {
                             .build();
                             let _ = task_src.obj().post_message(msg);
 
+                            // Recreate the command queue receiver immediately so external
+                            // state changes (PAUSE/PLAY/etc.) can be enqueued while we wait
+                            // for the connection to come back up.
+                            let (tx, new_rx) = mpsc::channel(16);
+                            {
+                                let mut cmd_queue_guard = task_src.command_queue.lock().unwrap();
+                                *cmd_queue_guard = Some(tx);
+                            }
+                            current_rx = Some(new_rx);
+
                             // Wait before reconnecting
                             let reconnect_delay = std::time::Duration::from_nanos(settings.reconnection_timeout.nseconds());
                             if stop_token.is_cancelled() {
