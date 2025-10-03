@@ -3263,13 +3263,34 @@ impl ElementImpl for RtspSrc {
                 })?;
             }
             gst::StateChange::PausedToPlaying => {
-                let cmd_queue = self.cmd_queue();
-                //self.async_start().map_err(|_| gst::StateChangeError)?;
-                RUNTIME.spawn(async move { cmd_queue.send(Commands::Play).await });
+                if let Some(cmd_queue) = self.cmd_queue_opt() {
+                    RUNTIME.spawn(async move {
+                        if let Err(err) = cmd_queue.send(Commands::Play).await {
+                            gst::warning!(CAT, "Failed to enqueue PLAY command: {err}");
+                        }
+                    });
+                } else {
+                    gst::warning!(
+                        CAT,
+                        imp = self,
+                        "PLAY transition requested without an active command queue"
+                    );
+                }
             }
             gst::StateChange::PlayingToPaused => {
-                let cmd_queue = self.cmd_queue();
-                RUNTIME.spawn(async move { cmd_queue.send(Commands::Pause).await });
+                if let Some(cmd_queue) = self.cmd_queue_opt() {
+                    RUNTIME.spawn(async move {
+                        if let Err(err) = cmd_queue.send(Commands::Pause).await {
+                            gst::warning!(CAT, "Failed to enqueue PAUSE command: {err}");
+                        }
+                    });
+                } else {
+                    gst::warning!(
+                        CAT,
+                        imp = self,
+                        "PAUSE transition requested without an active command queue"
+                    );
+                }
             }
             _ => {}
         }
@@ -3346,9 +3367,15 @@ type RtspStream =
 type RtspSink = Pin<Box<dyn Sink<Message<Body>, Error = std::io::Error> + Send>>;
 
 impl RtspSrc {
+    fn cmd_queue_opt(&self) -> Option<mpsc::Sender<Commands>> {
+        self.command_queue.lock().unwrap().as_ref().cloned()
+    }
+
     #[track_caller]
     fn cmd_queue(&self) -> mpsc::Sender<Commands> {
-        self.command_queue.lock().unwrap().as_ref().unwrap().clone()
+        self
+            .cmd_queue_opt()
+            .expect("command queue is not available")
     }
 
     fn start(&self) -> Result<(), gst::ErrorMessage> {
