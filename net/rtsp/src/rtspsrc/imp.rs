@@ -5160,11 +5160,10 @@ impl RtspSrc {
                         });
 
                         if using_udp {
-                            // For UDP transports, we can continue if data is still flowing
-                            gst::info!(CAT, "TCP connection lost but using UDP transport, continuing...");
-                            // Continue the loop without the TCP connection for control
-                            // This allows UDP data to continue flowing
-                            continue;
+                            // For UDP transports, data continues flowing independently
+                            gst::info!(CAT, "TCP connection lost but using UDP transport, exiting RTSP task (UDP data continues)");
+                            // Break out of the loop - UDP receiver tasks keep running independently
+                            break;
                         }
 
                         // For TCP transport, we need to reconnect
@@ -6291,7 +6290,11 @@ impl RtspTaskState {
                     sockets,
                 } => {
                     if source.is_none() {
-                        *source = Some(conn_source.to_string());
+                        // Don't use 0.0.0.0 as sender address for unicast - it won't match
+                        // actual packets. Let the UDP receiver auto-detect from first packet.
+                        if conn_source != "0.0.0.0" && !conn_source.is_empty() {
+                            *source = Some(conn_source.to_string());
+                        }
                     }
                     if let Some((rtp_port, rtcp_port)) = client_port {
                         // There is no reason for the server to reject the client ports WE
