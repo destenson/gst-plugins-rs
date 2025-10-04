@@ -559,17 +559,18 @@ fn main() -> Result<()> {
         .build()
         .context("Failed to create queue element")?;
     
-    let (sink, frame_counter) = if config.use_autovideosink {
+    let (sink, frame_counter, last_pts) = if config.use_autovideosink {
         println!("Using autovideosink (visual output)");
         let sink = gst::ElementFactory::make("autovideosink")
             .name("video-sink")
             .property("sync", false)
             .build()
             .context("Failed to create autovideosink element")?;
-        (sink, None)
+        (sink, None, None)
     } else {
         println!("Using fakesink (frame counter enabled)");
         let frame_counter = Arc::new(AtomicU64::new(0));
+        let last_pts = Arc::new(Mutex::new(None::<gst::ClockTime>));
         let sink = gst::ElementFactory::make("fakesink")
             .name("test-sink")
             .property("sync", false)
@@ -577,15 +578,26 @@ fn main() -> Result<()> {
             .build()
             .context("Failed to create fakesink element")?;
         
-        // Add a probe to count frames
+        // Add a probe to count frames and track PTS
         let counter_clone = frame_counter.clone();
+        let pts_clone = last_pts.clone();
         let sink_pad = sink.static_pad("sink").context("fakesink has no sink pad")?;
-        sink_pad.add_probe(gst::PadProbeType::BUFFER, move |_pad, _info| {
+        sink_pad.add_probe(gst::PadProbeType::BUFFER, move |_pad, info| {
             counter_clone.fetch_add(1, Ordering::Relaxed);
+            
+            // Track last PTS for accurate FPS calculation
+            if let Some(gst::PadProbeData::Buffer(ref buffer)) = info.data {
+                if let Some(pts) = buffer.pts() {
+                    if let Ok(mut last) = pts_clone.lock() {
+                        *last = Some(pts);
+                    }
+                }
+            }
+            
             gst::PadProbeReturn::Ok
         });
         
-        (sink, Some(frame_counter))
+        (sink, Some(frame_counter), Some(last_pts))
     };
 
     pipeline.add_many(&[&sink_queue, &sink])?;
@@ -740,32 +752,64 @@ fn main() -> Result<()> {
     }
 
     // Add periodic frame counter reporting
-    if let Some(counter) = frame_counter {
+    if let (Some(counter), Some(pts_tracker)) = (frame_counter, last_pts) {
         let start_time = Instant::now();
         let mut last_count = 0u64;
         let mut last_time = start_time;
+        let mut first_pts: Option<gst::ClockTime> = None;
         
         glib::timeout_add_local(Duration::from_secs(1), move || {
             let current_count = counter.load(Ordering::Relaxed);
             let now = Instant::now();
-            let elapsed = now.duration_since(last_time).as_secs_f64();
-            let total_elapsed = now.duration_since(start_time).as_secs_f64();
+            let wall_elapsed = now.duration_since(last_time).as_secs_f64();
+            let total_wall_elapsed = now.duration_since(start_time).as_secs_f64();
             
             let frames_in_period = current_count.saturating_sub(last_count);
-            let fps = if elapsed > 0.0 {
-                frames_in_period as f64 / elapsed
+            
+            // Get current PTS
+            let current_pts = if let Ok(pts) = pts_tracker.lock() {
+                *pts
+            } else {
+                None
+            };
+            
+            // Calculate FPS - use wall clock for instantaneous, PTS for average
+            // Instantaneous FPS based on wall-clock (shows actual delivery rate)
+            let instant_fps = if wall_elapsed > 0.0 && frames_in_period > 0 {
+                frames_in_period as f64 / wall_elapsed
             } else {
                 0.0
             };
-            let avg_fps = if total_elapsed > 0.0 {
-                current_count as f64 / total_elapsed
+            
+            // Average FPS based on PTS (shows actual content frame rate)
+            let avg_fps = if let Some(current) = current_pts {
+                if first_pts.is_none() {
+                    first_pts = Some(current);
+                }
+                
+                if let Some(first) = first_pts {
+                    if current > first {
+                        let total_pts_secs = (current - first).seconds() as f64;
+                        if total_pts_secs > 0.0 && current_count > 0 {
+                            current_count as f64 / total_pts_secs
+                        } else {
+                            0.0
+                        }
+                    } else {
+                        0.0
+                    }
+                } else {
+                    0.0
+                }
+            } else if total_wall_elapsed > 0.0 {
+                current_count as f64 / total_wall_elapsed
             } else {
                 0.0
             };
             
             println!(
                 "Frame stats: {} total frames, {:.1} fps (last 1s), {:.1} fps (avg)",
-                current_count, fps, avg_fps
+                current_count, instant_fps, avg_fps
             );
             
             last_count = current_count;
