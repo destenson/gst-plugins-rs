@@ -4588,8 +4588,9 @@ impl RtspSrc {
                                                 elapsed_ms
                                             );
                                             
-                                            // Clear the start time now that reconnection is complete
+                                            // Clear the start time and reset count now that reconnection is complete
                                             state.reconnection_start_time = None;
+                                            state.reconnect_count = 0; // Reset for next reconnection cycle
                                         }
                                     }
                                     Err(gst::FlowError::Flushing) => {
