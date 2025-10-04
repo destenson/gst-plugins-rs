@@ -16,12 +16,14 @@ logFile: mediamtx.log
 sysLogPrefix: mediamtx
 
 # Timeout of read operations.
-readTimeout: 10s
+# Increased from 10s to 60s to tolerate network packet loss and temporary interruptions
+readTimeout: 60s
 # Timeout of write operations.
-writeTimeout: 10s
+writeTimeout: 60s
 # Size of the queue of outgoing packets.
-# A higher value allows to increase throughput, a lower value allows to save RAM.
-writeQueueSize: 512
+# Increased from 512 to 2048 to buffer more data during network issues
+# This helps maintain downstream connections even when upstream has temporary problems
+writeQueueSize: 2048
 # Maximum size of outgoing UDP packets.
 # This can be decreased to avoid fragmentation on networks with a low UDP MTU.
 udpMaxPayloadSize: 1472
@@ -779,7 +781,19 @@ paths:
   #   runOnDemandStartTimeout: 10s
   #   runOnDemandCloseAfter: 10s
   
+  # Persistent test stream - ffmpeg publishes via TCP (less resilient to packet loss)
+  # runOnInitRestart ensures ffmpeg automatically restarts if it crashes/disconnects
   test-h264:
+    runOnInit: ffmpeg -re -f lavfi -i testsrc=size=1280x720:rate=30 -vcodec libx264 -preset ultrafast -tune zerolatency -b:v 1000k -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 2 -f rtsp -rtsp_transport tcp rtsp://myuser:mypass@localhost:$RTSP_PORT/$MTX_PATH
+    runOnInitRestart: yes
+
+  # Persistent test stream - ffmpeg publishes via UDP (more resilient to packet loss)  
+  test-h264-udp:
+    runOnInit: ffmpeg -re -f lavfi -i testsrc=size=1280x720:rate=30 -vcodec libx264 -preset ultrafast -tune zerolatency -b:v 1000k -f rtsp -rtsp_transport udp rtsp://myuser:mypass@localhost:$RTSP_PORT/$MTX_PATH
+    runOnInitRestart: yes
+
+  # On-demand variant (may cause issues with reconnection)
+  test-h264-demand:
     runOnDemand: ffmpeg -re -f lavfi -i testsrc=size=1280x720:rate=30 -vcodec libx264 -preset ultrafast -tune zerolatency -b:v 1000k -f rtsp rtsp://myuser:mypass@localhost:$RTSP_PORT/$MTX_PATH
     runOnDemandRestart: yes
 
