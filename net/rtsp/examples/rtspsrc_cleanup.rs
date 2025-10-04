@@ -63,7 +63,7 @@ struct Config {
 impl Config {
     fn parse() -> Result<Self> {
         let mut url =
-            std::env::var("RTSP_URL").unwrap_or_else(|_| "rtsp://127.0.0.1:8554/test".to_string());
+            std::env::var("RTSP_URL").unwrap_or_else(|_| "rtsp://127.0.0.1:8554/test-h264-udp".to_string());
         let mut restart_interval = None;
         let mut max_restarts = None;
         let mut restart_jitter = None;
