@@ -4970,7 +4970,7 @@ impl RtspSrc {
                         gst::debug!(CAT, "<-- {req:#?}");
                     }
                     Some(Ok(rtsp_types::Message::Response(rsp))) => {
-                        gst::debug!(CAT, "<-- {rsp:#?}");
+                        gst::trace!(CAT, "<-- {rsp:#?}");
 
                         // Reset session activity on any response
                         state.session_manager.reset_activity();
@@ -5174,7 +5174,7 @@ impl RtspSrc {
                         // We currently only send RTCP RR as data messages, this will change when
                         // we support TCP ONVIF backchannels
                         state.sink.send(Message::Data(data)).await?;
-                        gst::debug!(CAT, "Sent RTCP RR over TCP");
+                        gst::trace!(CAT, "Sent RTCP RR over TCP");
                     }
                     Commands::Reconnect => {
                         gst::info!(CAT, "Received Reconnect command - not yet implemented");
@@ -5660,7 +5660,7 @@ impl RtspTaskState {
         }
         let req = req_builder.build(Body::default());
 
-        gst::debug!(CAT, "-->> {req:#?}");
+        gst::trace!(CAT, "-->> {req:#?}");
         self.sink.send(req.into()).await?;
 
         let rsp = match self.stream.next().await {
@@ -5677,7 +5677,7 @@ impl RtspTaskState {
             )
             .into()),
         }?;
-        gst::debug!(CAT, "<<-- {rsp:#?}");
+        gst::trace!(CAT, "<<-- {rsp:#?}");
 
         // Check if we got a 401 Unauthorized response
         if auth::requires_auth(&rsp) {
@@ -5852,7 +5852,8 @@ impl RtspTaskState {
         let rsp = self
             .send_request_with_auth(Method::Describe, self.url.clone(), req_builder)
             .await?;
-        gst::debug!(
+        gst::debug!(CAT, "Received DESCRIBE response");
+        gst::trace!(
             CAT,
             "<<-- Response {:#?}",
             rsp.headers().collect::<Vec<_>>()
@@ -5867,7 +5868,7 @@ impl RtspTaskState {
         gst::info!(CAT, "{}", std::str::from_utf8(rsp.body()).unwrap());
         // TODO: read range attribute from SDP for VOD use-cases
         let sdp = sdp_types::Session::parse(rsp.body())?;
-        gst::debug!(CAT, "{sdp:#?}");
+        gst::trace!(CAT, "{sdp:#?}");
 
         self.sdp.replace(sdp);
         Ok(())
@@ -6151,7 +6152,7 @@ impl RtspTaskState {
             let rsp = self
                 .send_request_with_auth(Method::Setup, control_url.clone(), req_builder)
                 .await?;
-            gst::debug!(CAT, "<<-- {rsp:#?}");
+            gst::trace!(CAT, "<<-- {rsp:#?}");
             Self::check_response(&rsp, self.cseq, Method::Setup, session.as_ref())?;
             let new_session = rsp
                 .typed_header::<Session>()?
@@ -6382,7 +6383,8 @@ impl RtspTaskState {
         }
 
         let req = req_builder.build(Body::default());
-        gst::debug!(CAT, "-->> {req:#?}");
+        gst::debug!(CAT, "Sending PLAY request");
+        gst::trace!(CAT, "-->> {req:#?}");
         self.sink.send(req.into()).await?;
         Ok(self.cseq)
     }
@@ -6593,7 +6595,8 @@ impl RtspTaskState {
         }
 
         let req = req_builder.build(Body::default());
-        gst::debug!(CAT, "-->> {req:#?}");
+        gst::debug!(CAT, "Sending PAUSE request");
+        gst::trace!(CAT, "-->> {req:#?}");
         self.sink.send(req.into()).await?;
         Ok(self.cseq)
     }
@@ -6629,7 +6632,8 @@ impl RtspTaskState {
         }
 
         let req = req_builder.build(Body::default());
-        gst::debug!(CAT, "-->> {req:#?}");
+        gst::debug!(CAT, "Sending TEARDOWN request");
+        gst::trace!(CAT, "-->> {req:#?}");
         self.sink.send(req.into()).await?;
         Ok(self.cseq)
     }
@@ -6681,7 +6685,8 @@ impl RtspTaskState {
         }
 
         let req = req.build(body);
-        gst::debug!(CAT, "-->> {req:#?}");
+        gst::debug!(CAT, "Sending GET_PARAMETER request");
+        gst::trace!(CAT, "-->> {req:#?}");
         self.sink.send(req.into()).await?;
         Ok(self.cseq)
     }
@@ -6744,7 +6749,8 @@ impl RtspTaskState {
         }
 
         let req = req.build(Body::from(body_str.into_bytes()));
-        gst::debug!(CAT, "-->> {req:#?}");
+        gst::debug!(CAT, "Sending SET_PARAMETER request");
+        gst::trace!(CAT, "-->> {req:#?}");
         self.sink.send(req.into()).await?;
         Ok(self.cseq)
     }
