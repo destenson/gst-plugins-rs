@@ -153,7 +153,7 @@ impl Config {
 }
 
 fn sanitize_jitter(jitter: f64) -> f64 {
-    jitter.abs().min(0.95)
+    jitter.abs().min(0.5)
 }
 
 fn wait_for_state<E>(element: &E, desired: gst::State, label: &str)
@@ -283,9 +283,18 @@ fn create_source_bin(url: &str, sink_queue: &gst::Element, id: u32) -> Result<So
     let src = gst::ElementFactory::make("rtspsrc2")
         .name(&format!("rtspsrc2-source-{id}"))
         .property("location", url)
+        .property("async-handling", true)
         .property("protocols", "tcp")
-        .property("max-reconnection-attempts", -1i32)
+        // .property("max-reconnection-attempts", -1i32)
+        .property("max-reconnection-attempts", 5i32)
         .property("retry-strategy", "auto")
+        .property("latency", 200u32)
+        .property("buffer-mode", "slave")
+        .property("reconnection-timeout", 3_000_000_000u64)
+        .property("select-streams", "video")
+        .property("tcp-timeout", 3_000_000u64)
+        .property("timeout", 3_000_000_000u64)
+        .property("user-agent", "rtspsrc_cleanup_example/1.0")
         .build()
         .context(
             "Failed to create rtspsrc2 element. Did you build the plugin and set GST_PLUGIN_PATH?",
@@ -519,7 +528,7 @@ fn main() -> Result<()> {
     let sink = gst::ElementFactory::make("fakesink")
         .name("test-sink")
         .property("sync", false)
-        .property("async", false)
+        .property("async", true)
         .build()
         .context("Failed to create fakesink element")?;
 
