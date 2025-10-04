@@ -4,6 +4,6 @@
 // don't expose list_signals() and pad_templates() methods.
 // They're preserved here for future reference when these APIs become available.
 
-#![cfg(feature = "future-gstreamer-apis")]
+// #![cfg(feature = "future-gstreamer-apis")]
 
 // Original test code would go here...

@@ -63,7 +63,7 @@ members = [
     "video/rav1e",
     "video/skia",
     "video/videofx",
-    "video/vvdec",
+    # "video/vvdec",
     "video/webp",
 
     "apps/stream-manager",

@@ -257,6 +257,23 @@ audio = true
 onvif = true
 ```
 
+### Reconnection cleanup smoke test
+
+To validate that the pipeline can tear down and recreate `rtspsrc2` while the
+server is flapping connections, use the `rtspsrc_cleanup` example or the helper
+shell script:
+
+```bash
+cargo build -p gst-plugin-rtsp --example rtspsrc_cleanup
+cargo run -p gst-plugin-rtsp --example rtspsrc_cleanup -- --url rtsp://192.168.12.38:8554/test-h264 --restart-interval 25 --restart-jitter 0.25
+
+# or automate the setup, rebuild, and environment variables
+./test_reconnection_cleanup.sh rtsp://192.168.12.38:8554/test-h264 25 0.25
+```
+
+The example toggles the source to `READY/NULL` while reconnecting so you can
+observe for leaks or lingering tasks when the network is unreliable.
+
 ## Installation
 
 ### From Debian Package

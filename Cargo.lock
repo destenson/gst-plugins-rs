@@ -4090,18 +4090,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gst-plugin-vvdec"
-version = "0.14.0-alpha.1"
-dependencies = [
- "gst-plugin-version-helper",
- "gstreamer 0.25.0 (git+https://gitlab.freedesktop.org/gstreamer/gstreamer-rs?branch=main)",
- "gstreamer-audio",
- "gstreamer-check",
- "gstreamer-video",
- "vvdec",
-]
-
-[[package]]
 name = "gst-plugin-webp"
 version = "0.14.0-alpha.1"
 dependencies = [
@@ -10480,27 +10468,6 @@ checksum = "fb067e4cbd1ff067d1df46c9194b5de0e98efd2810bbc95c5d5e5f25a3231150"
 dependencies = [
  "cc",
  "libc",
-]
-
-[[package]]
-name = "vvdec"
-version = "0.6.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "689743f6dc5c608197123319f088d73d3048a9e5d93682b95b8a347243975cb0"
-dependencies = [
- "thiserror 2.0.16",
- "vvdec-sys",
-]
-
-[[package]]
-name = "vvdec-sys"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18df9e7fd48eb13204c547ccd570774b701981878489779c9a427ee97579f24d"
-dependencies = [
- "bindgen 0.71.1",
- "cmake",
- "system-deps 7.0.5",
 ]
 
 [[package]]
