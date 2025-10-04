@@ -16,10 +16,11 @@ logFile: mediamtx.log
 sysLogPrefix: mediamtx
 
 # Timeout of read operations.
-# Increased from 10s to 60s to tolerate network packet loss and temporary interruptions
-readTimeout: 60s
+# Keep low for fast failure detection when publisher stops sending data
+# This allows quick reconnection attempts rather than waiting for long timeouts
+readTimeout: 10s
 # Timeout of write operations.
-writeTimeout: 60s
+writeTimeout: 10s
 # Size of the queue of outgoing packets.
 # Increased from 512 to 2048 to buffer more data during network issues
 # This helps maintain downstream connections even when upstream has temporary problems
