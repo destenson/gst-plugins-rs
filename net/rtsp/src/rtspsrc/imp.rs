@@ -5359,17 +5359,6 @@ impl RtspManager {
     }
 
     fn new_with_settings(rtp2: bool, jitter_settings: Option<&Settings>) -> Self {
-        if let Some(settings) = jitter_settings {
-            gst::info!(
-                CAT,
-                "Creating RtspManager with settings: do_retransmission={}, latency={}, drop_on_latency={}, buffer_mode={:?}",
-                settings.do_retransmission,
-                settings.latency_ms,
-                settings.drop_on_latency,
-                settings.buffer_mode
-            );
-        }
-        
         let (recv, send) = if rtp2 {
             let recv = gst::ElementFactory::make_with_name("rtprecv", None)
                 .unwrap_or_else(|_| panic!("rtprecv not found"));
