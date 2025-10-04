@@ -137,7 +137,7 @@ generate_package() {
     
     # Find the generated package
     local deb_file
-    deb_file=$(find ${PROJECT_ROOT}/target/debian -name "*.deb" | head -n 1)
+    deb_file=$(find ${PROJECT_ROOT}/target/debian -name "*rtsp*.deb" | head -n 1)
     
     if [ -z "$deb_file" ]; then
         log_error "No .deb file found in ${PROJECT_ROOT}/target/debian/"
