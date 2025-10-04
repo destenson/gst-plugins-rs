@@ -3726,6 +3726,13 @@ impl RtspSrc {
                 // Check if we should reconnect
                 match &result {
                     Err(err) if err.is_network_error() => {
+                        if stop_token.is_cancelled() {
+                            gst::info!(
+                                CAT,
+                                "Stop requested during reconnection, aborting reconnect loop"
+                            );
+                            break Ok(());
+                        }
                         // Check if reconnection is enabled and we haven't exceeded max attempts
                         if max_reconnect_attempts < 0 || reconnect_count < max_reconnect_attempts {
                             reconnect_count += 1;
@@ -3749,6 +3756,13 @@ impl RtspSrc {
                             // Recreate the command queue receiver immediately so external
                             // state changes (PAUSE/PLAY/etc.) can be enqueued while we wait
                             // for the connection to come back up.
+                            if stop_token.is_cancelled() {
+                                gst::info!(
+                                    CAT,
+                                    "Stop requested before scheduling reconnection, aborting"
+                                );
+                                break Ok(());
+                            }
                             let (tx, new_rx) = mpsc::channel(16);
                             {
                                 let mut cmd_queue_guard = task_src.command_queue.lock().unwrap();
@@ -3792,7 +3806,15 @@ impl RtspSrc {
 
                                 // Try to connect with timeout
                                 let connect_timeout = std::time::Duration::from_nanos(settings.timeout.nseconds());
-                                match time::timeout(connect_timeout, racer.connect(&url)).await {
+                                let connect_result = tokio::select! {
+                                    res = time::timeout(connect_timeout, racer.connect(&url)) => res,
+                                    _ = stop_token.cancelled() => {
+                                        gst::info!(CAT, "Stop requested during TCP reconnection attempt");
+                                        break Ok(());
+                                    }
+                                };
+
+                                match connect_result {
                                     Ok(Ok(mut rtsp_stream)) => {
                                         // Set TCP nodelay if it's a plain TCP stream
                                         if let super::tls::RtspStream::Plain(ref tcp_stream) = rtsp_stream {
@@ -3876,6 +3898,10 @@ impl RtspSrc {
             {
                 let mut stop_token_guard = task_src.stop_token.lock().unwrap();
                 stop_token_guard.take();
+            }
+            {
+                let mut cmd_queue_guard = task_src.command_queue.lock().unwrap();
+                cmd_queue_guard.take();
             }
 
             // Cleanup after stopping
