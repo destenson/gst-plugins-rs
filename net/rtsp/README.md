@@ -269,6 +269,11 @@ cargo run -p gst-plugin-rtsp --example rtspsrc_cleanup -- --url rtsp://192.168.1
 
 # or automate the setup, rebuild, and environment variables
 ./test_reconnection_cleanup.sh rtsp://192.168.12.38:8554/test-h264 25 0.25
+
+The helper prints a human-friendly log of connection retries, reconnection
+attempts, and RTSP errors directly to stdout, so you no longer need to keep a
+`GST_DEBUG` trace running unless you want deeper diagnostics. Redirect the
+output to a file (for example with `tee`) if you want to archive the run.
 ```
 
 The example toggles the source to `READY/NULL` while reconnecting so you can

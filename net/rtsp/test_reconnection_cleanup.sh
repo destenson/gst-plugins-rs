@@ -21,19 +21,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RTSP_DIR="$(dirname "$SCRIPT_DIR")"
 PROJECT_ROOT="$(dirname "$RTSP_DIR")"
 
-echo "Using PROJECT_ROOT: $PROJECT_ROOT"
-echo "Using RTSP_DIR: $RTSP_DIR"
-echo "Using SCRIPT_DIR: $SCRIPT_DIR"
-echo
-
-# ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# PROJECT_ROOT="$(cd "${ROOT_DIR}" && git rev-parse --show-toplevel 2>/dev/null || cd "${ROOT_DIR}" && pwd)"
+# echo "Using PROJECT_ROOT: $PROJECT_ROOT"
+# echo "Using RTSP_DIR: $RTSP_DIR"
+# echo "Using SCRIPT_DIR: $SCRIPT_DIR"
+# echo
 
 RTSP_URL="${1:-rtsp://192.168.12.38:8554/test-h264}"
 RESTART_INTERVAL="${2:-25}"
 RESTART_JITTER="${3:-0.25}"
 
-export GST_DEBUG="${GST_DEBUG:-rtspsrc2:4}"
+if [[ -n "${GST_DEBUG:-}" ]]; then
+  echo "Using existing GST_DEBUG=${GST_DEBUG}"
+  export GST_DEBUG
+else
+  # echo "GST_DEBUG not set; relying on example status output"
+  unset GST_DEBUG || true
+fi
 export GST_PLUGIN_PATH="${PROJECT_ROOT}/net/rtsp/target/debug:${GST_PLUGIN_PATH:-}"
 
 pushd "${PROJECT_ROOT}/net/rtsp" >/dev/null

@@ -36,7 +36,7 @@ impl SourceBinState {
         if let Some(ghost) = ghost {
             let pad: gst::Pad = ghost.clone().upcast();
             if let Some(peer) = pad.peer() {
-                let _ = pad.unlink(&peer);
+                unlink_pads(&pad, &peer);
             }
             let _ = pad.set_active(false);
             let _ = self.bin.remove_pad(&ghost);
@@ -196,6 +196,35 @@ fn next_restart_delay(base_interval: u32, jitter: f64) -> (f64, Duration) {
     (selected, Duration::from_secs_f64(selected))
 }
 
+fn unlink_pads(pad_a: &gst::Pad, pad_b: &gst::Pad) {
+    let (src, sink) = match pad_a.direction() {
+        gst::PadDirection::Src => (pad_a, pad_b),
+        _ => match pad_b.direction() {
+            gst::PadDirection::Src => (pad_b, pad_a),
+            _ => {
+                eprintln!(
+                    "Cannot unlink pads without a source: {:?} -> {:?}",
+                    pad_a, pad_b
+                );
+                return;
+            }
+        },
+    };
+
+    let Some(current_peer) = src.peer() else {
+        return;
+    };
+
+    if current_peer != *sink {
+        eprintln!(
+            "Pads are not linked to each other, cannot unlink: {} -> {}",
+            src.path_string(),
+            sink.path_string()
+        );
+        return;
+    }
+}
+
 fn schedule_periodic_restart(
     base_interval: u32,
     jitter: f64,
@@ -283,13 +312,14 @@ fn create_source_bin(url: &str, sink_queue: &gst::Element, id: u32) -> Result<So
     let src = gst::ElementFactory::make("rtspsrc2")
         .name(&format!("rtspsrc2-source-{id}"))
         .property("location", url)
-        .property("async-handling", true)
         .property("protocols", "tcp")
-        // .property("max-reconnection-attempts", -1i32)
-        .property("max-reconnection-attempts", 5i32)
-        .property("retry-strategy", "auto")
-        .property("latency", 200u32)
+        .property("async-handling", true)
         .property("buffer-mode", "slave")
+        .property("do-retransmission", false)
+        .property("latency", 200u32)
+        .property("max-reconnection-attempts", 5i32)
+        // .property("max-reconnection-attempts", -1i32)
+        .property("retry-strategy", "auto")
         .property("reconnection-timeout", 3_000_000_000u64)
         .property("select-streams", "video")
         .property("tcp-timeout", 3_000_000u64)
@@ -348,7 +378,7 @@ fn create_source_bin(url: &str, sink_queue: &gst::Element, id: u32) -> Result<So
         if let Some(existing) = existing {
             let existing_pad: gst::Pad = existing.clone().upcast();
             if let Some(peer) = existing_pad.peer() {
-                let _ = existing_pad.unlink(&peer);
+                unlink_pads(&existing_pad, &peer);
             }
             let _ = existing_pad.set_active(false);
             let _ = bin_for_decode.remove_pad(&existing);
@@ -361,13 +391,7 @@ fn create_source_bin(url: &str, sink_queue: &gst::Element, id: u32) -> Result<So
                 );
                 return;
             };
-            if let Err(err) = sink_pad.unlink(&peer) {
-                eprintln!(
-                    "Failed to unlink existing peer from queue sink before relinking: {:?}",
-                    err
-                );
-                return;
-            }
+            unlink_pads(&sink_pad, &peer);
         }
 
         let ghost_name = format!("src-{}", pad.name());
@@ -414,6 +438,7 @@ fn create_source_bin(url: &str, sink_queue: &gst::Element, id: u32) -> Result<So
                 let _ = ghost_pad_ref.set_active(false);
                 let _ = bin_for_decode.remove_pad(&ghost_pad);
             }
+            
         }
     });
 
@@ -446,7 +471,7 @@ fn replace_source(
 
     if let Some(sink_pad) = sink_queue.static_pad("sink") {
         if let Some(peer) = sink_pad.peer() {
-            let _ = sink_pad.unlink(&peer);
+            unlink_pads(&sink_pad, &peer);
         }
     }
     sink_queue.send_event(gst::event::FlushStart::new());
@@ -586,6 +611,65 @@ fn main() -> Result<()> {
                             println!("Reached max restarts ({limit}), stopping main loop");
                             loop_clone.quit();
                             return glib::ControlFlow::Break;
+                        }
+                    }
+                }
+            }
+            MessageView::Warning(warning) => {
+                eprintln!(
+                    "Warning from {:?}: {} ({:?})",
+                    warning.src().map(|s| s.path_string()),
+                    warning.error(),
+                    warning.debug()
+                );
+            }
+            MessageView::Info(info) => {
+                println!(
+                    "Info from {:?}: {} ({:?})",
+                    info.src().map(|s| s.path_string()),
+                    info.error(),
+                    info.debug()
+                );
+            }
+            MessageView::Progress(progress) => {
+                let (ty, _code, text) = progress.get();
+                println!("Progress {:?}: {}", ty, text.replace("\"", ""));
+            }
+            MessageView::Element(element) => {
+                if let Some(structure) = element.structure() {
+                    match structure.name().as_str() {
+                        "rtsp-connection-retry" => {
+                            let attempt = structure.get::<u32>("attempt").unwrap_or_default();
+                            let delay_ms =
+                                structure.get::<u64>("next-delay-ms").unwrap_or_default();
+                            let err = structure
+                                .get::<String>("error")
+                                .unwrap_or_else(|_| "(unknown error)".into());
+                            println!(
+                                "Connection retry #{attempt} scheduled in {delay_ms}ms: {err}"
+                            );
+                        }
+                        "rtsp-reconnection-attempt" => {
+                            let reason = structure
+                                .get::<String>("reason")
+                                .unwrap_or_else(|_| "unknown".into());
+                            println!("Reconnection attempt starting ({reason})");
+                        }
+                        "rtsp-reconnection-success" => {
+                            let elapsed_ms = structure.get::<u64>("elapsed-ms").unwrap_or_default();
+                            println!("Reconnection succeeded in {elapsed_ms}ms");
+                        }
+                        "rtsp-reconnection-failed" => {
+                            let err = structure
+                                .get::<String>("error")
+                                .unwrap_or_else(|_| "(unknown error)".into());
+                            eprintln!("Reconnection failed: {err}");
+                        }
+                        "rtsp-success" | "rtsp-error" | "rtsp-parameters" => {
+                            println!("RTSP message: {structure:?}");
+                        }
+                        other => {
+                            println!("Element message {other}: {structure:?}");
                         }
                     }
                 }
