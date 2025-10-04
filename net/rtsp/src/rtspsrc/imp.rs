@@ -80,7 +80,7 @@ const DEFAULT_PROBATION: u32 = 2;
 
 // RTCP control defaults (matching original rtspsrc)
 const DEFAULT_DO_RTCP: bool = true;
-const DEFAULT_DO_RETRANSMISSION: bool = true;
+const DEFAULT_DO_RETRANSMISSION: bool = false; // Disabled for live feeds - don't wait for retransmissions
 const DEFAULT_MAX_RTCP_RTP_TIME_DIFF: i32 = -1;
 
 // Keep-alive and timeout defaults (matching original rtspsrc)
@@ -5359,6 +5359,17 @@ impl RtspManager {
     }
 
     fn new_with_settings(rtp2: bool, jitter_settings: Option<&Settings>) -> Self {
+        if let Some(settings) = jitter_settings {
+            gst::info!(
+                CAT,
+                "Creating RtspManager with settings: do_retransmission={}, latency={}, drop_on_latency={}, buffer_mode={:?}",
+                settings.do_retransmission,
+                settings.latency_ms,
+                settings.drop_on_latency,
+                settings.buffer_mode
+            );
+        }
+        
         let (recv, send) = if rtp2 {
             let recv = gst::ElementFactory::make_with_name("rtprecv", None)
                 .unwrap_or_else(|_| panic!("rtprecv not found"));
@@ -5551,7 +5562,7 @@ impl RtspManager {
 
         // Apply do-retransmission (similar to original rtspsrc line 4531)
         if let Some(_property) = rtpbin.find_property("do-retransmission") {
-            gst::debug!(
+            gst::info!(
                 CAT,
                 "Setting do-retransmission={} on rtpbin",
                 settings.do_retransmission
@@ -5561,7 +5572,7 @@ impl RtspManager {
             gst::warning!(CAT, "rtpbin does not support do-retransmission property");
         }
 
-        gst::debug!(
+        gst::info!(
             CAT,
             "Applied RTCP settings: do-rtcp={}, do-retransmission={}, max-rtcp-rtp-time-diff={}",
             settings.do_rtcp,
