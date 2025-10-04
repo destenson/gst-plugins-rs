@@ -8,12 +8,19 @@
 #
 # Defaults:
 #   RTSP URL: rtsp://192.168.12.38:8554/test-h264
-#   Restart interval: 25 seconds
+#   Restart interval: 60 seconds
 #   Restart jitter: 0.25 (±25%)
+#
+# The example will display frame statistics every 5 seconds showing:
+#   - Total frames received
+#   - FPS over the last 5 seconds
+#   - Average FPS since startup
+#
+# To use autovideosink for visual verification instead, pass --autovideosink
 #
 # Environment variables:
 #   GST_PLUGIN_PATH – should point to the build output containing the plugin.
-#   GST_DEBUG       – optional, defaults to "rtspsrc2:6" for detailed logs.
+#   GST_DEBUG       – optional, defaults to unset (relying on example status output)
 
 set -euo pipefail
 
@@ -27,7 +34,7 @@ PROJECT_ROOT="$(dirname "$RTSP_DIR")"
 # echo
 
 RTSP_URL="${1:-rtsp://192.168.12.38:8554/test-h264}"
-RESTART_INTERVAL="${2:-25}"
+RESTART_INTERVAL="${2:-60}"
 RESTART_JITTER="${3:-0.25}"
 
 if [[ -n "${GST_DEBUG:-}" ]]; then
