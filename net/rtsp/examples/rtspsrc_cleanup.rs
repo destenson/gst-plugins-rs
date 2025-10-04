@@ -1,7 +1,8 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context, Result};
 use gst::prelude::*;
@@ -56,6 +57,7 @@ struct Config {
     restart_interval: Option<u32>,
     max_restarts: Option<u32>,
     restart_jitter: Option<f64>,
+    use_autovideosink: bool,
 }
 
 impl Config {
@@ -65,6 +67,7 @@ impl Config {
         let mut restart_interval = None;
         let mut max_restarts = None;
         let mut restart_jitter = None;
+        let mut use_autovideosink = false;
 
         let args = std::env::args().skip(1).collect::<Vec<_>>();
         if args.iter().any(|a| a == "--help" || a == "-h") {
@@ -119,6 +122,9 @@ impl Config {
                         .ok_or_else(|| anyhow!("--restart-jitter expects a value"))?;
                     restart_jitter = Some(raw.parse().context("Invalid restart jitter value")?);
                 }
+                "--autovideosink" => {
+                    use_autovideosink = true;
+                }
                 other => {
                     return Err(anyhow!("Unknown argument: {other}"));
                 }
@@ -131,6 +137,7 @@ impl Config {
             restart_interval,
             max_restarts,
             restart_jitter,
+            use_autovideosink,
         })
     }
 
@@ -143,6 +150,7 @@ impl Config {
         println!(
             "  --restart-jitter <fraction>   Jitter to apply around the restart interval (default: 0.25 = ±25%)"
         );
+        println!("  --autovideosink               Use autovideosink instead of fakesink (allows visual frame verification)");
         println!();
         println!("Environment:");
         println!("  RTSP_URL                      Default RTSP URL if --url is omitted");
@@ -550,12 +558,35 @@ fn main() -> Result<()> {
         .name("output-queue")
         .build()
         .context("Failed to create queue element")?;
-    let sink = gst::ElementFactory::make("fakesink")
-        .name("test-sink")
-        .property("sync", false)
-        .property("async", true)
-        .build()
-        .context("Failed to create fakesink element")?;
+    
+    let (sink, frame_counter) = if config.use_autovideosink {
+        println!("Using autovideosink (visual output)");
+        let sink = gst::ElementFactory::make("autovideosink")
+            .name("video-sink")
+            .property("sync", false)
+            .build()
+            .context("Failed to create autovideosink element")?;
+        (sink, None)
+    } else {
+        println!("Using fakesink (frame counter enabled)");
+        let frame_counter = Arc::new(AtomicU64::new(0));
+        let sink = gst::ElementFactory::make("fakesink")
+            .name("test-sink")
+            .property("sync", false)
+            .property("async", true)
+            .build()
+            .context("Failed to create fakesink element")?;
+        
+        // Add a probe to count frames
+        let counter_clone = frame_counter.clone();
+        let sink_pad = sink.static_pad("sink").context("fakesink has no sink pad")?;
+        sink_pad.add_probe(gst::PadProbeType::BUFFER, move |_pad, _info| {
+            counter_clone.fetch_add(1, Ordering::Relaxed);
+            gst::PadProbeReturn::Ok
+        });
+        
+        (sink, Some(frame_counter))
+    };
 
     pipeline.add_many(&[&sink_queue, &sink])?;
     sink_queue.link(&sink)?;
@@ -706,6 +737,42 @@ fn main() -> Result<()> {
             replacing.clone(),
             main_loop.clone(),
         );
+    }
+
+    // Add periodic frame counter reporting
+    if let Some(counter) = frame_counter {
+        let start_time = Instant::now();
+        let mut last_count = 0u64;
+        let mut last_time = start_time;
+        
+        glib::timeout_add_local(Duration::from_secs(1), move || {
+            let current_count = counter.load(Ordering::Relaxed);
+            let now = Instant::now();
+            let elapsed = now.duration_since(last_time).as_secs_f64();
+            let total_elapsed = now.duration_since(start_time).as_secs_f64();
+            
+            let frames_in_period = current_count.saturating_sub(last_count);
+            let fps = if elapsed > 0.0 {
+                frames_in_period as f64 / elapsed
+            } else {
+                0.0
+            };
+            let avg_fps = if total_elapsed > 0.0 {
+                current_count as f64 / total_elapsed
+            } else {
+                0.0
+            };
+            
+            println!(
+                "Frame stats: {} total frames, {:.1} fps (last 1s), {:.1} fps (avg)",
+                current_count, fps, avg_fps
+            );
+            
+            last_count = current_count;
+            last_time = now;
+            
+            glib::ControlFlow::Continue
+        });
     }
 
     println!("Press Ctrl+C to stop the test. Waiting for reconnections...");
