@@ -3694,8 +3694,12 @@ impl RtspSrc {
             };
 
             let mut state = RtspTaskState::new(url.clone(), stream, sink, user_id.clone(), user_pw.clone());
-            let mut reconnect_count = 0;
-            let max_reconnect_attempts = settings.max_reconnection_attempts;
+            let mut reconnect_count = 0u32;
+            let max_reconnect_attempts = if settings.max_reconnection_attempts > 0 {
+                settings.max_reconnection_attempts as u32
+            } else {
+                u32::MAX
+            }; // Use u32::MAX to represent unlimited attempts
             let reconnection_timeout = settings.reconnection_timeout;
             let retry_config = super::retry::RetryConfig {
                 strategy: settings.retry_strategy,
@@ -3734,12 +3738,26 @@ impl RtspSrc {
                             break Ok(());
                         }
                         // Check if reconnection is enabled and we haven't exceeded max attempts
-                        if max_reconnect_attempts < 0 || reconnect_count < max_reconnect_attempts {
+                        if reconnect_count < max_reconnect_attempts {
                             reconnect_count += 1;
+                            state.reconnect_count = reconnect_count; // Update state for use in rtsp_task_reconnect
+                            
+                            // Track when reconnection started using GStreamer's clock
+                            if let Some(clock) = task_src.obj().clock() {
+                                state.reconnection_start_time = Some(clock.time());
+                            } else {
+                                // Fallback to monotonic time if no clock is available
+                                state.reconnection_start_time = Some(gst::ClockTime::from_nseconds(
+                                    std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap_or_default()
+                                        .as_nanos() as u64
+                                ));
+                            }
 
                             gst::warning!(CAT, "Connection lost, attempting reconnection (attempt {}/{})",
                                 reconnect_count,
-                                if max_reconnect_attempts < 0 { "unlimited".to_string() } else { max_reconnect_attempts.to_string() }
+                                if max_reconnect_attempts == u32::MAX { "unlimited".to_string() } else { max_reconnect_attempts.to_string() }
                             );
 
                             // Post a message about the reconnection attempt
@@ -3837,18 +3855,9 @@ impl RtspSrc {
                                         state.session_manager = super::session_manager::SessionManager::new();
                                         state.auth_state = AuthState::default();
 
-                                        // Post reconnection success message
-                                        let msg = gst::message::Element::builder(
-                                            gst::Structure::builder("rtsp-reconnection-success")
-                                                .field("attempt", reconnect_count)
-                                                .build(),
-                                        )
-                                        .src(&*task_src.obj())
-                                        .build();
-                                        let _ = task_src.obj().post_message(msg);
-
                                         // Now we need to re-establish the RTSP session
                                         // The rtsp_task will detect this is a reconnection and call rtsp_task_reconnect
+                                        // Success message will be posted after buffers start flowing
                                         gst::info!(CAT, "TCP connection restored, will re-establish RTSP session");
 
                                         continue; // Continue with the new connection
@@ -4235,8 +4244,9 @@ impl RtspSrc {
     ) -> std::result::Result<(), super::error::RtspError> {
         gst::info!(
             CAT,
-            "Running simplified reconnection flow for {} streams",
-            state.setup_params.len()
+            "Running simplified reconnection flow for {} streams (attempt {})",
+            state.setup_params.len(),
+            state.reconnect_count
         );
 
         let cmd_tx = self.cmd_queue();
@@ -4244,6 +4254,8 @@ impl RtspSrc {
 
         // Flag to track if we've received a PLAY response and are ready for data
         let mut ready_for_data = false;
+        // Flag to track if we've posted the reconnection success message
+        let mut reconnection_success_posted = false;
 
         // For reconnection, we just need to:
         // 1. Do OPTIONS to verify server is alive
@@ -4544,7 +4556,41 @@ impl RtspSrc {
                                 let buffer = gst::Buffer::from_slice(data.into_body());
                                 match appsrc.push_buffer(buffer) {
                                     Ok(_) => {
-                                        // Successfully pushed
+                                        // Successfully pushed - post reconnection success on first buffer
+                                        if !reconnection_success_posted {
+                                            reconnection_success_posted = true;
+                                            
+                                            // Calculate elapsed time since reconnection started using GStreamer's clock
+                                            let elapsed_ms = if let Some(start_time) = state.reconnection_start_time {
+                                                if let Some(clock) = self.obj().clock() {
+                                                    let current_time = clock.time();
+                                                    current_time.saturating_sub(start_time).mseconds()
+                                                } else {
+                                                    0u64
+                                                }
+                                            } else {
+                                                0u64
+                                            };
+                                            
+                                            let msg = gst::message::Element::builder(
+                                                gst::Structure::builder("rtsp-reconnection-success")
+                                                    .field("attempt", state.reconnect_count)
+                                                    .field("elapsed-ms", elapsed_ms)
+                                                    .build(),
+                                            )
+                                            .src(&*self.obj())
+                                            .build();
+                                            let _ = self.obj().post_message(msg);
+                                            gst::info!(
+                                                CAT,
+                                                "Reconnection successful - buffers flowing (attempt {}, elapsed {}ms)",
+                                                state.reconnect_count,
+                                                elapsed_ms
+                                            );
+                                            
+                                            // Clear the start time now that reconnection is complete
+                                            state.reconnection_start_time = None;
+                                        }
                                     }
                                     Err(gst::FlowError::Flushing) => {
                                         // Elements might still be transitioning
@@ -5480,6 +5526,10 @@ impl RtspManager {
     }
 }
 
+pub type RtspMessageStream =
+    Pin<Box<dyn Stream<Item = Result<Message<Body>, super::tcp_message::ReadError>> + Send>>;
+pub type RtspMessageSink = Pin<Box<dyn Sink<Message<Body>, Error = std::io::Error> + Send>>;
+
 struct RtspTaskState {
     cseq: u32,
     url: Url,
@@ -5488,9 +5538,8 @@ struct RtspTaskState {
     aggregate_control: Option<Url>,
     sdp: Option<sdp_types::Session>,
 
-    stream:
-        Pin<Box<dyn Stream<Item = Result<Message<Body>, super::tcp_message::ReadError>> + Send>>,
-    sink: Pin<Box<dyn Sink<Message<Body>, Error = std::io::Error> + Send>>,
+    stream: RtspMessageStream,
+    sink: RtspMessageSink,
 
     setup_params: Vec<RtspSetupParams>,
     handles: Vec<JoinHandle<()>>,
@@ -5502,6 +5551,10 @@ struct RtspTaskState {
     pending_set_parameter_promises: std::collections::HashMap<u32, gst::Promise>,
     // Playback state to restore after reconnection
     playback_state: PlaybackState,
+    // Reconnection attempt counter
+    reconnect_count: u32,
+    // Timestamp when reconnection started (for elapsed time calculation, using GStreamer clock)
+    reconnection_start_time: Option<gst::ClockTime>,
 }
 
 struct RtspSetupParams {
@@ -5637,6 +5690,8 @@ impl RtspTaskState {
             pending_get_parameter_promises: std::collections::HashMap::new(),
             pending_set_parameter_promises: std::collections::HashMap::new(),
             playback_state: PlaybackState::Stopped,
+            reconnect_count: 0,
+            reconnection_start_time: None,
         }
     }
 
