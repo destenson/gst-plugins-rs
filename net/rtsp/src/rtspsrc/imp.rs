@@ -1072,6 +1072,46 @@ impl RtspSrc {
         (buffer_queue.len(), buffer_queue.total_bytes())
     }
 
+    /// Flush the RTP pipeline to clear jitter buffer state before reconnection.
+    /// This sends FLUSH_START and FLUSH_STOP events through all RTP/RTCP appsrc elements
+    /// to ensure clean state when reconnecting with potentially different SSRCs.
+    fn flush_rtp_pipeline(&self) {
+        gst::info!(CAT, "Flushing RTP pipeline before reconnection");
+        
+        // Collect all RTP and RTCP appsrc elements
+        let mut appsrcs_to_flush = Vec::new();
+        
+        // Get the bin from obj - RtspSrc is a Bin
+        let obj = self.obj();
+        let bin = obj.upcast_ref::<gst::Bin>();
+        
+        // Find all children that are appsrc elements (rtp_appsrc_* and rtcp_appsrc_*)
+        for child in bin.children() {
+            if let Ok(appsrc) = child.downcast::<gst_app::AppSrc>() {
+                let name = appsrc.name();
+                if name.starts_with("rtp_appsrc_") || name.starts_with("rtcp_appsrc_") {
+                    appsrcs_to_flush.push(appsrc);
+                }
+            }
+        }
+        
+        // Send flush events to each appsrc
+        for appsrc in appsrcs_to_flush {
+            let name = appsrc.name();
+            gst::debug!(CAT, "Sending FLUSH_START to {}", name);
+            if !appsrc.send_event(gst::event::FlushStart::new()) {
+                gst::warning!(CAT, "Failed to send FLUSH_START to {}", name);
+            }
+            
+            gst::debug!(CAT, "Sending FLUSH_STOP to {}", name);
+            if !appsrc.send_event(gst::event::FlushStop::new(true)) {
+                gst::warning!(CAT, "Failed to send FLUSH_STOP to {}", name);
+            }
+        }
+        
+        gst::info!(CAT, "RTP pipeline flush complete");
+    }
+
     /// Create an AppSrc wrapper that handles buffering
     fn create_buffering_appsrc(&self, appsrc: gst_app::AppSrc) -> BufferingAppSrc {
         BufferingAppSrc {
@@ -3759,6 +3799,10 @@ impl RtspSrc {
                                 reconnect_count,
                                 if max_reconnect_attempts == u32::MAX { "unlimited".to_string() } else { max_reconnect_attempts.to_string() }
                             );
+
+                            // Flush the RTP pipeline to clear jitter buffer state before reconnecting
+                            // This prevents old sequence numbers and SSRCs from causing issues
+                            task_src.flush_rtp_pipeline();
 
                             // Post a message about the reconnection attempt
                             let msg = gst::message::Element::builder(
