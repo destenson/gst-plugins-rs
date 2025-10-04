@@ -3286,20 +3286,18 @@ impl ElementImpl for RtspSrc {
                             // self.post_error_message()
                             let cancel_clone = cancel_clone.lock();
                             match cancel_clone {
-                                Ok(canceller) => {
-                                    match canceller.as_ref() {
-                                        Some(c) => {
-                                            if c.is_cancelled() {
-                                                gst::error!(CAT, "Changing state while cancelled");
-                                            } else {
-                                                c.cancel();
-                                            }
-                                        }
-                                        None => {
-                                            gst::error!(CAT, "No cancellation available");
+                                Ok(canceller) => match canceller.as_ref() {
+                                    Some(c) => {
+                                        if c.is_cancelled() {
+                                            gst::error!(CAT, "Changing state while cancelled");
+                                        } else {
+                                            c.cancel();
                                         }
                                     }
-                                }
+                                    None => {
+                                        gst::error!(CAT, "No cancellation available");
+                                    }
+                                },
                                 Err(e) => {
                                     gst::error!(CAT, "No stop_token available: {e}");
                                 }
@@ -3395,8 +3393,7 @@ impl RtspSrc {
 
     #[track_caller]
     fn cmd_queue(&self) -> mpsc::Sender<Commands> {
-        self
-            .cmd_queue_opt()
+        self.cmd_queue_opt()
             .expect("command queue is not available")
     }
 
@@ -3415,10 +3412,14 @@ impl RtspSrc {
         let task_src = self.ref_counted();
 
         let mut task_handle = self.task_handle.lock().unwrap();
-        
+
         // Check if task is already running
         if task_handle.is_some() {
-            gst::debug!(CAT, imp = self, "Task already running, not starting a new one");
+            gst::debug!(
+                CAT,
+                imp = self,
+                "Task already running, not starting a new one"
+            );
             return Ok(());
         }
 
@@ -3433,8 +3434,13 @@ impl RtspSrc {
         let (tx, rx) = mpsc::channel(2);
         {
             let mut cmd_queue_opt = self.command_queue.lock().unwrap();
-            debug_assert!(cmd_queue_opt.is_none());
-            cmd_queue_opt.replace(tx);
+            if cmd_queue_opt.replace(tx).is_some() {
+                gst::warning!(
+                    CAT,
+                    imp = self,
+                    "Replacing existing command queue while starting"
+                );
+            }
         }
 
         let join_handle = RUNTIME.spawn(async move {
@@ -3783,7 +3789,7 @@ impl RtspSrc {
                                     proxy_config: None, // TODO: Restore proxy config if needed
                                 };
                                 let mut racer = super::connection_racer::ConnectionRacer::new(racing_config);
-                                
+
                                 // Try to connect with timeout
                                 let connect_timeout = std::time::Duration::from_nanos(settings.timeout.nseconds());
                                 match time::timeout(connect_timeout, racer.connect(&url)).await {
@@ -3818,7 +3824,7 @@ impl RtspSrc {
                                         .src(&*task_src.obj())
                                         .build();
                                         let _ = task_src.obj().post_message(msg);
-                                        
+
                                         // Now we need to re-establish the RTSP session
                                         // The rtsp_task will detect this is a reconnection and call rtsp_task_reconnect
                                         gst::info!(CAT, "TCP connection restored, will re-establish RTSP session");
@@ -3846,7 +3852,7 @@ impl RtspSrc {
                             .src(&*task_src.obj())
                             .build();
                             let _ = task_src.obj().post_message(msg);
-                            
+
                             gst::error!(CAT, "Maximum reconnection attempts ({}) exceeded", max_reconnect_attempts);
                             break result;
                         }
@@ -3870,10 +3876,6 @@ impl RtspSrc {
             {
                 let mut stop_token_guard = task_src.stop_token.lock().unwrap();
                 stop_token_guard.take();
-            }
-            {
-                let mut cmd_queue_guard = task_src.command_queue.lock().unwrap();
-                cmd_queue_guard.take();
             }
 
             // Cleanup after stopping
@@ -4205,7 +4207,11 @@ impl RtspSrc {
         mut cmd_rx: mpsc::Receiver<Commands>,
         stop_token: CancellationToken,
     ) -> std::result::Result<(), super::error::RtspError> {
-        gst::info!(CAT, "Running simplified reconnection flow for {} streams", state.setup_params.len());
+        gst::info!(
+            CAT,
+            "Running simplified reconnection flow for {} streams",
+            state.setup_params.len()
+        );
 
         let cmd_tx = self.cmd_queue();
         let settings = { self.settings.lock().unwrap().clone() };
@@ -4408,13 +4414,13 @@ impl RtspSrc {
 
         // Set expected_response based on what command we sent
         let mut expected_response = None;
-        
+
         // If we sent a PLAY command, we should expect a PLAY response
         if matches!(state.playback_state, PlaybackState::Playing { .. }) {
             expected_response = Some((Method::Play, state.cseq)); // cseq used in the PLAY request
             gst::info!(CAT, "Expecting PLAY response with CSeq: {}", state.cseq);
         }
-        
+
         gst::info!(CAT, "Reconnection setup complete, entering main loop");
         loop {
             // Main message handling loop (same as original)
@@ -4453,11 +4459,14 @@ impl RtspSrc {
                         Ok(Message::Response(rsp)) => {
                             // Handle server responses
                             let cseq = rsp.typed_header::<CSeq>();
-                            
-                            gst::debug!(CAT, "Received response: {} CSeq: {:?}, expected: {:?}", 
-                                rsp.status(), 
+
+                            gst::debug!(
+                                CAT,
+                                "Received response: {} CSeq: {:?}, expected: {:?}",
+                                rsp.status(),
                                 cseq.as_ref().ok().and_then(|c| c.as_ref()).map(|c| *c),
-                                expected_response.as_ref().map(|(m, c)| (m, *c)));
+                                expected_response.as_ref().map(|(m, c)| (m, *c))
+                            );
 
                             if let Some((expected_method, expected_cseq)) = expected_response.take()
                             {
@@ -4502,7 +4511,7 @@ impl RtspSrc {
                                 );
                                 continue;
                             }
-                            
+
                             gst::trace!(CAT, "Received data on channel {}", data.channel_id());
 
                             if let Some(appsrc) = tcp_interleave_appsrcs.get(&data.channel_id()) {
