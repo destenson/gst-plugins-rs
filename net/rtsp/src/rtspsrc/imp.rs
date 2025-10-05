@@ -4826,6 +4826,7 @@ impl RtspSrc {
                             settings.receive_mtu,
                             None,
                             Some(buffer_queue),
+                            None, // No shared RTCP addr for multicast
                         )
                         .await
                     }));
@@ -4844,6 +4845,7 @@ impl RtspSrc {
                                 true,
                                 rx,
                                 Some(buffer_queue),
+                                None, // No shared RTCP addr for multicast
                             )
                             .await
                         }));
@@ -4863,18 +4865,28 @@ impl RtspSrc {
                         );
                         continue;
                     };
-                    let (rtp_sender_addr, rtcp_sender_addr) = match (source, server_port) {
+                    
+                    // Determine sender addresses and handle auto-detection case
+                    let (rtp_sender_addr, rtcp_sender_addr, shared_rtcp_addr) = match (source, server_port) {
                         (Some(ip), Some((rtp_port, Some(rtcp_port)))) => {
                             let ip = ip.parse().unwrap();
                             (
                                 Some(SocketAddr::new(ip, *rtp_port)),
                                 Some(SocketAddr::new(ip, *rtcp_port)),
+                                None,
                             )
                         }
                         (Some(ip), Some((rtp_port, None))) => {
-                            (Some(SocketAddr::new(ip.parse().unwrap(), *rtp_port)), None)
+                            (Some(SocketAddr::new(ip.parse().unwrap(), *rtp_port)), None, None)
                         }
-                        _ => (None, None),
+                        // Server said 0.0.0.0 - need to auto-detect from first packet
+                        // Create shared state so RTP task can notify RTCP task of discovered IP
+                        (None, Some((_rtp_port, Some(rtcp_port)))) => {
+                            let shared = Arc::new(std::sync::Mutex::new(None));
+                            let rtcp_port = *rtcp_port;
+                            (None, None, Some((shared, rtcp_port)))
+                        }
+                        _ => (None, None, None),
                     };
 
                     // Spawn RTP udp receive task
@@ -4884,6 +4896,7 @@ impl RtspSrc {
                     // Configure probation on the RTP session
                     manager.configure_session(rtpsession_n as u32, settings.probation)?;
                     let buffer_queue = self.buffer_queue.clone();
+                    let shared_rtcp_for_rtp = shared_rtcp_addr.clone();
                     state.handles.push(RUNTIME.spawn(async move {
                         udp_rtp_task(
                             &rtp_socket,
@@ -4892,6 +4905,7 @@ impl RtspSrc {
                             settings.receive_mtu,
                             rtp_sender_addr,
                             Some(buffer_queue),
+                            shared_rtcp_for_rtp,
                         )
                         .await
                     }));
@@ -4901,6 +4915,7 @@ impl RtspSrc {
                         let rtcp_appsrc = self.make_rtcp_appsrc(rtpsession_n, &manager)?;
                         self.make_rtcp_appsink(rtpsession_n, &manager, on_rtcp)?;
                         let buffer_queue = self.buffer_queue.clone();
+                        let shared_rtcp_for_rtcp = shared_rtcp_addr.as_ref().map(|(s, _)| s.clone());
                         state.handles.push(RUNTIME.spawn(async move {
                             udp_rtcp_task(
                                 &rtcp_socket,
@@ -4909,6 +4924,7 @@ impl RtspSrc {
                                 false,
                                 rx,
                                 Some(buffer_queue),
+                                shared_rtcp_for_rtcp,
                             )
                             .await
                         }));
@@ -6982,6 +6998,7 @@ async fn udp_rtp_task(
     receive_mtu: u32,
     sender_addr: Option<SocketAddr>,
     buffer_queue: Option<Arc<Mutex<BufferQueue>>>,
+    shared_rtcp_addr: Option<(Arc<std::sync::Mutex<Option<SocketAddr>>>, u16)>,
 ) {
     let t = Duration::from_secs(timeout.into());
     let sender_addr = match sender_addr {
@@ -6999,7 +7016,20 @@ async fn udp_rtp_task(
                 Err(err) => Err(format!("UDP socket was closed: {err:?}")),
             };
             match ret {
-                Ok(addr) => addr,
+                Ok(addr) => {
+                    // If we have shared RTCP address state, update it with the discovered IP + RTCP port
+                    if let Some((shared, rtcp_port)) = &shared_rtcp_addr {
+                        if let Ok(mut rtcp_addr) = shared.lock() {
+                            if rtcp_addr.is_none() {
+                                // Construct RTCP address using discovered IP and known RTCP port
+                                let rtcp_socket_addr = SocketAddr::new(addr.ip(), *rtcp_port);
+                                *rtcp_addr = Some(rtcp_socket_addr);
+                                gst::info!(CAT, "RTP task discovered sender IP {}, setting RTCP address to {}", addr.ip(), rtcp_socket_addr);
+                            }
+                        }
+                    }
+                    addr
+                },
                 Err(err) => {
                     gst::element_error!(
                         appsrc,
@@ -7126,6 +7156,7 @@ async fn udp_rtcp_task(
     is_multicast: bool,
     mut rx: mpsc::Receiver<MappedBuffer<Readable>>,
     buffer_queue: Option<Arc<Mutex<BufferQueue>>>,
+    shared_rtcp_addr: Option<Arc<std::sync::Mutex<Option<SocketAddr>>>>,
 ) {
     let mut buf = vec![0; UDP_PACKET_MAX_SIZE as usize];
     let mut cache: LruCache<_, _> = LruCache::new(NonZeroUsize::new(RTCP_ADDR_CACHE_SIZE).unwrap());
@@ -7139,16 +7170,30 @@ async fn udp_rtcp_task(
             send_rtcp = rx.recv() => match send_rtcp {
                 // The server either didn't specify a server_port for RTCP, or if the server didn't
                 // send a Transport header in the SETUP response at all.
-                Some(data) => if let Some(addr) = sender_addr.as_ref() {
-                    match socket.send_to(data.as_ref(), addr).await {
-                        Ok(_) => gst::debug!(CAT, "Sent RTCP RR packet"),
-                        Err(err) => {
-                            rx.close();
-                            break format!("RTCP send error: {err:?}, stopping task");
+                Some(data) => {
+                    // Check if RTP task has discovered the sender IP
+                    if sender_addr.is_none() {
+                        if let Some(shared) = &shared_rtcp_addr {
+                            if let Ok(rtcp_addr) = shared.lock() {
+                                if let Some(addr) = *rtcp_addr {
+                                    sender_addr = Some(addr);
+                                    gst::info!(CAT, "RTCP task using sender address from RTP discovery: {addr:?}");
+                                }
+                            }
                         }
                     }
-                } else {
-                    gst::warning!(CAT, "Can't send RTCP yet: don't have dest addr");
+                    
+                    if let Some(addr) = sender_addr.as_ref() {
+                        match socket.send_to(data.as_ref(), addr).await {
+                            Ok(_) => gst::debug!(CAT, "Sent RTCP RR packet"),
+                            Err(err) => {
+                                rx.close();
+                                break format!("RTCP send error: {err:?}, stopping task");
+                            }
+                        }
+                    } else {
+                        gst::warning!(CAT, "Can't send RTCP yet: don't have dest addr");
+                    }
                 },
                 None => {
                     rx.close();
