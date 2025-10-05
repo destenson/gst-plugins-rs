@@ -37,6 +37,8 @@ RTSP_URL="${1:-rtsp://192.168.12.38:8554/test-h264}"
 RESTART_INTERVAL="${2:-60}"
 RESTART_JITTER="${3:-0.25}"
 
+shift; shift; shift;
+
 if [[ -n "${GST_DEBUG:-}" ]]; then
   echo "Using existing GST_DEBUG=${GST_DEBUG}"
   export GST_DEBUG
@@ -56,7 +58,6 @@ printf '\nRunning rtspsrc_cleanup example against %s (interval %ss, jitter %.2f)
 cargo run -p gst-plugin-rtsp --example rtspsrc_cleanup -- \
   --url "${RTSP_URL}" \
   --restart-interval "${RESTART_INTERVAL}" \
-  --restart-jitter "${RESTART_JITTER}" \
-  --autovideosink
+  --restart-jitter "${RESTART_JITTER}" "$@"
 
 )
