@@ -25,13 +25,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RTSP_DIR="$(dirname "$SCRIPT_DIR")"
-PROJECT_ROOT="$(dirname "$RTSP_DIR")"
+PLUGIN_DIR="$(cd "$(dirname "$SCRIPT_DIR/../..")" && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "$PLUGIN_DIR"/../..)" && pwd)"
 
-# echo "Using PROJECT_ROOT: $PROJECT_ROOT"
-# echo "Using RTSP_DIR: $RTSP_DIR"
-# echo "Using SCRIPT_DIR: $SCRIPT_DIR"
-# echo
+echo "Using PROJECT_ROOT: $PROJECT_ROOT"
+echo "Using PLUGIN_DIR: $PLUGIN_DIR"
+echo "Using SCRIPT_DIR: $SCRIPT_DIR"
+echo
 
 RTSP_URL="${1:-rtsp://192.168.12.38:8554/test-h264}"
 RESTART_INTERVAL="${2:-60}"
@@ -44,9 +44,11 @@ else
   # echo "GST_DEBUG not set; relying on example status output"
   unset GST_DEBUG || true
 fi
-export GST_PLUGIN_PATH="${PROJECT_ROOT}/net/rtsp/target/debug:${GST_PLUGIN_PATH:-}"
+export GST_PLUGIN_PATH="${PROJECT_ROOT}/target/debug:${GST_PLUGIN_PATH:-}"
 
-pushd "${PROJECT_ROOT}/net/rtsp" >/dev/null
+(
+  
+cd "${PROJECT_ROOT}" || exit 1
 
 cargo build -p gst-plugin-rtsp --example rtspsrc_cleanup
 
@@ -54,6 +56,7 @@ printf '\nRunning rtspsrc_cleanup example against %s (interval %ss, jitter %.2f)
 cargo run -p gst-plugin-rtsp --example rtspsrc_cleanup -- \
   --url "${RTSP_URL}" \
   --restart-interval "${RESTART_INTERVAL}" \
-  --restart-jitter "${RESTART_JITTER}"
+  --restart-jitter "${RESTART_JITTER}" \
+  --autovideosink
 
-popd >/dev/null
+)
