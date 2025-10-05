@@ -756,7 +756,6 @@ fn main() -> Result<()> {
         let start_time = Instant::now();
         let mut last_count = 0u64;
         let mut last_time = start_time;
-        let mut first_pts: Option<gst::ClockTime> = None;
         
         glib::timeout_add_local(Duration::from_secs(1), move || {
             let current_count = counter.load(Ordering::Relaxed);
@@ -766,42 +765,15 @@ fn main() -> Result<()> {
             
             let frames_in_period = current_count.saturating_sub(last_count);
             
-            // Get current PTS
-            let current_pts = if let Ok(pts) = pts_tracker.lock() {
-                *pts
-            } else {
-                None
-            };
-            
-            // Calculate FPS - use wall clock for instantaneous, PTS for average
-            // Instantaneous FPS based on wall-clock (shows actual delivery rate)
+            // Instantaneous FPS based on wall-clock (shows actual delivery rate over last period)
             let instant_fps = if wall_elapsed > 0.0 && frames_in_period > 0 {
                 frames_in_period as f64 / wall_elapsed
             } else {
                 0.0
             };
             
-            // Average FPS based on PTS (shows actual content frame rate)
-            let avg_fps = if let Some(current) = current_pts {
-                if first_pts.is_none() {
-                    first_pts = Some(current);
-                }
-                
-                if let Some(first) = first_pts {
-                    if current > first {
-                        let total_pts_secs = (current - first).seconds() as f64;
-                        if total_pts_secs > 0.0 && current_count > 0 {
-                            current_count as f64 / total_pts_secs
-                        } else {
-                            0.0
-                        }
-                    } else {
-                        0.0
-                    }
-                } else {
-                    0.0
-                }
-            } else if total_wall_elapsed > 0.0 {
+            // Average FPS based on total wall-clock time since start
+            let avg_fps = if total_wall_elapsed > 0.0 && current_count > 0 {
                 current_count as f64 / total_wall_elapsed
             } else {
                 0.0
