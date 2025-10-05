@@ -140,7 +140,7 @@ run_tests() {
         -v "$PROJECT_ROOT:/workspace" \
         -w /workspace/net/rtsp \
         "$IMAGE_NAME" \
-        bash -c "cd /workspace/net/rtsp && ./run_tests_docker.sh ${test_args:-suite:smoke}"
+        bash -c "cd /workspace/net/rtsp && ./scripts/run_tests_docker.sh ${test_args:-suite:smoke}"
     
     local exit_code=$?
     

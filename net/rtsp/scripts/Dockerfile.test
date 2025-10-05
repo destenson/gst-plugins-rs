@@ -21,6 +21,8 @@ RUN apt-get update && apt-get install -y \
     netcat-openbsd \
     iproute2 \
     iptables \
+    # Capabilities management
+    libcap2-bin \
     # Build tools
     pkg-config \
     build-essential \
@@ -53,9 +55,10 @@ RUN chmod 644 /usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstrsrtsp.so
 # Create a non-root user for running tests
 RUN useradd -m -u 1000 -s /bin/bash tester && \
     # Allow tester to use network utilities without sudo
-    setcap cap_net_admin,cap_net_raw+eip /usr/sbin/ip && \
-    setcap cap_net_admin,cap_net_raw+eip /usr/sbin/iptables && \
-    setcap cap_net_admin,cap_net_raw+eip /usr/sbin/iptables-legacy
+    # Find the actual paths and set capabilities if they exist
+    (which ip && setcap cap_net_admin,cap_net_raw+eip $(which ip) || true) && \
+    (which iptables && setcap cap_net_admin,cap_net_raw+eip $(which iptables) || true) && \
+    (test -f /usr/sbin/iptables-legacy && setcap cap_net_admin,cap_net_raw+eip /usr/sbin/iptables-legacy || true)
 
 # Set up workspace
 WORKDIR /workspace

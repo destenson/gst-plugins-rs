@@ -529,26 +529,49 @@ setup_environment() {
     # Check dependencies
     command -v mediamtx >/dev/null 2>&1 || {
         log_error "mediamtx not found. Please install it."
-        exit 1
+        return 1
     }
     
     command -v ffmpeg >/dev/null 2>&1 || {
         log_error "ffmpeg not found. Please install it."
-        exit 1
+        return 1
     }
     
     # Verify plugin is installed
     if ! gst-inspect-1.0 rsrtsp >/dev/null 2>&1; then
         log_error "RTSP plugin not found. Was the Docker image built correctly?"
-        exit 1
+        return 1
     fi
     
     log_info "Plugin verified: rtspsrc2 available"
     
-    # Start mediamtx
-    MEDIAMTX_PID=$(start_mediamtx "${SCRIPT_DIR}/mediamtx.yml")
+    # Look for mediamtx config - try scripts dir first, then project root
+    local config_file="${SCRIPT_DIR}/mediamtx.yml"
+    if [ ! -f "$config_file" ]; then
+        config_file="${PROJECT_ROOT}/mediamtx.yml"
+    fi
+    
+    if [ ! -f "$config_file" ]; then
+        log_error "mediamtx.yml config file not found (tried: ${SCRIPT_DIR}/mediamtx.yml and ${PROJECT_ROOT}/mediamtx.yml)"
+        return 1
+    fi
+    
+    log_info "Using mediamtx config: $config_file"
+    
+    # Start mediamtx (disable set -e temporarily for this assignment)
+    set +e
+    MEDIAMTX_PID=$(start_mediamtx "$config_file")
+    local start_result=$?
+    set -e
+    
+    if [ $start_result -ne 0 ]; then
+        log_error "Failed to start mediamtx (exit code: $start_result)"
+        log_error "Check log: ${RESULTS_DIR}/mediamtx-${TIMESTAMP}.log"
+        return 1
+    fi
     
     log_success "Environment setup complete"
+    return 0
 }
 
 #######################################
@@ -634,79 +657,95 @@ main() {
         test:basic-udp)
             setup_environment
             test_basic_udp
+            result=$?
             [ -z "$NO_CLEANUP" ] && cleanup
+            return $result
             ;;
         test:basic-tcp)
             setup_environment
             test_basic_tcp
+            result=$?
             [ -z "$NO_CLEANUP" ] && cleanup
+            return $result
             ;;
         test:reconnection)
             setup_environment
             test_reconnection
+            result=$?
             [ -z "$NO_CLEANUP" ] && cleanup
+            return $result
             ;;
         test:periodic-restart)
             setup_environment
             test_periodic_restart
+            result=$?
             [ -z "$NO_CLEANUP" ] && cleanup
+            return $result
             ;;
         test:dual-independent)
             setup_environment
             test_dual_stream_independent
+            result=$?
             [ -z "$NO_CLEANUP" ] && cleanup
+            return $result
             ;;
         test:dual-synced)
             setup_environment
             test_dual_stream_synced
+            result=$?
             [ -z "$NO_CLEANUP" ] && cleanup
+            return $result
             ;;
         test:stream-isolation)
             setup_environment
             test_stream_isolation
+            result=$?
             [ -z "$NO_CLEANUP" ] && cleanup
+            return $result
             ;;
         test:long-running)
             setup_environment
             test_long_running
+            result=$?
             [ -z "$NO_CLEANUP" ] && cleanup
+            return $result
             ;;
         
         # Suites
         suite:smoke)
             setup_environment
             suite_smoke
-            local result=$?
+            result=$?
             [ -z "$NO_CLEANUP" ] && cleanup
-            exit $result
+            return $result
             ;;
         suite:transport)
             setup_environment
             suite_transport
-            local result=$?
+            result=$?
             [ -z "$NO_CLEANUP" ] && cleanup
-            exit $result
+            return $result
             ;;
         suite:resilience)
             setup_environment
             suite_resilience
-            local result=$?
+            result=$?
             [ -z "$NO_CLEANUP" ] && cleanup
-            exit $result
+            return $result
             ;;
         suite:multistream)
             setup_environment
             suite_multistream
-            local result=$?
+            result=$?
             [ -z "$NO_CLEANUP" ] && cleanup
-            exit $result
+            return $result
             ;;
         suite:full)
             setup_environment
             suite_full
-            local result=$?
+            result=$?
             [ -z "$NO_CLEANUP" ] && cleanup
-            exit $result
+            return $result
             ;;
         
         # Utilities
@@ -734,7 +773,12 @@ main() {
     esac
 }
 
-# Trap cleanup on exit
-trap cleanup EXIT
-
 main "$@"
+exit_code=$?
+
+# Only cleanup if not in setup mode
+if [ "${1}" != "setup" ]; then
+    cleanup
+fi
+
+exit $exit_code
