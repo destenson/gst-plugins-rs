@@ -3684,9 +3684,9 @@ impl RtspSrc {
                         // Set TCP nodelay if it's a plain TCP stream
                         if let super::tls::RtspStream::Plain(ref tcp_stream) = rtsp_stream {
                             let _ = tcp_stream.set_nodelay(true);
-                            gst::info!(CAT, "Connected via plain TCP!");
+                            gst::debug!(CAT, "Connected via plain TCP!");
                         } else {
-                            gst::info!(CAT, "Connected via TLS!");
+                            gst::debug!(CAT, "Connected via TLS!");
                         }
 
                         // Use the RtspStream directly which implements AsyncRead + AsyncWrite
@@ -3718,7 +3718,7 @@ impl RtspSrc {
                 }
             };
 
-            gst::info!(CAT, "Connection established (tunneled: {})", is_tunneled);
+            gst::debug!(CAT, "Connection established (tunneled: {})", is_tunneled);
 
             #[cfg(feature = "telemetry")]
             {
@@ -3881,9 +3881,9 @@ impl RtspSrc {
                                         // Set TCP nodelay if it's a plain TCP stream
                                         if let super::tls::RtspStream::Plain(ref tcp_stream) = rtsp_stream {
                                             let _ = tcp_stream.set_nodelay(true);
-                                            gst::info!(CAT, "Reconnected via plain TCP!");
+                                            gst::debug!(CAT, "Reconnected via plain TCP!");
                                         } else {
-                                            gst::info!(CAT, "Reconnected via TLS!");
+                                            gst::debug!(CAT, "Reconnected via TLS!");
                                         }
 
                                         // Create new stream and sink from RtspStream
@@ -3935,7 +3935,7 @@ impl RtspSrc {
                     Ok(()) if !state.setup_params.is_empty() => {
                         // Reconnection flow completed successfully (rtsp_task_reconnect returned OK)
                         // This means it was terminated by Teardown or cancellation, so exit
-                        gst::info!(CAT, "Reconnection flow terminated normally");
+                        gst::debug!(CAT, "Reconnection flow terminated normally");
                         break result;
                     }
                     _ => {
@@ -3945,7 +3945,7 @@ impl RtspSrc {
                 }
             };
 
-            gst::info!(CAT, "Exited rtsp_task");
+            gst::debug!(CAT, "Exited rtsp_task");
 
             // Clear the stop token and command queue when task exits (allows fresh start)
             {
@@ -3995,7 +3995,7 @@ impl RtspSrc {
                     ["RTSP task exited: {err:#?}"]
                 );
             }
-            gst::info!(CAT, "Cleanup complete");
+            gst::debug!(CAT, "Cleanup complete");
         });
 
         debug_assert!(task_handle.is_none());
@@ -4134,11 +4134,11 @@ impl RtspSrc {
         // Check if ghost pad already exists before adding
         let ghost_name = format!("stream_{}", rtpsession_n);
         if obj.static_pad(&ghost_name).is_none() {
-            gst::info!(CAT, "Adding ghost srcpad {}", ghostpad.name());
+            gst::debug!(CAT, "Adding ghost srcpad {}", ghostpad.name());
             obj.add_pad(&ghostpad)
                 .expect("Adding a ghostpad should never fail");
         } else {
-            gst::info!(CAT, "Ghost pad {} already exists, skipping", ghost_name);
+            gst::debug!(CAT, "Ghost pad {} already exists, skipping", ghost_name);
         }
         appsrc
             .sync_state_with_parent()
@@ -4960,7 +4960,7 @@ impl RtspSrc {
                         gst::info!(CAT, "Ignoring srcpad with invalid stream id: {name}");
                         return;
                     };
-                    gst::info!(CAT, "Setting rtpbin pad {} as ghostpad target", name);
+                    gst::debug!(CAT, "Setting rtpbin pad {} as ghostpad target", name);
                     let srcpad = obj
                         .static_pad(&format!("stream_{}", stream_id))
                         .expect("ghostpad should've been available already");
@@ -4979,7 +4979,7 @@ impl RtspSrc {
                             ["pt: {pt}, ssrc: {ssrc}"]
                         );
                     } else {
-                        gst::info!(
+                        gst::debug!(
                             CAT,
                             "Successfully set ghostpad {} target - signaling no_more_pads",
                             ghostpad.name()
@@ -5414,7 +5414,7 @@ impl RtspManager {
         } else {
             format!("recv_rtp_sink_{}", rtpsession)
         };
-        gst::info!(CAT, "requesting {name} for receiving RTP");
+        gst::debug!(CAT, "requesting {name} for receiving RTP");
         self.recv.request_pad_simple(&name)
     }
 
@@ -5424,7 +5424,7 @@ impl RtspManager {
         } else {
             format!("recv_rtcp_sink_{}", rtpsession)
         };
-        gst::info!(CAT, "requesting {name} for receiving RTCP");
+        gst::debug!(CAT, "requesting {name} for receiving RTCP");
         self.recv.request_pad_simple(&name)
     }
 
@@ -5434,7 +5434,7 @@ impl RtspManager {
         } else {
             format!("send_rtcp_src_{}", rtpsession)
         };
-        gst::info!(CAT, "requesting {name} for sending RTCP");
+        gst::debug!(CAT, "requesting {name} for sending RTCP");
         self.send.request_pad_simple(&name)
     }
 
@@ -5550,7 +5550,7 @@ impl RtspManager {
 
         // Apply do-retransmission (similar to original rtspsrc line 4531)
         if let Some(_property) = rtpbin.find_property("do-retransmission") {
-            gst::info!(
+            gst::debug!(
                 CAT,
                 "Setting do-retransmission={} on rtpbin",
                 settings.do_retransmission
@@ -5560,7 +5560,7 @@ impl RtspManager {
             gst::warning!(CAT, "rtpbin does not support do-retransmission property");
         }
 
-        gst::info!(
+        gst::debug!(
             CAT,
             "Applied RTCP settings: do-rtcp={}, do-retransmission={}, max-rtcp-rtp-time-diff={}",
             settings.do_rtcp,
@@ -7012,7 +7012,7 @@ async fn udp_rtp_task(
             }
         }
     };
-    gst::info!(CAT, "Receiving from address {sender_addr:?}");
+    gst::debug!(CAT, "Receiving from address {sender_addr:?}");
     let gio_addr = {
         let inet_addr: gio::InetAddress = sender_addr.ip().into();
         gio::InetSocketAddress::new(&inet_addr, sender_addr.port())
@@ -7164,8 +7164,8 @@ async fn udp_rtcp_task(
                             continue;
                         }
                     } else {
-                        sender_addr.replace(addr);
-                        gst::info!(CAT, "Delayed RTCP UDP send address: {addr:?}");
+                        sender_addr = Some(addr);
+                        gst::debug!(CAT, "Delayed RTCP UDP send address: {addr:?}");
                     };
                     let t = appsrc.current_running_time();
                     let mut buffer = gst::Buffer::from_slice(buf[..len].to_owned());
