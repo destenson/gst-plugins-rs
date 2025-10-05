@@ -631,6 +631,16 @@ fn main() -> Result<()> {
                     err.debug()
                 );
 
+                // Check if error is from autovideosink (window closed)
+                if let Some(src) = err.src() {
+                    if src.name().starts_with("autovideosink") 
+                        || src.name().starts_with("video-sink") {
+                        println!("Video sink window closed, exiting");
+                        loop_clone.quit();
+                        return glib::ControlFlow::Break;
+                    }
+                }
+
                 if replacing_bus.get() {
                     return glib::ControlFlow::Continue;
                 }
