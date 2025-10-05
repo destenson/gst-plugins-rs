@@ -1,0 +1,26 @@
+# MediaMTX configuration for dual-stream testing
+# Save as mediamtx-dual.yml and run with: mediamtx mediamtx-dual.yml
+
+# Listen on all interfaces for both streams
+rtspAddress: :8554
+rtpAddress: :8000
+rtcpAddress: :8001
+
+# Enable both TCP and UDP
+protocols: [tcp, udp]
+
+# Logging
+logLevel: info
+logDestinations: [stdout]
+
+# Path configuration - these can be published to
+paths:
+  stream1:
+    source: publisher
+    
+  stream2:
+    source: publisher
+    
+  # Catch-all for any other streams
+  all_others:
+    source: publisher
