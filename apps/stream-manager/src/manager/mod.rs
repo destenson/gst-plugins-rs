@@ -267,9 +267,10 @@ impl StreamManager {
 
     pub async fn list_streams(&self) -> Vec<StreamInfo> {
         let streams = self.streams.read().await;
-        let mut result = Vec::new();
-        
-        for id in streams.keys() {
+        let ids = streams.keys().by_ref().collect::<Vec<_>>();
+        let mut result = Vec::with_capacity(ids.len());
+
+        for id in ids {
             if let Ok(info) = self.get_stream_info(id).await {
                 result.push(info);
             }
