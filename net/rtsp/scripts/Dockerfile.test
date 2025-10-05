@@ -1,0 +1,76 @@
+# Docker image for RTSP testing suite
+# Includes all dependencies needed to run rtspsrc2 tests
+
+FROM rust:1.75-bookworm
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    # GStreamer runtime and development
+    libgstreamer1.0-dev \
+    libgstreamer-plugins-base1.0-dev \
+    libgstreamer-plugins-bad1.0-dev \
+    gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad \
+    gstreamer1.0-plugins-ugly \
+    gstreamer1.0-libav \
+    gstreamer1.0-tools \
+    # FFmpeg for test stream generation
+    ffmpeg \
+    # Network utilities
+    netcat-openbsd \
+    iproute2 \
+    iptables \
+    # Build tools
+    pkg-config \
+    build-essential \
+    git \
+    # Utilities
+    ca-certificates \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install mediamtx (RTSP server for testing)
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then \
+        MEDIAMTX_ARCH="amd64"; \
+    elif [ "$ARCH" = "arm64" ]; then \
+        MEDIAMTX_ARCH="arm64v8"; \
+    else \
+        MEDIAMTX_ARCH="$ARCH"; \
+    fi && \
+    wget -q https://github.com/bluenviron/mediamtx/releases/download/v1.11.2/mediamtx_v1.11.2_linux_${MEDIAMTX_ARCH}.tar.gz && \
+    tar -xzf mediamtx_v1.11.2_linux_${MEDIAMTX_ARCH}.tar.gz && \
+    mv mediamtx /usr/local/bin/ && \
+    chmod +x /usr/local/bin/mediamtx && \
+    rm mediamtx_v1.11.2_linux_${MEDIAMTX_ARCH}.tar.gz
+
+# Copy the pre-built RTSP plugin to system GStreamer plugin directory
+# Note: Build context is PROJECT_ROOT, so path is relative to that
+COPY target/release/libgstrsrtsp.so /usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstrsrtsp.so
+RUN chmod 644 /usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstrsrtsp.so
+
+# Create a non-root user for running tests
+RUN useradd -m -u 1000 -s /bin/bash tester && \
+    # Allow tester to use network utilities without sudo
+    setcap cap_net_admin,cap_net_raw+eip /usr/sbin/ip && \
+    setcap cap_net_admin,cap_net_raw+eip /usr/sbin/iptables && \
+    setcap cap_net_admin,cap_net_raw+eip /usr/sbin/iptables-legacy
+
+# Set up workspace
+WORKDIR /workspace
+RUN chown tester:tester /workspace
+
+# Switch to non-root user
+USER tester
+
+# Set environment variables
+# Plugin is installed system-wide, no need to override GST_PLUGIN_PATH
+ENV CARGO_HOME=/workspace/.cargo
+ENV RUSTUP_HOME=/workspace/.rustup
+
+# Create results directory
+RUN mkdir -p /workspace/test-results
+
+# Default command
+CMD ["/bin/bash"]

@@ -7,31 +7,31 @@
 ### Setup (first time)
 ```bash
 # Build plugin + Docker image
-./docker-test.sh build
+./scripts/docker-test.sh build
 ```
 
 ### Run Tests
 ```bash
 # Quick validation (1 min)
-./docker-test.sh run suite:smoke
+./scripts/docker-test.sh run suite:smoke
 
 # Full test suite (10 min)
-./docker-test.sh run suite:full
+./scripts/docker-test.sh run suite:full
 
 # Individual test
-./docker-test.sh run test:basic-udp
+./scripts/docker-test.sh run test:basic-udp
 
 # Interactive shell for debugging
-./docker-test.sh shell
+./scripts/docker-test.sh shell
 ```
 
 ### After Code Changes
 ```bash
 # Rebuild plugin + Docker image
-./docker-test.sh build
+./scripts/docker-test.sh build
 
 # Run tests with updated plugin
-./docker-test.sh run suite:smoke
+./scripts/docker-test.sh run suite:smoke
 ```
 
 ## Host Testing (Alternative)
@@ -40,10 +40,10 @@
 
 ```bash
 # Build and run all tests
-./run_tests.sh suite:full
+./scripts/run_tests.sh suite:full
 
 # Run specific test
-./run_tests.sh test:reconnection
+./scripts/run_tests.sh test:reconnection
 ```
 
 ## Documentation
@@ -58,14 +58,14 @@
 
 ```bash
 # Run dual-stream tests
-./docker-test.sh run test:dual-synced
-./docker-test.sh run test:dual-independent
+./scripts/docker-test.sh run test:dual-synced
+./scripts/docker-test.sh run test:dual-independent
 
 # Run resilience tests (reconnection, restart, isolation)
-./docker-test.sh run suite:resilience
+./scripts/docker-test.sh run suite:resilience
 
 # View test results
-./docker-test.sh logs
+./scripts/docker-test.sh logs
 cat test-results/basic-udp-*.log
 ```
 

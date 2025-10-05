@@ -5,7 +5,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SERVER_PORT=8554
 SERVER_LOG="$SCRIPT_DIR/rtsp-server.log"
 SERVER_PID_FILE="$SCRIPT_DIR/rtsp-server.pid"
@@ -192,7 +192,7 @@ run_tests() {
     local test_filter="$1"
     echo -e "\n${YELLOW}Running tests...${NC}"
     
-    cd "$PROJECT_DIR"
+    cd "$PLUGIN_DIR"
     
     if [ -n "$test_filter" ]; then
         echo "Running specific tests: $test_filter"
@@ -215,7 +215,7 @@ run_tests() {
 # Main execution
 main() {
     echo -e "${GREEN}=== RTSP Test Suite ===${NC}"
-    echo "Working directory: $PROJECT_DIR"
+    echo "Working directory: $PLUGIN_DIR"
     echo ""
     
     check_requirements
