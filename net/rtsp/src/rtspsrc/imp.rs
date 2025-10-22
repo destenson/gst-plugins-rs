@@ -3770,6 +3770,8 @@ impl RtspSrc {
                 // Check if we should reconnect
                 match &result {
                     Err(err) if err.is_network_error() => {
+                        // self.clear_buffer_queue();
+                        gst::warning!(CAT, "Network error detected: {err}, considering reconnection");
                         if stop_token.is_cancelled() {
                             gst::info!(
                                 CAT,
