@@ -278,7 +278,7 @@ pub struct AdaptiveRetryManager {
     untested_strategies: Vec<Strategy>,
     exploration_rate: f32,
     last_save_time: Arc<Mutex<Instant>>,
-    save_counter: Arc<Mutex<u64>>,
+    save_counter: AtomicU64,
     decision_history: Option<DecisionHistory>,
 }
 
@@ -302,7 +302,7 @@ impl AdaptiveRetryManager {
             untested_strategies,
             exploration_rate: DEFAULT_EXPLORATION_RATE,
             last_save_time: Arc::new(Mutex::new(Instant::now())),
-            save_counter: Arc::new(Mutex::new(0)),
+            save_counter: AtomicU64::new(0),
             decision_history: Some(DecisionHistory::default()),
         }
     }
@@ -493,10 +493,7 @@ impl AdaptiveRetryManager {
         }
 
         // Increment save counter
-        {
-            let mut counter = self.save_counter.lock().unwrap();
-            *counter += 1;
-        }
+        self.save_counter.fetch_add(1, Ordering::SeqCst);
 
         // Persist if enabled (every 100 attempts or every 5 minutes)
         if self.config.persistence && self.should_save() {
@@ -505,7 +502,7 @@ impl AdaptiveRetryManager {
             drop(metrics);
             let _ = self.persist_metrics(&m);
             *self.last_save_time.lock().unwrap() = Instant::now();
-            *self.save_counter.lock().unwrap() = 0;
+            self.save_counter.store(0, Ordering::SeqCst);
             gst::trace!(CAT_ADAPTIVE, "Metrics persisted to cache");
         }
     }
