@@ -231,12 +231,12 @@ fn main() -> Result<()> {
         .context("Failed to create fakesink")?;
 
     pipeline.add_many(&[
-        &stream1_bin,
-        &stream2_bin,
+        stream1_bin.upcast_ref::<gst::Element>(),
+        stream2_bin.upcast_ref(),
         &compositor,
-        &queue_out,
-        &convert_out,
-        &sink,
+        queue_out.upcast_ref(),
+        convert_out.upcast_ref(),
+        sink.upcast_ref(),
     ])?;
 
     // Link compositor output chain
@@ -288,6 +288,13 @@ fn main() -> Result<()> {
     let main_loop = glib::MainLoop::new(None, false);
     let loop_clone = main_loop.clone();
 
+    let recalculate_latency = |pipeline: &gst::Pipeline| {
+        if let Err(err) = pipeline.recalculate_latency() {
+            eprintln!("Failed to recalculate latency: {err}");
+        }
+    };
+
+    let pipeline_clone = pipeline.clone();
     let _bus_watch = bus.add_watch_local(move |_, msg| {
         use gst::MessageView;
 
@@ -328,13 +335,11 @@ fn main() -> Result<()> {
                 println!("Pipeline state: {:?} -> {:?}", sc.old(), sc.current());
             }
             MessageView::StreamStatus(ss) => {
-                println!("Stream status from {:?}: {:?}", ss.src(), ss.stream_status_type());
+                println!("Stream status from {:?}: {:?}", ss.src(), ss.get().0);
             }
             MessageView::Latency(_) => {
                 // Recalculate latency when streams change
-                if let Err(err) = pipeline.recalculate_latency() {
-                    eprintln!("Failed to recalculate latency: {err}");
-                }
+                recalculate_latency(pipeline_clone.as_ref());
             }
             _ => {}
         }
