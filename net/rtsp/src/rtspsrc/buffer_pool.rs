@@ -131,27 +131,20 @@ impl BufferPool {
     // Release a buffer back to the pool for reuse
     pub fn release(&self, buffer: BytesMut) {
         let capacity = buffer.capacity();
+        self.current_memory_usage
+            .fetch_sub(capacity, Ordering::Relaxed);
 
         // Don't pool very large buffers
         if capacity > *BUCKET_SIZES.last().unwrap() {
             // decrement for oversized buffers not pooled
-            self.current_memory_usage
-                .fetch_sub(capacity, Ordering::Relaxed);
             return;
         }
 
+        // Return buffer to appropriate bucket
         let mut buckets = self.buckets.lock().unwrap();
-
-        // Find the appropriate bucket for this buffer size
         for bucket in buckets.iter_mut() {
             if bucket.size >= capacity {
-                // Check memory limit before returning to pool
-                let current_usage = self.current_memory_usage.load(Ordering::Relaxed);
-                let limit = self.total_memory_limit.load(Ordering::Relaxed);
-
-                if current_usage < limit {
-                    bucket.release(buffer);
-                }
+                bucket.release(buffer);
                 break;
             }
         }
