@@ -7163,6 +7163,7 @@ async fn udp_rtp_task(
             Err(err) => break format!("UDP socket was closed: {err:?}"),
         };
     };
+    let _ = pool.set_active(false);
     gst::element_error!(
         appsrc,
         gst::ResourceError::Failed,
