@@ -175,29 +175,6 @@ impl BufferPool {
     }
 }
 
-// Thread-safe global buffer pool
-static GLOBAL_BUFFER_POOL: LazyLock<BufferPool> = LazyLock::new(|| {
-    // Default to 64MB memory limit for the pool
-    BufferPool::new(64 * 1024 * 1024)
-});
-
-// Convenience functions for global pool access
-pub fn acquire_buffer(size: usize) -> BytesMut {
-    GLOBAL_BUFFER_POOL.acquire(size)
-}
-
-pub fn release_buffer(buffer: BytesMut) {
-    GLOBAL_BUFFER_POOL.release(buffer)
-}
-
-pub fn buffer_pool_stats() -> Vec<(usize, BufferPoolStats)> {
-    GLOBAL_BUFFER_POOL.stats()
-}
-
-pub fn clear_buffer_pool() {
-    GLOBAL_BUFFER_POOL.clear()
-}
-
 // Zero-copy buffer wrapper for efficient data sharing
 pub struct SharedBuffer {
     data: Bytes,
@@ -245,6 +222,29 @@ use std::sync::LazyLock;
 mod tests {
     use super::*;
     use bytes::BytesMut;
+
+    // Thread-safe global buffer pool
+    static GLOBAL_BUFFER_POOL: LazyLock<BufferPool> = LazyLock::new(|| {
+        // Default to 64MB memory limit for the pool
+        BufferPool::new(64 * 1024 * 1024)
+    });
+
+    // Convenience functions for global pool access
+    pub fn acquire_buffer(size: usize) -> BytesMut {
+        GLOBAL_BUFFER_POOL.acquire(size)
+    }
+
+    pub fn release_buffer(buffer: BytesMut) {
+        GLOBAL_BUFFER_POOL.release(buffer)
+    }
+
+    pub fn buffer_pool_stats() -> Vec<(usize, BufferPoolStats)> {
+        GLOBAL_BUFFER_POOL.stats()
+    }
+
+    pub fn clear_buffer_pool() {
+        GLOBAL_BUFFER_POOL.clear()
+    }
 
     #[test]
     fn test_buffer_pool_acquire_release() {
