@@ -500,7 +500,10 @@ impl AdaptiveRetryManager {
 
         // Persist if enabled (every 100 attempts or every 5 minutes)
         if self.config.persistence && self.should_save() {
-            let _ = self.persist_metrics(&metrics);
+            // don't hold lock during IO
+            let m = metrics.clone();
+            drop(metrics);
+            let _ = self.persist_metrics(&m);
             *self.last_save_time.lock().unwrap() = Instant::now();
             *self.save_counter.lock().unwrap() = 0;
             gst::trace!(CAT_ADAPTIVE, "Metrics persisted to cache");
