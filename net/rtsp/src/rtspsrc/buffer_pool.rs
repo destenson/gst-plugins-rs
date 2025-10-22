@@ -112,12 +112,17 @@ impl BufferPool {
         for bucket in buckets.iter_mut() {
             if bucket.size >= size {
                 let buffer = bucket.acquire();
-                self.current_memory_usage
-                    .fetch_add(bucket.size, Ordering::Relaxed);
+                // Update memory usage only on new allocations
+                if bucket.stats.allocations > bucket.stats.reuses {
+                    self.current_memory_usage
+                        .fetch_add(bucket.size, Ordering::Relaxed);
+                }
                 return buffer;
             }
         }
 
+        self.current_memory_usage
+            .fetch_add(size, Ordering::Relaxed);
         // No suitable bucket found, allocate directly
         // This handles very large buffers that don't fit in our buckets
         BytesMut::with_capacity(size)
