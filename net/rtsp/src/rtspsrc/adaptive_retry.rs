@@ -616,7 +616,7 @@ impl AdaptiveRetryManager {
     }
 
     pub fn get_stats_summary(&self) -> String {
-        let metrics = self.metrics.lock().unwrap();
+        let metrics = self.metrics.lock().unwrap().clone();
         let mut summary = String::new();
 
         summary.push_str(&format!("Total attempts: {}\n", metrics.total_attempts));
