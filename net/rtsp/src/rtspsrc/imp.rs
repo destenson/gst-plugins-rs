@@ -5351,7 +5351,15 @@ impl RtspSrc {
                         }
                     }
                 },
+                _ = stop_token.cancelled() => {
+                    gst::debug!(CAT, "Stop requested, terminating RTSP task");
+                    break;
+                },
                 _ = keepalive_interval.tick() => {
+                    if stop_token.is_cancelled() {
+                        gst::debug!(CAT, "Stop requested during keep-alive, terminating RTSP task");
+                        break;
+                    }
                     // Check if we need to send keep-alive
                     if let Some(s) = &session {
                         if state.session_manager.needs_keepalive() {
