@@ -3994,6 +3994,8 @@ impl RtspSrc {
                     gst::CoreError::Failed,
                     ["RTSP task exited: {err:#?}"]
                 );
+            } else {
+                stop_token.cancel();
             }
             gst::debug!(CAT, "Cleanup complete");
         });
