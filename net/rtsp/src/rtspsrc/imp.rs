@@ -4696,6 +4696,14 @@ impl RtspSrc {
 
         Self::drain_teardown(&mut cmd_rx);
 
+        // Abort all UDP receiver tasks before exiting
+        for h in state.handles.iter() {
+            h.abort();
+        }
+        for h in state.handles.drain(..) {
+            let _ = h.await;
+        }
+
         gst::info!(CAT, "rtsp_task_reconnect exiting normally");
         Ok(())
     }
