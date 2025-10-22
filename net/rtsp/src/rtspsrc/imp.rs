@@ -4740,7 +4740,7 @@ impl RtspSrc {
         let mut session: Option<Session> = None;
         // SETUP streams (TCP interleaved)
         state.setup_params = {
-            state
+            let result = state
                 .setup(
                     &mut session,
                     settings.port_start,
@@ -4749,7 +4749,17 @@ impl RtspSrc {
                     &settings.select_streams,
                     &settings.stream_filter,
                 )
-                .await?
+                .await;
+            if result.is_err() {
+                // clean up any spawned tasks
+                for h in state.handles.iter() {
+                    h.abort();
+                }
+                for h in state.handles.drain(..) {
+                    let _ = h.await;
+                }
+            }
+            result?
         };
 
         // Punch NAT holes for UDP transport after SETUP
