@@ -134,6 +134,9 @@ impl BufferPool {
 
         // Don't pool very large buffers
         if capacity > *BUCKET_SIZES.last().unwrap() {
+            // decrement for oversized buffers not pooled
+            self.current_memory_usage
+                .fetch_sub(capacity, Ordering::Relaxed);
             return;
         }
 
