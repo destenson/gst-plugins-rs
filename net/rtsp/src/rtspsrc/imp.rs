@@ -7074,8 +7074,8 @@ async fn udp_rtp_task(
     let mut pool = gst::BufferPool::new();
     let mut config = pool.config();
     config.set_params(caps.as_ref(), size, 2, 0);
-    pool.set_config(config).unwrap();
-    pool.set_active(true).unwrap();
+    let _ = pool.set_config(config);
+    let _ = pool.set_active(true);
     let error = loop {
         let Ok(buffer) = pool.acquire_buffer(None) else {
             break "Failed to acquire buffer".to_string();
