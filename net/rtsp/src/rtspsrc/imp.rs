@@ -4295,6 +4295,8 @@ impl RtspSrc {
             state.reconnect_count
         );
 
+        self.clear_buffer_queue();
+
         let cmd_tx = self.cmd_queue();
         let settings = { self.settings.lock().unwrap().clone() };
 
