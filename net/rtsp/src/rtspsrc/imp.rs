@@ -3777,6 +3777,7 @@ impl RtspSrc {
                                 CAT,
                                 "Stop requested during reconnection, aborting reconnect loop"
                             );
+                            state.cleanup_udp_tasks().await;
                             break Ok(());
                         }
                         // Check if reconnection is enabled and we haven't exceeded max attempts
@@ -3797,10 +3798,13 @@ impl RtspSrc {
                                 ));
                             }
 
+                            gst::debug!(CAT, "Cleaning up old UDP receiver tasks before reconnection attempt {}", reconnect_count);
+                            state.cleanup_udp_tasks().await;
+
                             gst::warning!(CAT, "Connection lost, attempting reconnection (attempt {}/{})",
                                 reconnect_count,
                                 if max_reconnect_attempts == u32::MAX { "unlimited".to_string() } else { max_reconnect_attempts.to_string() }
-                            );
+                            );    
 
                             // Flush the RTP pipeline to clear jitter buffer state before reconnecting
                             // This prevents old sequence numbers and SSRCs from causing issues
@@ -3825,6 +3829,7 @@ impl RtspSrc {
                                     CAT,
                                     "Stop requested before scheduling reconnection, aborting"
                                 );
+                                state.cleanup_udp_tasks().await;
                                 break Ok(());
                             }
                             let (tx, new_rx) = mpsc::channel(16);
@@ -3838,6 +3843,7 @@ impl RtspSrc {
                             let reconnect_delay = std::time::Duration::from_nanos(settings.reconnection_timeout.nseconds());
                             if stop_token.is_cancelled() {
                                 gst::info!(CAT, "Cancellation requested, aborting reconnection wait");
+                                state.cleanup_udp_tasks().await;
                                 break Ok(());
                             }
                             let mut delay_sleep = tokio::time::sleep(reconnect_delay);
@@ -3846,6 +3852,7 @@ impl RtspSrc {
                                 _ = &mut delay_sleep => {},
                                 _ = stop_token.cancelled() => {
                                     gst::info!(CAT, "Cancellation requested during reconnection delay");
+                                    state.cleanup_udp_tasks().await;
                                     break Ok(());
                                 }
                             }
@@ -3856,6 +3863,7 @@ impl RtspSrc {
                                 // Try HTTP tunneling reconnection
                                 // Note: HTTP tunnel reconnection not yet fully implemented
                                 gst::error!(CAT, "HTTP tunnel reconnection not yet implemented");
+                                state.cleanup_udp_tasks().await;
                                 break Err(RtspError::internal("HTTP tunnel reconnection not yet implemented"));
                             } else {
                                 // Use ConnectionRacer for proper TCP/TLS reconnection
@@ -3874,6 +3882,7 @@ impl RtspSrc {
                                     res = time::timeout(connect_timeout, racer.connect(&url)) => res,
                                     _ = stop_token.cancelled() => {
                                         gst::info!(CAT, "Stop requested during TCP reconnection attempt");
+                                        state.cleanup_udp_tasks().await;
                                         break Ok(());
                                     }
                                 };
@@ -3910,10 +3919,12 @@ impl RtspSrc {
                                     }
                                     Ok(Err(e)) => {
                                         gst::error!(CAT, "Failed to reconnect: {e:?}");
+                                        state.cleanup_udp_tasks().await;
                                         continue;
                                     }
                                     Err(_) => {
                                         gst::error!(CAT, "Reconnection timeout");
+                                        state.cleanup_udp_tasks().await;
                                         continue;
                                     }
                                 }
@@ -3931,6 +3942,7 @@ impl RtspSrc {
                             let _ = task_src.obj().post_message(msg);
 
                             gst::error!(CAT, "Maximum reconnection attempts ({}) exceeded", max_reconnect_attempts);
+                            state.cleanup_udp_tasks().await;
                             break result;
                         }
                     }
@@ -3942,6 +3954,9 @@ impl RtspSrc {
                     }
                     _ => {
                         // Not a network error or first-time connection completion - exit the loop
+
+                        state.cleanup_udp_tasks().await;
+
                         break result;
                     }
                 }
@@ -3960,12 +3975,8 @@ impl RtspSrc {
             }
 
             // Cleanup after stopping
-            for h in &state.handles {
-                h.abort();
-            }
-            for h in state.handles {
-                let _ = h.await;
-            }
+            state.cleanup_udp_tasks().await;
+
             let obj = task_src.obj();
             for e in obj.iterate_sorted() {
                 let Ok(e) = e else {
@@ -4297,6 +4308,8 @@ impl RtspSrc {
             state.reconnect_count
         );
 
+        state.cleanup_udp_tasks().await;
+
         self.clear_buffer_queue();
 
         let cmd_tx = self.cmd_queue();
@@ -4371,7 +4384,7 @@ impl RtspSrc {
                     .typed_header(&CSeq::from(state.cseq))
                     .header(rtsp_types::headers::TRANSPORT, transport_str);
 
-                if let Some(ref s) = session {
+                if let Some(s) = &session {
                     req_builder = req_builder.header(rtsp_types::headers::SESSION, s.to_string());
                 }
 
@@ -4406,6 +4419,19 @@ impl RtspSrc {
                 if session.is_none() {
                     session = response.typed_header::<Session>().ok().flatten();
                     gst::info!(CAT, "Got new session from SETUP response: {:?}", session);
+
+                    // Parse the raw Session header to get timeout value
+                    if let Some(session_header) = response
+                        .headers()
+                        .find(|(name, _)| name == &rtsp_types::headers::SESSION)
+                        .map(|(_, value)| value.as_str())
+                    {
+                        state.session_manager
+                            .parse_session_with_timeout(session_header);
+                        gst::info!(CAT, "Updated session manager with new timeout after reconnection");
+                    } else if let Some(ref s) = session {
+                        state.session_manager.set_session(s.clone());
+                    }
                 }
             }
         }
@@ -4510,26 +4536,36 @@ impl RtspSrc {
         }
 
         gst::info!(CAT, "Reconnection setup complete, entering main loop");
+        
+        // Setup keep-alive interval (same as main rtsp_task)
+        let mut keepalive_interval = tokio::time::interval(Duration::from_secs(30));
+        keepalive_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        
         loop {
             // Main message handling loop (same as original)
             enum Res {
                 Msg(Result<Message<Body>, super::tcp_message::ReadError>),
                 Cmd(Commands),
                 Cancelled,
+                KeepAlive,
             }
             let res = tokio::select! {
                 msg = state.stream.next() => {
                     match msg {
                         Some(Ok(m)) => Res::Msg(Ok(m)),
                         Some(Err(e)) => Res::Msg(Err(e)),
-                        None => {
+                        None => if stop_token.is_cancelled() {
+                            Res::Cancelled
+                        } else { 
                             gst::error!(CAT, "TCP connection EOF during reconnection");
+                            state.cleanup_udp_tasks().await;
                             return Err(RtspError::Network(super::error::NetworkError::ConnectionReset).into());
                         }
                     }
                 }
                 Some(cmd) = cmd_rx.recv() => Res::Cmd(cmd),
                 _ = stop_token.cancelled() => Res::Cancelled,
+                _ = keepalive_interval.tick() => Res::KeepAlive,
             };
 
             match res {
@@ -4574,6 +4610,7 @@ impl RtspSrc {
                                             .ok_or(RtspError::internal("No session"))?;
                                         state.play_response(&rsp, expected_cseq, s).await?;
                                         ready_for_data = true;
+                                        state.session_manager.reset_activity();
                                         gst::info!(
                                             CAT,
                                             "PLAY response received, ready to receive data"
@@ -4584,6 +4621,11 @@ impl RtspSrc {
                                             .as_mut()
                                             .ok_or(RtspError::internal("No session"))?;
                                         state.pause_response(&rsp, expected_cseq, s).await?;
+                                    }
+                                    Method::GetParameter => {
+                                        // Keep-alive response received
+                                        state.session_manager.reset_activity();
+                                        gst::debug!(CAT, "Keep-alive GET_PARAMETER response received during reconnection");
                                     }
                                     _ => {}
                                 }
@@ -4692,6 +4734,33 @@ impl RtspSrc {
                     }
                     _ => {}
                 },
+                Res::KeepAlive => {
+                    if stop_token.is_cancelled() {
+                        gst::debug!(CAT, "Stop requested during keep-alive, terminating reconnection task");
+                        break;
+                    }
+                    // Check if we need to send keep-alive
+                    if let Some(s) = &session {
+                        if state.session_manager.needs_keepalive() {
+                            gst::debug!(CAT, "Sending keep-alive GET_PARAMETER during reconnection");
+                            // Send empty GET_PARAMETER for keep-alive
+                            match state.get_parameter(Some(s), None).await {
+                                Ok(cseq) => {
+                                    expected_response = Some((Method::GetParameter, cseq));
+                                }
+                                Err(e) => {
+                                    gst::warning!(CAT, "Failed to send keep-alive during reconnection: {e:?}");
+                                }
+                            }
+                        }
+
+                        // Check for session timeout
+                        if state.session_manager.is_timed_out() {
+                            gst::error!(CAT, "Session timed out during reconnection, terminating");
+                            return Err(RtspError::internal("Session timeout"));
+                        }
+                    }
+                },
                 Res::Cancelled => {
                     gst::info!(CAT, "Cancellation received during reconnection loop");
                     Self::drain_teardown(&mut cmd_rx);
@@ -4703,12 +4772,7 @@ impl RtspSrc {
         Self::drain_teardown(&mut cmd_rx);
 
         // Abort all UDP receiver tasks before exiting
-        for h in state.handles.iter() {
-            h.abort();
-        }
-        for h in state.handles.drain(..) {
-            let _ = h.await;
-        }
+        state.cleanup_udp_tasks().await;
 
         gst::info!(CAT, "rtsp_task_reconnect exiting normally");
         Ok(())
@@ -4754,12 +4818,7 @@ impl RtspSrc {
                 .await;
             if result.is_err() {
                 // clean up any spawned tasks
-                for h in state.handles.iter() {
-                    h.abort();
-                }
-                for h in state.handles.drain(..) {
-                    let _ = h.await;
-                }
+                state.cleanup_udp_tasks().await;
             }
             result?
         };
@@ -6914,6 +6973,13 @@ impl RtspTaskState {
     ) -> Result<(), RtspError> {
         Self::check_response(rsp, cseq, Method::SetParameter, session)?;
         Ok(())
+    }
+
+    pub(super) async fn cleanup_udp_tasks(&mut self) {
+        for h in &self.handles {
+            h.abort();
+        }
+        futures::future::join_all(self.handles.drain(..));
     }
 }
 
