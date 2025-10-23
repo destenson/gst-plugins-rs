@@ -1131,56 +1131,55 @@ impl RtspSrc {
             Err(_) => return,
         };
         
-        // Find all jitterbuffer elements in rtpbin
-        let mut jitterbuffers_to_cleanup = Vec::new();
+        // AGGRESSIVE CLEANUP: Stop rtpbin completely to ensure ALL internal threads are stopped
+        // This is critical for preventing thread leaks during rapid reconnection storms
+        gst::debug!(CAT, "Stopping rtpbin completely for aggressive cleanup");
+        let _ = rtpbin_bin.set_state(gst::State::Null);
+        let _ = rtpbin_bin.state(Some(gst::ClockTime::from_mseconds(100)));
+        
+        // Find ALL internal dynamically-created elements (not just jitterbuffers)
+        let mut elements_to_remove = Vec::new();
         
         for element in rtpbin_bin.iterate_elements().into_iter().filter_map(Result::ok) {
             let name = element.name();
             
-            // Check if it's a jitterbuffer
-            if name.starts_with("rtpjitterbuffer") {
-                // During reconnection, we want to clean up ALL jitterbuffers, not just orphaned ones.
-                // The rtpbin will create new jitterbuffers when data arrives with new SSRCs.
-                // Keeping old jitterbuffers causes thread leaks because they maintain running tasks.
-                
-                if let Some(src_pad) = element.static_pad("src") {
-                    // Check if unlinked (definitely orphaned)
-                    let is_orphaned = !src_pad.is_linked();
-                    
-                    // Also check if the jitterbuffer is in an error state or has old data
-                    // by checking its latency property - if it's still processing old packets,
-                    // we should clean it up
-                    if is_orphaned {
-                        gst::debug!(CAT, "Found orphaned (unlinked) jitterbuffer: {}", name);
-                        jitterbuffers_to_cleanup.push(element.clone());
-                    } else {
-                        // For linked jitterbuffers, unlink them first before removal
-                        // This ensures proper cleanup during reconnection
-                        gst::debug!(CAT, "Found linked jitterbuffer to clean up: {}", name);
-                        
-                        // Unlink the src pad first
-                        if let Some(peer_pad) = src_pad.peer() {
-                            gst::debug!(CAT, "Unlinking jitterbuffer {} from {}", name, peer_pad.name());
-                            let _ = src_pad.unlink(&peer_pad);
-                        }
-                        
-                        jitterbuffers_to_cleanup.push(element.clone());
-                    }
-                }
+            // Remove ALL rtpbin internal elements that are dynamically created
+            // These include jitterbuffers, sessions, demuxers, etc.
+            if name.starts_with("rtpjitterbuffer")
+                || name.starts_with("rtpptdemux")
+                || name.starts_with("rtpsession")
+                || name.starts_with("rtpssrcdemux") {
+                gst::debug!(CAT, "Marking internal element for removal: {}", name);
+                elements_to_remove.push(element.clone());
             }
         }
         
-        // Set jitterbuffers to NULL state and remove them
-        for jitterbuffer in jitterbuffers_to_cleanup {
-            let name = jitterbuffer.name();
-            gst::debug!(CAT, "Removing jitterbuffer: {}", name);
+        gst::info!(CAT, "Removing {} internal rtpbin elements to prevent thread leaks", elements_to_remove.len());
+        
+        // Remove all elements
+        for element in elements_to_remove {
+            let name = element.name();
             
-            // Set to NULL to stop its task
-            let _ = jitterbuffer.set_state(gst::State::Null);
+            // Ensure stopped
+            let _ = element.set_state(gst::State::Null);
+            
+            // Unlink all pads
+            for pad in element.iterate_pads().into_iter().filter_map(Result::ok) {
+                if let Some(peer) = pad.peer() {
+                    let _ = pad.unlink(&peer);
+                }
+            }
             
             // Remove from rtpbin
-            let _ = rtpbin_bin.remove(&jitterbuffer);
+            if let Err(e) = rtpbin_bin.remove(&element) {
+                gst::warning!(CAT, "Failed to remove {}: {}", name, e);
+            } else {
+                gst::debug!(CAT, "Removed: {}", name);
+            }
         }
+        
+        // Restore rtpbin to READY state for reuse
+        let _ = rtpbin_bin.set_state(gst::State::Ready);
         
         gst::info!(CAT, "Orphaned jitterbuffer cleanup complete");
     }
