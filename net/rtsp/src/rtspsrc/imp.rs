@@ -1112,6 +1112,58 @@ impl RtspSrc {
         gst::info!(CAT, "RTP pipeline flush complete");
     }
 
+    /// Clean up orphaned jitterbuffer elements to prevent task leaks during reconnection.
+    /// After reconnection with a new SSRC, old jitterbuffer elements remain in rtpbin
+    /// with their tasks still running. This function removes them.
+    fn cleanup_orphaned_jitterbuffers(&self) {
+        gst::info!(CAT, "Cleaning up orphaned jitterbuffer elements");
+        
+        let obj = self.obj();
+        let bin = obj.upcast_ref::<gst::Bin>();
+        
+        // Find the rtpbin element
+        let Some(rtpbin) = bin.by_name("rtpbin0") else {
+            return;
+        };
+        
+        let rtpbin_bin = match rtpbin.downcast::<gst::Bin>() {
+            Ok(bin) => bin,
+            Err(_) => return,
+        };
+        
+        // Find all jitterbuffer elements in rtpbin
+        let mut orphaned_jitterbuffers = Vec::new();
+        
+        for element in rtpbin_bin.iterate_elements().into_iter().filter_map(Result::ok) {
+            let name = element.name();
+            
+            // Check if it's a jitterbuffer
+            if name.starts_with("rtpjitterbuffer") {
+                // Check if its src pad is linked
+                if let Some(src_pad) = element.static_pad("src") {
+                    if !src_pad.is_linked() {
+                        gst::debug!(CAT, "Found orphaned jitterbuffer: {}", name);
+                        orphaned_jitterbuffers.push(element.clone());
+                    }
+                }
+            }
+        }
+        
+        // Set orphaned jitterbuffers to NULL state and remove them
+        for jitterbuffer in orphaned_jitterbuffers {
+            let name = jitterbuffer.name();
+            gst::debug!(CAT, "Removing orphaned jitterbuffer: {}", name);
+            
+            // Set to NULL to stop its task
+            let _ = jitterbuffer.set_state(gst::State::Null);
+            
+            // Remove from rtpbin
+            let _ = rtpbin_bin.remove(&jitterbuffer);
+        }
+        
+        gst::info!(CAT, "Orphaned jitterbuffer cleanup complete");
+    }
+
     /// Create an AppSrc wrapper that handles buffering
     fn create_buffering_appsrc(&self, appsrc: gst_app::AppSrc) -> BufferingAppSrc {
         BufferingAppSrc {
@@ -3809,6 +3861,9 @@ impl RtspSrc {
                             // Flush the RTP pipeline to clear jitter buffer state before reconnecting
                             // This prevents old sequence numbers and SSRCs from causing issues
                             task_src.flush_rtp_pipeline();
+                            
+                            // Clean up orphaned jitterbuffer elements to prevent task leaks
+                            task_src.cleanup_orphaned_jitterbuffers();
 
                             // Post a message about the reconnection attempt
                             let msg = gst::message::Element::builder(
@@ -4426,11 +4481,15 @@ impl RtspSrc {
                         .find(|(name, _)| name == &rtsp_types::headers::SESSION)
                         .map(|(_, value)| value.as_str())
                     {
+                        gst::info!(CAT, "Parsing session header: {}", session_header);
                         state.session_manager
                             .parse_session_with_timeout(session_header);
+                        state.session_manager.reset_activity();
                         gst::info!(CAT, "Updated session manager with new timeout after reconnection");
                     } else if let Some(ref s) = session {
                         state.session_manager.set_session(s.clone());
+                        state.session_manager.reset_activity();
+                        gst::info!(CAT, "Set session without timeout parameter");
                     }
                 }
             }
@@ -4537,9 +4596,11 @@ impl RtspSrc {
 
         gst::info!(CAT, "Reconnection setup complete, entering main loop");
         
-        // Setup keep-alive interval (same as main rtsp_task)
-        let mut keepalive_interval = tokio::time::interval(Duration::from_secs(30));
+        // Setup keep-alive interval based on actual session timeout (80% of timeout)
+        let interval_duration = state.session_manager.keepalive_interval_duration();
+        let mut keepalive_interval = tokio::time::interval(interval_duration);
         keepalive_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        gst::debug!(CAT, "Keep-alive interval set to {:?} (80% of session timeout)", interval_duration);
         
         loop {
             // Main message handling loop (same as original)
@@ -4646,6 +4707,11 @@ impl RtspSrc {
 
                             if let Some(appsrc) = tcp_interleave_appsrcs.get(&data.channel_id()) {
                                 let buffer = gst::Buffer::from_slice(data.into_body());
+                                
+                                // NOTE: Do NOT reset activity timer on RTP/RTCP data!
+                                // Only RTSP responses should reset the activity timer.
+                                // RTP data flows continuously but doesn't count as RTSP session activity.
+                                
                                 match appsrc.push_buffer(buffer) {
                                     Ok(_) => {
                                         // Successfully pushed - post reconnection success on first buffer
@@ -4739,26 +4805,35 @@ impl RtspSrc {
                         gst::debug!(CAT, "Stop requested during keep-alive, terminating reconnection task");
                         break;
                     }
-                    // Check if we need to send keep-alive
+                    // Keep-alive timer fired - always send keep-alive when timer ticks
+                    // The timer interval is set to 80% of session timeout
                     if let Some(s) = &session {
-                        if state.session_manager.needs_keepalive() {
-                            gst::debug!(CAT, "Sending keep-alive GET_PARAMETER during reconnection");
-                            // Send empty GET_PARAMETER for keep-alive
-                            match state.get_parameter(Some(s), None).await {
-                                Ok(cseq) => {
-                                    expected_response = Some((Method::GetParameter, cseq));
-                                }
-                                Err(e) => {
-                                    gst::warning!(CAT, "Failed to send keep-alive during reconnection: {e:?}");
-                                }
+                        gst::info!(CAT, "Keep-alive timer fired during reconnection, ready_for_data={}", ready_for_data);
+                        
+                        gst::info!(CAT, "Sending keep-alive GET_PARAMETER during reconnection");
+                        // Send empty GET_PARAMETER for keep-alive
+                        match state.get_parameter(Some(s), None).await {
+                            Ok(cseq) => {
+                                gst::info!(CAT, "Keep-alive GET_PARAMETER sent, CSeq: {}", cseq);
+                                expected_response = Some((Method::GetParameter, cseq));
+                            }
+                            Err(e) => {
+                                gst::warning!(CAT, "Failed to send keep-alive during reconnection: {e:?}");
                             }
                         }
 
-                        // Check for session timeout
+                        // Check for session timeout (shouldn't happen if keep-alive is working)
                         if state.session_manager.is_timed_out() {
-                            gst::error!(CAT, "Session timed out during reconnection, terminating");
+                            gst::error!(
+                                CAT, 
+                                "Session timed out during reconnection despite keep-alive, terminating. ready_for_data={}, reconnection_success_posted={}", 
+                                ready_for_data,
+                                reconnection_success_posted
+                            );
                             return Err(RtspError::internal("Session timeout"));
                         }
+                    } else {
+                        gst::warning!(CAT, "Keep-alive tick but session is None!");
                     }
                 },
                 Res::Cancelled => {
@@ -5120,13 +5195,22 @@ impl RtspSrc {
         let mut expected_response: Option<(Method, u32)> = None;
         let mut keepalive_interval = tokio::time::interval(Duration::from_secs(30)); // Will be updated after session
         keepalive_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        
+        // Update keep-alive interval based on actual session timeout (if we have a session)
+        if session.is_some() {
+            let interval_duration = state.session_manager.keepalive_interval_duration();
+            keepalive_interval = tokio::time::interval(interval_duration);
+            keepalive_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            gst::debug!(CAT, "Updated keep-alive interval to {:?} (80% of session timeout)", interval_duration);
+        }
 
         loop {
             tokio::select! {
                 msg = state.stream.next() => match msg {
                     Some(Ok(rtsp_types::Message::Data(data))) => {
-                        // Reset session activity on any data
-                        state.session_manager.reset_activity();
+                        // NOTE: Do NOT reset activity timer on RTP/RTCP data!
+                        // Only RTSP responses should reset the activity timer.
+                        // RTP data flows continuously but doesn't count as RTSP session activity.
 
                         let Some(appsrc) = tcp_interleave_appsrcs.get(&data.channel_id()) else {
                             gst::warning!(CAT,
@@ -5421,24 +5505,24 @@ impl RtspSrc {
                         gst::debug!(CAT, "Stop requested during keep-alive, terminating RTSP task");
                         break;
                     }
-                    // Check if we need to send keep-alive
+                    // Keep-alive timer fired - always send keep-alive when timer ticks
+                    // The timer interval is set to 80% of session timeout, so no need to check needs_keepalive()
                     if let Some(s) = &session {
-                        if state.session_manager.needs_keepalive() {
-                            gst::debug!(CAT, "Sending keep-alive GET_PARAMETER");
-                            // Send empty GET_PARAMETER for keep-alive
-                            match state.get_parameter(Some(s), None).await {
-                                Ok(cseq) => {
-                                    expected_response = Some((Method::GetParameter, cseq));
-                                }
-                                Err(e) => {
-                                    gst::warning!(CAT, "Failed to send keep-alive: {e:?}");
-                                }
+                        gst::debug!(CAT, "Keep-alive timer fired, sending GET_PARAMETER");
+                        // Send empty GET_PARAMETER for keep-alive
+                        match state.get_parameter(Some(s), None).await {
+                            Ok(cseq) => {
+                                expected_response = Some((Method::GetParameter, cseq));
+                                gst::debug!(CAT, "Sent keep-alive with CSeq {}", cseq);
+                            }
+                            Err(e) => {
+                                gst::warning!(CAT, "Failed to send keep-alive: {e:?}");
                             }
                         }
 
-                        // Check for session timeout
+                        // Check for session timeout (shouldn't happen if keep-alive is working)
                         if state.session_manager.is_timed_out() {
-                            gst::error!(CAT, "Session timed out, terminating");
+                            gst::error!(CAT, "Session timed out despite keep-alive, terminating");
                             return Err(RtspError::internal("Session timeout"));
                         }
                     }
