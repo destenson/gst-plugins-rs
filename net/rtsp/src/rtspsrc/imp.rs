@@ -4808,13 +4808,13 @@ impl RtspSrc {
                     // Keep-alive timer fired - always send keep-alive when timer ticks
                     // The timer interval is set to 80% of session timeout
                     if let Some(s) = &session {
-                        gst::info!(CAT, "Keep-alive timer fired during reconnection, ready_for_data={}", ready_for_data);
+                        gst::debug!(CAT, "Keep-alive timer fired during reconnection, ready_for_data={}", ready_for_data);
                         
-                        gst::info!(CAT, "Sending keep-alive GET_PARAMETER during reconnection");
+                        // gst::info!(CAT, "Sending keep-alive GET_PARAMETER during reconnection");
                         // Send empty GET_PARAMETER for keep-alive
                         match state.get_parameter(Some(s), None).await {
                             Ok(cseq) => {
-                                gst::info!(CAT, "Keep-alive GET_PARAMETER sent, CSeq: {}", cseq);
+                                gst::debug!(CAT, "Keep-alive GET_PARAMETER sent, CSeq: {}", cseq);
                                 expected_response = Some((Method::GetParameter, cseq));
                             }
                             Err(e) => {
@@ -4837,7 +4837,7 @@ impl RtspSrc {
                     }
                 },
                 Res::Cancelled => {
-                    gst::info!(CAT, "Cancellation received during reconnection loop");
+                    gst::warning!(CAT, "Cancellation received during reconnection loop");
                     Self::drain_teardown(&mut cmd_rx);
                     break;
                 }
