@@ -1076,59 +1076,36 @@ impl RtspSrc {
     /// FIX: Instead of flushing downstream (which kills decoder tasks), we drain
     /// appsrc buffers internally and reset jitterbuffers without sending flush events.
     fn flush_rtp_pipeline(&self) {
-        gst::info!(CAT, "Cleaning up orphaned jitterbuffers without flushing");
-        
         // CRITICAL FIX: Do NOT flush the RTP pipeline during reconnection!
         //
         // The original code flushed jitterbuffers which caused flush events to propagate
         // downstream through rtpbin → appsrc → decoder, killing the decoder's source pad task.
         // The nvv4l2decoder hardware decoder on Jetson loses its [T] flag when flushed.
         //
-        // Instead, we cleanup ONLY orphaned jitterbuffer elements (those with no active
-        // peer connections). This prevents memory/thread leaks from SSRC changes while
-        // preserving active streams and decoder tasks.
-        
-        self.cleanup_orphaned_jitterbuffers();
-        
-        gst::info!(CAT, "RTP pipeline ready for reconnection - decoder tasks preserved");
-    }
-
-    /// Clean up orphaned jitterbuffer elements to prevent task leaks during reconnection.
-    /// After reconnection with a new SSRC, old jitterbuffer elements remain in rtpbin
-    /// with their tasks still running. This function resets rtpbin to cleanup all sessions.
-    fn cleanup_orphaned_jitterbuffers(&self) {
-        gst::info!(CAT, "Resetting rtpbin to cleanup old jitterbuffers");
+        // Instead, we use rtpbin's built-in signals to reset its state WITHOUT flushing:
+        // - clear-pt-map: Clears the payload type mapping table
+        // - reset-sync: Resets synchronization state for all sessions
+        //
+        // This allows rtpbin to handle new SSRCs cleanly without propagating flush events.
         
         let obj = self.obj();
         let bin = obj.upcast_ref::<gst::Bin>();
         
-        // Find the rtpbin element
-        let Some(rtpbin) = bin.by_name("rtpbin0") else {
+        if let Some(rtpbin) = bin.by_name("rtpbin0") {
+            gst::info!(CAT, "Resetting rtpbin state without flushing");
+            
+            // Clear payload type mappings
+            rtpbin.emit_by_name::<()>("clear-pt-map", &[]);
+            gst::debug!(CAT, "Cleared rtpbin payload type map");
+            
+            // Reset synchronization state
+            rtpbin.emit_by_name::<()>("reset-sync", &[]);
+            gst::debug!(CAT, "Reset rtpbin sync state");
+            
+            gst::info!(CAT, "RTP pipeline reset complete - decoder tasks preserved");
+        } else {
             gst::warning!(CAT, "Could not find rtpbin0");
-            return;
-        };
-        
-        // Simply cycle rtpbin to READY and back to PLAYING
-        // This will automatically cleanup all internal jitterbuffers, sessions, demuxers
-        // rtpbin will recreate fresh elements when new RTP packets arrive after reconnection
-        gst::info!(CAT, "Setting rtpbin to READY to cleanup internal elements");
-        if let Err(e) = rtpbin.set_state(gst::State::Ready) {
-            gst::warning!(CAT, "Failed to set rtpbin to READY: {}", e);
-            return;
         }
-        
-        // Wait for state change
-        let _ = rtpbin.state(Some(gst::ClockTime::from_mseconds(500)));
-        
-        // Restore to PLAYING
-        gst::info!(CAT, "Restoring rtpbin to PLAYING");
-        if let Err(e) = rtpbin.set_state(gst::State::Playing) {
-            gst::warning!(CAT, "Failed to restore rtpbin to PLAYING: {}", e);
-        }
-        
-        let _ = rtpbin.state(Some(gst::ClockTime::from_mseconds(500)));
-        
-        gst::info!(CAT, "rtpbin reset complete - old jitterbuffers cleaned up");
     }
 
     /// Create an AppSrc wrapper that handles buffering
@@ -5155,6 +5132,65 @@ impl RtspSrc {
                     gst::info!(CAT, "Ignoring unknown srcpad: {name}");
                 }
             }
+        });
+
+        // Handle new SSRC detection - clean up old pads when SSRC changes (reconnection)
+        manager.recv.connect("on-new-ssrc", false, |args| {
+            let session_id = args[1].get::<u32>().ok()?;
+            let new_ssrc = args[2].get::<u32>().ok()?;
+            
+            gst::info!(CAT, "New SSRC detected: session={}, ssrc={} - cleaning up old pads", session_id, new_ssrc);
+            
+            // Get the rtpbin/rtp2 element
+            let manager_elem = args[0].get::<gst::Element>().ok()?;
+            
+            // Find all src pads for this session with different SSRCs
+            let pads_to_remove: Vec<gst::Pad> = manager_elem
+                .iterate_src_pads()
+                .into_iter()
+                .filter_map(Result::ok)
+                .filter(|pad| {
+                    let name = pad.name();
+                    // Match pattern: recv_rtp_src_<session>_<ssrc>_<pt> or rtp_src_<session>_<ssrc>_<pt>
+                    let parts: Vec<&str> = name.split('_').collect();
+                    match &parts[..] {
+                        ["recv", "rtp", "src", sid, ssrc, _pt] | ["rtp", "src", sid, ssrc, _pt] => {
+                            if let (Ok(pad_session), Ok(pad_ssrc)) = (sid.parse::<u32>(), ssrc.parse::<u32>()) {
+                                // Remove pads from same session but with different (old) SSRC
+                                pad_session == session_id && pad_ssrc != new_ssrc
+                            } else {
+                                false
+                            }
+                        }
+                        _ => false,
+                    }
+                })
+                .collect();
+            
+            if !pads_to_remove.is_empty() {
+                gst::info!(CAT, "Found {} old pad(s) to remove for session {}", pads_to_remove.len(), session_id);
+                
+                for old_pad in pads_to_remove {
+                    let pad_name = old_pad.name();
+                    gst::debug!(CAT, "Unlinking and removing old pad: {}", pad_name);
+                    
+                    // Unlink from peer if connected
+                    if let Some(peer) = old_pad.peer() {
+                        gst::debug!(CAT, "Unlinking {} from peer {}", pad_name, peer.name());
+                        let _ = old_pad.unlink(&peer);
+                    }
+                    
+                    // Release the pad from rtpbin (it's a request pad)
+                    gst::debug!(CAT, "Releasing pad {}", pad_name);
+                    manager_elem.release_request_pad(&old_pad);
+                }
+                
+                gst::info!(CAT, "Old pads cleaned up for session {} - new SSRC {} is active", session_id, new_ssrc);
+            } else {
+                gst::trace!(CAT, "No old pads to remove for session {} (first SSRC or already cleaned)", session_id);
+            }
+            
+            None
         });
 
         let mut expected_response: Option<(Method, u32)> = None;
