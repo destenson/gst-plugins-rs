@@ -1100,13 +1100,15 @@ impl RtspSrc {
                     if name.contains("rtpjitterbuffer") {
                         gst::debug!(CAT, "Resetting jitterbuffer: {}", name);
                         
-                        // Reset jitterbuffer to clear accumulated packets
-                        // Use the jitterbuffer's internal flush mechanism on its sink pad
-                        // This stays contained within rtpbin and doesn't propagate downstream
-                        if let Some(sink_pad) = element.static_pad("sink") {
-                            gst::debug!(CAT, "Flushing jitterbuffer {} sink pad", name);
-                            let _ = sink_pad.send_event(gst::event::FlushStart::new());
-                            let _ = sink_pad.send_event(gst::event::FlushStop::new(true));
+                        // CRITICAL: Do NOT send flush events - they propagate downstream and kill decoder tasks!
+                        // Instead, reset the element's state to clear its internal buffers
+                        // This is safe because rtpbin will handle the state transition properly
+                        let current_state = element.current_state();
+                        if current_state != gst::State::Null {
+                            gst::debug!(CAT, "Setting jitterbuffer {} to NULL to clear buffers", name);
+                            let _ = element.set_state(gst::State::Null);
+                            gst::debug!(CAT, "Restoring jitterbuffer {} to {:?}", name, current_state);
+                            let _ = element.set_state(current_state);
                         }
                     }
                 }
