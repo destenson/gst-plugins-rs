@@ -1094,9 +1094,8 @@ impl RtspSrc {
     }
 
     /// Clean up orphaned jitterbuffer elements to prevent task leaks during reconnection.
-    /// After reconnection with a new SSRC, old jitterbuffer elements remain in rtpbin
-    /// with their tasks still running. This function removes ONLY orphaned elements
-    /// (those with no active peer connections on their src pads).
+    /// After reconnection with a new SSRC, old jitterbuffer elements remain in rtpbin.
+    /// We keep ONLY elements with active buffer flow and remove all others.
     fn cleanup_orphaned_jitterbuffers(&self) {
         gst::info!(CAT, "Cleaning up orphaned jitterbuffer elements");
         
@@ -1117,46 +1116,97 @@ impl RtspSrc {
             }
         };
         
-        // Find orphaned elements - those with no active downstream connections
-        let mut elements_to_remove = Vec::new();
-        let mut element_count = 0;
+        // Group jitterbuffers by session ID (from name like "rtpjitterbuffer42_0")
+        // Keep only ONE jitterbuffer per session - the one with active stats
+        let mut jitterbuffers_by_session = std::collections::HashMap::new();
+        let mut other_elements_to_check = Vec::new();
         
         for element in rtpbin_bin.iterate_elements().into_iter().filter_map(Result::ok) {
-            element_count += 1;
             let name = element.name();
             
-            // Only check jitterbuffers and related RTP elements
-            if name.starts_with("rtpjitterbuffer")
-                || name.starts_with("rtpptdemux")
-                || name.starts_with("rtpssrcdemux") {
-                
-                // Check if this element has any src pads with active peer connections
-                let mut has_active_connection = false;
-                for pad in element.iterate_src_pads().into_iter().filter_map(Result::ok) {
-                    if pad.peer().is_some() {
-                        has_active_connection = true;
-                        break;
+            if name.starts_with("rtpjitterbuffer") {
+                // Extract session ID from name (e.g., "rtpjitterbuffer42_0" -> session 0)
+                if let Some(session_part) = name.to_string().split('_').nth(1) {
+                    jitterbuffers_by_session
+                        .entry(session_part.to_string())
+                        .or_insert_with(Vec::new)
+                        .push(element.clone());
+                }
+            } else if name.starts_with("rtpptdemux") || name.starts_with("rtpssrcdemux") {
+                other_elements_to_check.push(element.clone());
+            }
+        }
+        
+        gst::info!(CAT, "Found {} sessions with jitterbuffers", jitterbuffers_by_session.len());
+        
+        let mut elements_to_remove = Vec::new();
+        
+        // For each session, keep only the jitterbuffer with the highest packet count (active one)
+        for (session_id, jitterbuffers) in &jitterbuffers_by_session {
+            if jitterbuffers.len() <= 1 {
+                gst::trace!(CAT, "Session {} has only 1 jitterbuffer, keeping it", session_id);
+                continue;
+            }
+            
+            gst::info!(CAT, "Session {} has {} jitterbuffers, finding active one", session_id, jitterbuffers.len());
+            
+            // Find the jitterbuffer with stats (active data flow)
+            let mut active_jitterbuffer = None;
+            let mut max_packets: u64 = 0;
+            
+            for jb in jitterbuffers.iter() {
+                // Try to get stats from the jitterbuffer
+                let stats = jb.property::<gst::Structure>("stats");
+                if let Ok(num_pushed) = stats.get::<u64>("num-pushed") {
+                    gst::debug!(CAT, "{} has num-pushed={}", jb.name(), num_pushed);
+                    if num_pushed > max_packets {
+                        max_packets = num_pushed;
+                        active_jitterbuffer = Some(jb.clone());
                     }
                 }
-                
-                // If no active connections, it's orphaned
-                if !has_active_connection {
-                    gst::debug!(CAT, "Found orphaned element (no peer connections): {}", name);
-                    elements_to_remove.push(element.clone());
+            }
+            
+            // Remove all jitterbuffers except the active one
+            for jb in jitterbuffers.iter() {
+                if let Some(ref active) = active_jitterbuffer {
+                    if jb.name() != active.name() {
+                        gst::info!(CAT, "Marking orphaned jitterbuffer for removal: {} (active: {})", jb.name(), active.name());
+                        elements_to_remove.push(jb);
+                    }
                 } else {
-                    gst::trace!(CAT, "Element {} has active connections, keeping", name);
+                    // No active jitterbuffer found, remove all but the first one
+                    if jb.name() != jitterbuffers[0].name() {
+                        gst::info!(CAT, "Marking orphaned jitterbuffer for removal: {} (no stats, keeping first)", jb.name());
+                        elements_to_remove.push(jb);
+                    }
                 }
             }
         }
         
-        gst::info!(CAT, "Found {} total rtpbin children, {} orphaned to cleanup", element_count, elements_to_remove.len());
+        // Also check other elements for orphaned ones (no peer connections)
+        for element in &other_elements_to_check {
+            let mut has_active_connection = false;
+            for pad in element.iterate_src_pads().into_iter().filter_map(Result::ok) {
+                if pad.peer().is_some() {
+                    has_active_connection = true;
+                    break;
+                }
+            }
+            
+            if !has_active_connection {
+                gst::debug!(CAT, "Found orphaned element: {}", element.name());
+                elements_to_remove.push(element);
+            }
+        }
+        
+        gst::info!(CAT, "Removing {} orphaned elements from rtpbin", elements_to_remove.len());
         
         if elements_to_remove.is_empty() {
             gst::info!(CAT, "No orphaned elements to cleanup");
             return;
         }
         
-        // Remove only the orphaned elements (do NOT set rtpbin to NULL!)
+        // Remove the orphaned elements
         for element in elements_to_remove {
             let name = element.name();
             
@@ -1171,7 +1221,7 @@ impl RtspSrc {
             }
             
             // Remove from rtpbin
-            if let Err(e) = rtpbin_bin.remove(&element) {
+            if let Err(e) = rtpbin_bin.remove(element) {
                 gst::warning!(CAT, "Failed to remove orphaned {}: {}", name, e);
             } else {
                 gst::debug!(CAT, "Removed orphaned: {}", name);
