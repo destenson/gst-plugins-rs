@@ -1072,42 +1072,6 @@ impl RtspSrc {
         (buffer_queue.len(), buffer_queue.total_bytes())
     }
 
-    /// Flush the RTP pipeline to clear jitter buffer state before reconnection.
-    /// FIX: Instead of flushing downstream (which kills decoder tasks), we drain
-    /// appsrc buffers internally and reset jitterbuffers without sending flush events.
-    fn flush_rtp_pipeline(&self) {
-        // CRITICAL FIX: Do NOT flush the RTP pipeline during reconnection!
-        //
-        // The original code flushed jitterbuffers which caused flush events to propagate
-        // downstream through rtpbin → appsrc → decoder, killing the decoder's source pad task.
-        // The nvv4l2decoder hardware decoder on Jetson loses its [T] flag when flushed.
-        //
-        // Instead, we use rtpbin's built-in signals to reset its state WITHOUT flushing:
-        // - clear-pt-map: Clears the payload type mapping table
-        // - reset-sync: Resets synchronization state for all sessions
-        //
-        // This allows rtpbin to handle new SSRCs cleanly without propagating flush events.
-        
-        let obj = self.obj();
-        let bin = obj.upcast_ref::<gst::Bin>();
-        
-        if let Some(rtpbin) = bin.by_name("rtpbin0") {
-            gst::info!(CAT, "Resetting rtpbin state without flushing");
-            
-            // Clear payload type mappings
-            rtpbin.emit_by_name::<()>("clear-pt-map", &[]);
-            gst::debug!(CAT, "Cleared rtpbin payload type map");
-            
-            // Reset synchronization state
-            rtpbin.emit_by_name::<()>("reset-sync", &[]);
-            gst::debug!(CAT, "Reset rtpbin sync state");
-            
-            gst::info!(CAT, "RTP pipeline reset complete - decoder tasks preserved");
-        } else {
-            gst::warning!(CAT, "Could not find rtpbin0");
-        }
-    }
-
     /// Create an AppSrc wrapper that handles buffering
     fn create_buffering_appsrc(&self, appsrc: gst_app::AppSrc) -> BufferingAppSrc {
         BufferingAppSrc {
@@ -3802,10 +3766,25 @@ impl RtspSrc {
                                 if max_reconnect_attempts == u32::MAX { "unlimited".to_string() } else { max_reconnect_attempts.to_string() }
                             );    
 
-                            // Flush the RTP pipeline to clear jitter buffer state before reconnecting
-                            // This prevents old sequence numbers and SSRCs from causing issues.
-                            // Setting rtpbin to READY state will cleanup internal elements automatically.
-                            task_src.flush_rtp_pipeline();
+                            // CRITICAL: Wait BEFORE flushing and reconnecting to give the server time to recover
+                            // This is especially important on attempt 1 when mediamtx is restarting the stream
+                            let reconnect_delay = std::time::Duration::from_nanos(settings.initial_retry_delay.nseconds());
+                            gst::info!(CAT, "Waiting {:?} before reconnection attempt {}", reconnect_delay, reconnect_count);
+                            if stop_token.is_cancelled() {
+                                gst::info!(CAT, "Cancellation requested, aborting reconnection wait");
+                                state.cleanup_udp_tasks().await;
+                                break Ok(());
+                            }
+                            let mut delay_sleep = tokio::time::sleep(reconnect_delay);
+                            tokio::pin!(delay_sleep);
+                            tokio::select! {
+                                _ = &mut delay_sleep => {},
+                                _ = stop_token.cancelled() => {
+                                    gst::info!(CAT, "Cancellation requested during reconnection delay");
+                                    state.cleanup_udp_tasks().await;
+                                    break Ok(());
+                                }
+                            }
 
                             // Post a message about the reconnection attempt
                             let msg = gst::message::Element::builder(
@@ -3835,24 +3814,6 @@ impl RtspSrc {
                                 *cmd_queue_guard = Some(tx);
                             }
                             current_rx = Some(new_rx);
-
-                            // Wait before reconnecting (use initial retry delay, not the max timeout)
-                            let reconnect_delay = std::time::Duration::from_nanos(settings.initial_retry_delay.nseconds());
-                            if stop_token.is_cancelled() {
-                                gst::info!(CAT, "Cancellation requested, aborting reconnection wait");
-                                state.cleanup_udp_tasks().await;
-                                break Ok(());
-                            }
-                            let mut delay_sleep = tokio::time::sleep(reconnect_delay);
-                            tokio::pin!(delay_sleep);
-                            tokio::select! {
-                                _ = &mut delay_sleep => {},
-                                _ = stop_token.cancelled() => {
-                                    gst::info!(CAT, "Cancellation requested during reconnection delay");
-                                    state.cleanup_udp_tasks().await;
-                                    break Ok(());
-                                }
-                            }
 
                             // Attempt to reconnect using ConnectionRacer (same as initial connection)
                             gst::info!(CAT, "Starting TCP/TLS reconnection attempt");
@@ -5134,64 +5095,64 @@ impl RtspSrc {
             }
         });
 
-        // Handle new SSRC detection - clean up old pads when SSRC changes (reconnection)
-        manager.recv.connect("on-new-ssrc", false, |args| {
-            let session_id = args[1].get::<u32>().ok()?;
-            let new_ssrc = args[2].get::<u32>().ok()?;
+        // // Handle new SSRC detection - clean up old pads when SSRC changes (reconnection)
+        // manager.recv.connect("on-new-ssrc", false, |args| {
+        //     let session_id = args[1].get::<u32>().ok()?;
+        //     let new_ssrc = args[2].get::<u32>().ok()?;
             
-            gst::info!(CAT, "New SSRC detected: session={}, ssrc={} - cleaning up old pads", session_id, new_ssrc);
+        //     gst::info!(CAT, "New SSRC detected: session={}, ssrc={} - cleaning up old pads", session_id, new_ssrc);
             
-            // Get the rtpbin/rtp2 element
-            let manager_elem = args[0].get::<gst::Element>().ok()?;
+        //     // Get the rtpbin/rtp2 element
+        //     let manager_elem = args[0].get::<gst::Element>().ok()?;
             
-            // Find all src pads for this session with different SSRCs
-            let pads_to_remove: Vec<gst::Pad> = manager_elem
-                .iterate_src_pads()
-                .into_iter()
-                .filter_map(Result::ok)
-                .filter(|pad| {
-                    let name = pad.name();
-                    // Match pattern: recv_rtp_src_<session>_<ssrc>_<pt> or rtp_src_<session>_<ssrc>_<pt>
-                    let parts: Vec<&str> = name.split('_').collect();
-                    match &parts[..] {
-                        ["recv", "rtp", "src", sid, ssrc, _pt] | ["rtp", "src", sid, ssrc, _pt] => {
-                            if let (Ok(pad_session), Ok(pad_ssrc)) = (sid.parse::<u32>(), ssrc.parse::<u32>()) {
-                                // Remove pads from same session but with different (old) SSRC
-                                pad_session == session_id && pad_ssrc != new_ssrc
-                            } else {
-                                false
-                            }
-                        }
-                        _ => false,
-                    }
-                })
-                .collect();
+        //     // Find all src pads for this session with different SSRCs
+        //     let pads_to_remove: Vec<gst::Pad> = manager_elem
+        //         .iterate_src_pads()
+        //         .into_iter()
+        //         .filter_map(Result::ok)
+        //         .filter(|pad| {
+        //             let name = pad.name();
+        //             // Match pattern: recv_rtp_src_<session>_<ssrc>_<pt> or rtp_src_<session>_<ssrc>_<pt>
+        //             let parts: Vec<&str> = name.split('_').collect();
+        //             match &parts[..] {
+        //                 ["recv", "rtp", "src", sid, ssrc, _pt] | ["rtp", "src", sid, ssrc, _pt] => {
+        //                     if let (Ok(pad_session), Ok(pad_ssrc)) = (sid.parse::<u32>(), ssrc.parse::<u32>()) {
+        //                         // Remove pads from same session but with different (old) SSRC
+        //                         pad_session == session_id && pad_ssrc != new_ssrc
+        //                     } else {
+        //                         false
+        //                     }
+        //                 }
+        //                 _ => false,
+        //             }
+        //         })
+        //         .collect();
             
-            if !pads_to_remove.is_empty() {
-                gst::info!(CAT, "Found {} old pad(s) to remove for session {}", pads_to_remove.len(), session_id);
+        //     if !pads_to_remove.is_empty() {
+        //         gst::info!(CAT, "Found {} old pad(s) to remove for session {}", pads_to_remove.len(), session_id);
                 
-                for old_pad in pads_to_remove {
-                    let pad_name = old_pad.name();
-                    gst::debug!(CAT, "Unlinking and removing old pad: {}", pad_name);
+        //         for old_pad in pads_to_remove {
+        //             let pad_name = old_pad.name();
+        //             gst::debug!(CAT, "Unlinking and removing old pad: {}", pad_name);
                     
-                    // Unlink from peer if connected
-                    if let Some(peer) = old_pad.peer() {
-                        gst::debug!(CAT, "Unlinking {} from peer {}", pad_name, peer.name());
-                        let _ = old_pad.unlink(&peer);
-                    }
+        //             // Unlink from peer if connected
+        //             if let Some(peer) = old_pad.peer() {
+        //                 gst::debug!(CAT, "Unlinking {} from peer {}", pad_name, peer.name());
+        //                 let _ = old_pad.unlink(&peer);
+        //             }
                     
-                    // Release the pad from rtpbin (it's a request pad)
-                    gst::debug!(CAT, "Releasing pad {}", pad_name);
-                    manager_elem.release_request_pad(&old_pad);
-                }
+        //             // Release the pad from rtpbin (it's a request pad)
+        //             gst::debug!(CAT, "Releasing pad {}", pad_name);
+        //             manager_elem.release_request_pad(&old_pad);
+        //         }
                 
-                gst::info!(CAT, "Old pads cleaned up for session {} - new SSRC {} is active", session_id, new_ssrc);
-            } else {
-                gst::trace!(CAT, "No old pads to remove for session {} (first SSRC or already cleaned)", session_id);
-            }
+        //         gst::info!(CAT, "Old pads cleaned up for session {} - new SSRC {} is active", session_id, new_ssrc);
+        //     } else {
+        //         gst::trace!(CAT, "No old pads to remove for session {} (first SSRC or already cleaned)", session_id);
+        //     }
             
-            None
-        });
+        //     None
+        // });
 
         let mut expected_response: Option<(Method, u32)> = None;
         let mut keepalive_interval = tokio::time::interval(Duration::from_secs(30)); // Will be updated after session
@@ -5577,20 +5538,65 @@ impl RtspManager {
             (e.clone(), e)
         };
         if !rtp2 {
-            let on_bye = |args: &[glib::Value]| {
-                let m = args[0].get::<gst::Element>().unwrap();
-                let obj = m.parent()?;
-                let bin = obj.downcast::<gst::Bin>().unwrap();
-                bin.send_event(gst::event::Eos::new());
+            // Track SSRCs per session and clean up old pads when SSRC changes
+            let recv_clone = recv.clone();
+            recv.connect("on-new-ssrc", true, move |args| {
+                let session = args[1].get::<u32>().unwrap();
+                let new_ssrc = args[2].get::<u32>().unwrap();
+                
+                gst::info!(CAT, "New SSRC detected: session={}, ssrc={}", session, new_ssrc);
+                
+                // Track previous SSRC for this session
+                let data_key = format!("prev_ssrc_session_{}", session);
+                
+                unsafe {
+                    if let Some(prev_ssrc) = recv_clone.data::<u32>(&data_key) {
+                        let old_ssrc = *prev_ssrc.as_ref();
+                        if old_ssrc != new_ssrc {
+                            gst::info!(CAT, "SSRC changed for session {}: {} -> {}. Removing old pad.", session, old_ssrc, new_ssrc);
+                            
+                            // Find and remove old pad - pattern: recv_rtp_src_<session>_<ssrc>_<pt>
+                            // We don't know the PT, so iterate through all pads
+                            let pads: Vec<_> = recv_clone.src_pads().into_iter().collect();
+                            for pad in pads {
+                                let pad_name = pad.name();
+                                // Check if this pad belongs to the old SSRC
+                                if pad_name.starts_with(&format!("recv_rtp_src_{}_{}_", session, old_ssrc)) {
+                                    gst::info!(CAT, "Found old pad {} for SSRC {}, unlinking and removing", pad_name, old_ssrc);
+                                    
+                                    // Unlink if connected
+                                    if let Some(peer) = pad.peer() {
+                                        gst::debug!(CAT, "Unlinking {} from {}", pad_name, peer.name());
+                                        pad.unlink(&peer).ok();
+                                    }
+                                    
+                                    // Remove the pad - this triggers rtpbin to clean up the jitterbuffer
+                                    recv_clone.remove_pad(&pad).ok();
+                                    gst::info!(CAT, "Removed old pad {} - jitterbuffer should be cleaned up", pad_name);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Store new SSRC
+                    recv_clone.set_data(&data_key, new_ssrc);
+                }
+                
                 None
-            };
+            });
+            
+            // Don't send EOS on SSRC bye/timeout
             recv.connect("on-bye-ssrc", true, move |args| {
-                gst::info!(CAT, "Received BYE packet");
-                on_bye(args)
+                let session = args[1].get::<u32>().unwrap();
+                let ssrc = args[2].get::<u32>().unwrap();
+                gst::info!(CAT, "Received BYE packet for session {} SSRC {}", session, ssrc);
+                None
             });
             recv.connect("on-bye-timeout", true, move |args| {
-                gst::info!(CAT, "BYE due to timeout");
-                on_bye(args)
+                let session = args[1].get::<u32>().unwrap();
+                let ssrc = args[2].get::<u32>().unwrap();
+                gst::info!(CAT, "BYE due to timeout for session {} SSRC {}", session, ssrc);
+                None
             });
         }
         RtspManager {
