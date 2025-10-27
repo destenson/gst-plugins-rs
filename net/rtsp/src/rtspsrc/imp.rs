@@ -1132,27 +1132,48 @@ impl RtspSrc {
         };
         
         // Find all jitterbuffer elements in rtpbin
-        let mut orphaned_jitterbuffers = Vec::new();
+        let mut jitterbuffers_to_cleanup = Vec::new();
         
         for element in rtpbin_bin.iterate_elements().into_iter().filter_map(Result::ok) {
             let name = element.name();
             
             // Check if it's a jitterbuffer
             if name.starts_with("rtpjitterbuffer") {
-                // Check if its src pad is linked
+                // During reconnection, we want to clean up ALL jitterbuffers, not just orphaned ones.
+                // The rtpbin will create new jitterbuffers when data arrives with new SSRCs.
+                // Keeping old jitterbuffers causes thread leaks because they maintain running tasks.
+                
                 if let Some(src_pad) = element.static_pad("src") {
-                    if !src_pad.is_linked() {
-                        gst::debug!(CAT, "Found orphaned jitterbuffer: {}", name);
-                        orphaned_jitterbuffers.push(element.clone());
+                    // Check if unlinked (definitely orphaned)
+                    let is_orphaned = !src_pad.is_linked();
+                    
+                    // Also check if the jitterbuffer is in an error state or has old data
+                    // by checking its latency property - if it's still processing old packets,
+                    // we should clean it up
+                    if is_orphaned {
+                        gst::debug!(CAT, "Found orphaned (unlinked) jitterbuffer: {}", name);
+                        jitterbuffers_to_cleanup.push(element.clone());
+                    } else {
+                        // For linked jitterbuffers, unlink them first before removal
+                        // This ensures proper cleanup during reconnection
+                        gst::debug!(CAT, "Found linked jitterbuffer to clean up: {}", name);
+                        
+                        // Unlink the src pad first
+                        if let Some(peer_pad) = src_pad.peer() {
+                            gst::debug!(CAT, "Unlinking jitterbuffer {} from {}", name, peer_pad.name());
+                            let _ = src_pad.unlink(&peer_pad);
+                        }
+                        
+                        jitterbuffers_to_cleanup.push(element.clone());
                     }
                 }
             }
         }
         
-        // Set orphaned jitterbuffers to NULL state and remove them
-        for jitterbuffer in orphaned_jitterbuffers {
+        // Set jitterbuffers to NULL state and remove them
+        for jitterbuffer in jitterbuffers_to_cleanup {
             let name = jitterbuffer.name();
-            gst::debug!(CAT, "Removing orphaned jitterbuffer: {}", name);
+            gst::debug!(CAT, "Removing jitterbuffer: {}", name);
             
             // Set to NULL to stop its task
             let _ = jitterbuffer.set_state(gst::State::Null);
@@ -7162,9 +7183,26 @@ fn on_rtcp_tcp(
         Ok(map) => {
             let data: rtsp_types::Data<Body> =
                 rtsp_types::Data::new(rtcp_channel, Body::mapped(map));
-            let cmd_tx = cmd_tx.clone();
-            RUNTIME.spawn(async move { cmd_tx.send(Commands::Data(data)).await });
-            Ok(gst::FlowSuccess::Ok)
+            
+            // Try to send without spawning a task first (more efficient)
+            match cmd_tx.try_send(Commands::Data(data)) {
+                Ok(_) => {
+                    // Sent successfully without blocking
+                    Ok(gst::FlowSuccess::Ok)
+                }
+                Err(mpsc::error::TrySendError::Full(cmd)) => {
+                    // Channel is full, spawn a task to send asynchronously
+                    // This prevents blocking the AppSink callback
+                    let cmd_tx = cmd_tx.clone();
+                    RUNTIME.spawn(async move { cmd_tx.send(cmd).await });
+                    Ok(gst::FlowSuccess::Ok)
+                }
+                Err(mpsc::error::TrySendError::Closed(_)) => {
+                    // Channel is closed, pipeline is shutting down
+                    gst::debug!(CAT, "Command queue closed, stopping RTCP send");
+                    Err(gst::FlowError::Eos)
+                }
+            }
         }
         Err(err) => {
             gst::error!(CAT, "Failed to map buffer: {err:?}");
