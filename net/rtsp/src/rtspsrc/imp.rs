@@ -1078,12 +1078,12 @@ impl RtspSrc {
     fn flush_rtp_pipeline(&self) {
         gst::info!(CAT, "Flushing RTP pipeline before reconnection");
         
-        // Collect all RTP and RTCP appsrc elements
-        let mut appsrcs_to_flush = Vec::new();
-        
         // Get the bin from obj - RtspSrc is a Bin
         let obj = self.obj();
         let bin = obj.upcast_ref::<gst::Bin>();
+        
+        // STEP 1: Collect all RTP and RTCP appsrc elements
+        let mut appsrcs_to_flush = Vec::new();
         
         // Find all children that are appsrc elements (rtp_appsrc_* and rtcp_appsrc_*)
         for child in bin.children() {
@@ -1095,7 +1095,9 @@ impl RtspSrc {
             }
         }
         
-        // Send flush events to each appsrc
+        // STEP 2: Send flush events to each appsrc to clear buffers and reset state
+        // This must happen BEFORE setting rtpbin to READY so the events can propagate
+        gst::info!(CAT, "Flushing {} appsrc elements", appsrcs_to_flush.len());
         for appsrc in appsrcs_to_flush {
             let name = appsrc.name();
             
@@ -1123,16 +1125,21 @@ impl RtspSrc {
             }
         }
         
-        // CRITICAL: Set rtpbin to READY state to force cleanup of internal elements
-        // This removes old jitterbuffer/demux/session elements that would otherwise leak threads
-        if let Some(rtpbin) = bin.by_name("rtpbin0") {
-            gst::info!(CAT, "Setting rtpbin to READY to cleanup internal elements");
-            let _ = rtpbin.set_state(gst::State::Ready);
-            let _ = rtpbin.state(Some(gst::ClockTime::from_mseconds(100)));
-            gst::info!(CAT, "rtpbin reset to READY state");
-        }
+        // STEP 3: Cleanup jitterbuffer threads
+        // NOTE: The ideal solution would be to set rtpbin to READY state to cleanup
+        // jitterbuffers, but this propagates state changes to downstream elements
+        // (depayloaders, parsers, decoders) and can kill decoder source pad tasks.
+        // 
+        // KNOWN ISSUE: Jitterbuffer threads will accumulate with each reconnection
+        // when the SSRC changes. Applications should monitor decoder task health
+        // after reconnection and restart any decoders that lost their tasks.
+        //
+        // Leaving this commented for reference:
+        // if let Some(rtpbin) = bin.by_name("rtpbin0") {
+        //     let _ = rtpbin.set_state(gst::State::Ready);
+        // }
         
-        gst::info!(CAT, "RTP pipeline flush complete");
+        gst::info!(CAT, "RTP pipeline flush complete - ready for reconnection");
     }
 
     /// Clean up orphaned jitterbuffer elements to prevent task leaks during reconnection.
@@ -3973,7 +3980,7 @@ impl RtspSrc {
                             }
 
                             // Attempt to reconnect using ConnectionRacer (same as initial connection)
-                            gst::info!(CAT, "Starting TCP/TLS reconnection attempt using ConnectionRacer");
+                            gst::info!(CAT, "Starting TCP/TLS reconnection attempt");
                             if settings.protocols.contains(&RtspProtocol::Http) {
                                 // Try HTTP tunneling reconnection
                                 // Note: HTTP tunnel reconnection not yet fully implemented
@@ -4486,7 +4493,7 @@ impl RtspSrc {
                 };
 
                 // Send SETUP request
-                gst::info!(
+                gst::debug!(
                     CAT,
                     "Sending SETUP for stream {} with transport: {}",
                     stream_id,
@@ -4533,7 +4540,7 @@ impl RtspSrc {
                 // Extract session from first SETUP response
                 if session.is_none() {
                     session = response.typed_header::<Session>().ok().flatten();
-                    gst::info!(CAT, "Got new session from SETUP response: {:?}", session);
+                    gst::debug!(CAT, "Got new session from SETUP response: {:?}", session);
 
                     // Parse the raw Session header to get timeout value
                     if let Some(session_header) = response
@@ -4541,15 +4548,15 @@ impl RtspSrc {
                         .find(|(name, _)| name == &rtsp_types::headers::SESSION)
                         .map(|(_, value)| value.as_str())
                     {
-                        gst::info!(CAT, "Parsing session header: {}", session_header);
+                        gst::trace!(CAT, "Parsing session header: {}", session_header);
                         state.session_manager
                             .parse_session_with_timeout(session_header);
                         state.session_manager.reset_activity();
-                        gst::info!(CAT, "Updated session manager with new timeout after reconnection");
+                        gst::debug!(CAT, "Updated session manager with new timeout after reconnection");
                     } else if let Some(ref s) = session {
                         state.session_manager.set_session(s.clone());
                         state.session_manager.reset_activity();
-                        gst::info!(CAT, "Set session without timeout parameter");
+                        gst::debug!(CAT, "Set session without timeout parameter");
                     }
                 }
             }
@@ -4567,7 +4574,7 @@ impl RtspSrc {
                         CAT,
                         "Stream was playing before disconnection, restoring playback state"
                     );
-                    gst::info!(
+                    gst::debug!(
                         CAT,
                         "  Position: {:?}, Rate: {}, Range: {:?}",
                         position,
@@ -4608,11 +4615,11 @@ impl RtspSrc {
                     let cseq = state.cseq;
                     state.sink.send(play_req.into()).await?;
 
-                    gst::info!(CAT, "PLAY command sent to restore playback, CSeq: {}", cseq);
+                    gst::debug!(CAT, "PLAY command sent to restore playback, CSeq: {}", cseq);
                 }
             }
             PlaybackState::Paused { position } => {
-                gst::info!(
+                gst::debug!(
                     CAT,
                     "Stream was paused before disconnection at position {:?}",
                     position
