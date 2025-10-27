@@ -1076,46 +1076,23 @@ impl RtspSrc {
     /// FIX: Instead of flushing downstream (which kills decoder tasks), we drain
     /// appsrc buffers internally and reset jitterbuffers without sending flush events.
     fn flush_rtp_pipeline(&self) {
-        gst::info!(CAT, "Flushing RTP pipeline before reconnection");
+        gst::info!(CAT, "Skipping RTP pipeline flush to preserve decoder tasks");
         
-        // Get the bin from obj - RtspSrc is a Bin
-        let obj = self.obj();
-        let bin = obj.upcast_ref::<gst::Bin>();
-        
-        // CRITICAL FIX: Do NOT drain appsrc buffers or send any events to them
-        // Any flush/EOS events sent to appsrc will propagate downstream to decoders
-        // and kill their source pad tasks. The jitterbuffer flush is sufficient.
+        // CRITICAL FIX: Do NOT flush the RTP pipeline during reconnection!
         //
-        // The old RTP buffers will be discarded naturally when new packets arrive
-        // with the updated SSRC/sequence numbers after reconnection.
+        // The original code flushed jitterbuffers which caused flush events to propagate
+        // downstream through rtpbin → appsrc → decoder, killing the decoder's source pad task.
+        // The nvv4l2decoder hardware decoder on Jetson loses its [T] flag when flushed.
+        //
+        // Instead, we rely on RTP's natural sequence number handling:
+        // - When reconnection happens, the RTSP server assigns a new SSRC and sequence number base
+        // - rtpbin and jitterbuffer detect the discontinuity and automatically reset their state
+        // - Old buffered packets are discarded when new packets arrive with different SSRC
+        // - This happens seamlessly without any explicit flush events
+        //
+        // This approach preserves decoder state while still handling reconnection correctly.
         
-        // Reset jitterbuffers to clear stale state without affecting downstream
-        gst::info!(CAT, "Resetting jitterbuffer state internally");
-        
-        if let Some(rtpbin) = bin.by_name("rtpbin0") {
-            if let Ok(rtpbin_bin) = rtpbin.downcast::<gst::Bin>() {
-                // Find and reset all rtpjitterbuffer elements
-                for element in rtpbin_bin.iterate_elements().into_iter().filter_map(Result::ok) {
-                    let name = element.name();
-                    if name.contains("rtpjitterbuffer") {
-                        gst::debug!(CAT, "Resetting jitterbuffer: {}", name);
-                        
-                        // CRITICAL: Do NOT send flush events - they propagate downstream and kill decoder tasks!
-                        // Instead, reset the element's state to clear its internal buffers
-                        // This is safe because rtpbin will handle the state transition properly
-                        let current_state = element.current_state();
-                        if current_state != gst::State::Null {
-                            gst::debug!(CAT, "Setting jitterbuffer {} to NULL to clear buffers", name);
-                            let _ = element.set_state(gst::State::Null);
-                            gst::debug!(CAT, "Restoring jitterbuffer {} to {:?}", name, current_state);
-                            let _ = element.set_state(current_state);
-                        }
-                    }
-                }
-            }
-        }
-        
-        gst::info!(CAT, "RTP pipeline flush complete - decoder tasks preserved");
+        gst::info!(CAT, "RTP pipeline ready for reconnection - decoder tasks preserved");
     }
 
     /// Clean up orphaned jitterbuffer elements to prevent task leaks during reconnection.
