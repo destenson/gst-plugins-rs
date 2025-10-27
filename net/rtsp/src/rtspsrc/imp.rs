@@ -1076,7 +1076,7 @@ impl RtspSrc {
     /// FIX: Instead of flushing downstream (which kills decoder tasks), we drain
     /// appsrc buffers internally and reset jitterbuffers without sending flush events.
     fn flush_rtp_pipeline(&self) {
-        gst::info!(CAT, "Skipping RTP pipeline flush to preserve decoder tasks");
+        gst::info!(CAT, "Cleaning up orphaned jitterbuffers without flushing");
         
         // CRITICAL FIX: Do NOT flush the RTP pipeline during reconnection!
         //
@@ -1084,20 +1084,19 @@ impl RtspSrc {
         // downstream through rtpbin → appsrc → decoder, killing the decoder's source pad task.
         // The nvv4l2decoder hardware decoder on Jetson loses its [T] flag when flushed.
         //
-        // Instead, we rely on RTP's natural sequence number handling:
-        // - When reconnection happens, the RTSP server assigns a new SSRC and sequence number base
-        // - rtpbin and jitterbuffer detect the discontinuity and automatically reset their state
-        // - Old buffered packets are discarded when new packets arrive with different SSRC
-        // - This happens seamlessly without any explicit flush events
-        //
-        // This approach preserves decoder state while still handling reconnection correctly.
+        // Instead, we cleanup ONLY orphaned jitterbuffer elements (those with no active
+        // peer connections). This prevents memory/thread leaks from SSRC changes while
+        // preserving active streams and decoder tasks.
+        
+        self.cleanup_orphaned_jitterbuffers();
         
         gst::info!(CAT, "RTP pipeline ready for reconnection - decoder tasks preserved");
     }
 
     /// Clean up orphaned jitterbuffer elements to prevent task leaks during reconnection.
     /// After reconnection with a new SSRC, old jitterbuffer elements remain in rtpbin
-    /// with their tasks still running. This function removes them.
+    /// with their tasks still running. This function removes ONLY orphaned elements
+    /// (those with no active peer connections on their src pads).
     fn cleanup_orphaned_jitterbuffers(&self) {
         gst::info!(CAT, "Cleaning up orphaned jitterbuffer elements");
         
@@ -1110,8 +1109,6 @@ impl RtspSrc {
             return;
         };
         
-        gst::debug!(CAT, "rtpbin element type: {}", rtpbin.type_());
-        
         let rtpbin_bin = match rtpbin.downcast::<gst::Bin>() {
             Ok(bin) => bin,
             Err(e) => {
@@ -1120,63 +1117,64 @@ impl RtspSrc {
             }
         };
         
-        // CRITICAL FIX: Iterate elements FIRST before setting to NULL!
-        // Setting to NULL destroys elements before we can iterate them
-        gst::debug!(CAT, "Finding internal rtpbin elements before state change");
-        
-        // Find ALL internal dynamically-created elements (not just jitterbuffers)
+        // Find orphaned elements - those with no active downstream connections
         let mut elements_to_remove = Vec::new();
         let mut element_count = 0;
         
         for element in rtpbin_bin.iterate_elements().into_iter().filter_map(Result::ok) {
             element_count += 1;
             let name = element.name();
-            gst::debug!(CAT, "Found rtpbin child element: {} (type: {})", name, element.type_());
             
-            // Remove ALL rtpbin internal elements that are dynamically created
-            // These include jitterbuffers, sessions, demuxers, etc.
+            // Only check jitterbuffers and related RTP elements
             if name.starts_with("rtpjitterbuffer")
                 || name.starts_with("rtpptdemux")
-                || name.starts_with("rtpsession")
                 || name.starts_with("rtpssrcdemux") {
-                gst::debug!(CAT, "Marking internal element for removal: {}", name);
-                elements_to_remove.push(element.clone());
+                
+                // Check if this element has any src pads with active peer connections
+                let mut has_active_connection = false;
+                for pad in element.iterate_src_pads().into_iter().filter_map(Result::ok) {
+                    if pad.peer().is_some() {
+                        has_active_connection = true;
+                        break;
+                    }
+                }
+                
+                // If no active connections, it's orphaned
+                if !has_active_connection {
+                    gst::debug!(CAT, "Found orphaned element (no peer connections): {}", name);
+                    elements_to_remove.push(element.clone());
+                } else {
+                    gst::trace!(CAT, "Element {} has active connections, keeping", name);
+                }
             }
         }
         
-        gst::info!(CAT, "Found {} total rtpbin children, {} to cleanup", element_count, elements_to_remove.len());
+        gst::info!(CAT, "Found {} total rtpbin children, {} orphaned to cleanup", element_count, elements_to_remove.len());
         
-        // NOW set rtpbin to NULL state after collecting elements
-        gst::debug!(CAT, "Setting rtpbin to NULL state for cleanup");
-        let _ = rtpbin_bin.set_state(gst::State::Null);
-        let _ = rtpbin_bin.state(Some(gst::ClockTime::from_mseconds(100)));
+        if elements_to_remove.is_empty() {
+            gst::info!(CAT, "No orphaned elements to cleanup");
+            return;
+        }
         
-        gst::info!(CAT, "Removing {} internal rtpbin elements to prevent thread leaks", elements_to_remove.len());
-        
-        // Remove all elements
+        // Remove only the orphaned elements (do NOT set rtpbin to NULL!)
         for element in elements_to_remove {
             let name = element.name();
             
-            // Ensure stopped
+            // Set element to NULL state
             let _ = element.set_state(gst::State::Null);
             
-            // Unlink all pads - properly handle source pads
+            // Unlink all pads
             for pad in element.iterate_pads().into_iter().filter_map(Result::ok) {
-                if pad.direction() == gst::PadDirection::Src {
-                    if let Some(peer) = pad.peer() {
-                        let _ = pad.unlink(&peer);
-                    }
-                } else if let Some(peer) = pad.peer() {
-                    // For sink pads, unlink from the peer's side (peer is the source)
-                    let _ = peer.unlink(&pad);
+                if let Some(peer) = pad.peer() {
+                    let _ = pad.unlink(&peer);
                 }
             }
             
             // Remove from rtpbin
             if let Err(e) = rtpbin_bin.remove(&element) {
-                gst::warning!(CAT, "Failed to remove {}: {}", name, e);
+                gst::warning!(CAT, "Failed to remove orphaned {}: {}", name, e);
             } else {
-                gst::debug!(CAT, "Removed: {}", name);
+                gst::debug!(CAT, "Removed orphaned: {}", name);
             }
         }
         
