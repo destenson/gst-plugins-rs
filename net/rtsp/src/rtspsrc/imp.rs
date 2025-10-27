@@ -1098,15 +1098,38 @@ impl RtspSrc {
         // Send flush events to each appsrc
         for appsrc in appsrcs_to_flush {
             let name = appsrc.name();
+            
+            // Check if the appsrc has a source pad and if it's linked
+            let src_pad = appsrc.static_pad("src");
+            let should_flush = if let Some(pad) = src_pad {
+                pad.is_linked()
+            } else {
+                false
+            };
+            
+            if !should_flush {
+                gst::debug!(CAT, "Skipping flush for {} (not linked)", name);
+                continue;
+            }
+            
             gst::debug!(CAT, "Sending FLUSH_START to {}", name);
             if !appsrc.send_event(gst::event::FlushStart::new()) {
-                gst::warning!(CAT, "Failed to send FLUSH_START to {}", name);
+                gst::info!(CAT, "Failed to send FLUSH_START to {} (may be disconnected)", name);
             }
             
             gst::debug!(CAT, "Sending FLUSH_STOP to {}", name);
             if !appsrc.send_event(gst::event::FlushStop::new(true)) {
-                gst::warning!(CAT, "Failed to send FLUSH_STOP to {}", name);
+                gst::info!(CAT, "Failed to send FLUSH_STOP to {} (may be disconnected)", name);
             }
+        }
+        
+        // CRITICAL: Set rtpbin to READY state to force cleanup of internal elements
+        // This removes old jitterbuffer/demux/session elements that would otherwise leak threads
+        if let Some(rtpbin) = bin.by_name("rtpbin0") {
+            gst::info!(CAT, "Setting rtpbin to READY to cleanup internal elements");
+            let _ = rtpbin.set_state(gst::State::Ready);
+            let _ = rtpbin.state(Some(gst::ClockTime::from_mseconds(100)));
+            gst::info!(CAT, "rtpbin reset to READY state");
         }
         
         gst::info!(CAT, "RTP pipeline flush complete");
@@ -1123,25 +1146,32 @@ impl RtspSrc {
         
         // Find the rtpbin element
         let Some(rtpbin) = bin.by_name("rtpbin0") else {
+            gst::warning!(CAT, "Could not find rtpbin0");
             return;
         };
         
+        gst::debug!(CAT, "rtpbin element type: {}", rtpbin.type_());
+        
         let rtpbin_bin = match rtpbin.downcast::<gst::Bin>() {
             Ok(bin) => bin,
-            Err(_) => return,
+            Err(e) => {
+                gst::warning!(CAT, "rtpbin is not a Bin, cannot cleanup internal elements: {:?}", e);
+                return;
+            }
         };
         
-        // AGGRESSIVE CLEANUP: Stop rtpbin completely to ensure ALL internal threads are stopped
-        // This is critical for preventing thread leaks during rapid reconnection storms
-        gst::debug!(CAT, "Stopping rtpbin completely for aggressive cleanup");
-        let _ = rtpbin_bin.set_state(gst::State::Null);
-        let _ = rtpbin_bin.state(Some(gst::ClockTime::from_mseconds(100)));
+        // CRITICAL FIX: Iterate elements FIRST before setting to NULL!
+        // Setting to NULL destroys elements before we can iterate them
+        gst::debug!(CAT, "Finding internal rtpbin elements before state change");
         
         // Find ALL internal dynamically-created elements (not just jitterbuffers)
         let mut elements_to_remove = Vec::new();
+        let mut element_count = 0;
         
         for element in rtpbin_bin.iterate_elements().into_iter().filter_map(Result::ok) {
+            element_count += 1;
             let name = element.name();
+            gst::debug!(CAT, "Found rtpbin child element: {} (type: {})", name, element.type_());
             
             // Remove ALL rtpbin internal elements that are dynamically created
             // These include jitterbuffers, sessions, demuxers, etc.
@@ -1154,6 +1184,13 @@ impl RtspSrc {
             }
         }
         
+        gst::info!(CAT, "Found {} total rtpbin children, {} to cleanup", element_count, elements_to_remove.len());
+        
+        // NOW set rtpbin to NULL state after collecting elements
+        gst::debug!(CAT, "Setting rtpbin to NULL state for cleanup");
+        let _ = rtpbin_bin.set_state(gst::State::Null);
+        let _ = rtpbin_bin.state(Some(gst::ClockTime::from_mseconds(100)));
+        
         gst::info!(CAT, "Removing {} internal rtpbin elements to prevent thread leaks", elements_to_remove.len());
         
         // Remove all elements
@@ -1163,10 +1200,15 @@ impl RtspSrc {
             // Ensure stopped
             let _ = element.set_state(gst::State::Null);
             
-            // Unlink all pads
+            // Unlink all pads - properly handle source pads
             for pad in element.iterate_pads().into_iter().filter_map(Result::ok) {
-                if let Some(peer) = pad.peer() {
-                    let _ = pad.unlink(&peer);
+                if pad.direction() == gst::PadDirection::Src {
+                    if let Some(peer) = pad.peer() {
+                        let _ = pad.unlink(&peer);
+                    }
+                } else if let Some(peer) = pad.peer() {
+                    // For sink pads, unlink from the peer's side (peer is the source)
+                    let _ = peer.unlink(&pad);
                 }
             }
             
@@ -3879,11 +3921,9 @@ impl RtspSrc {
                             );    
 
                             // Flush the RTP pipeline to clear jitter buffer state before reconnecting
-                            // This prevents old sequence numbers and SSRCs from causing issues
+                            // This prevents old sequence numbers and SSRCs from causing issues.
+                            // Setting rtpbin to READY state will cleanup internal elements automatically.
                             task_src.flush_rtp_pipeline();
-                            
-                            // Clean up orphaned jitterbuffer elements to prevent task leaks
-                            task_src.cleanup_orphaned_jitterbuffers();
 
                             // Post a message about the reconnection attempt
                             let msg = gst::message::Element::builder(
