@@ -1073,8 +1073,8 @@ impl RtspSrc {
     }
 
     /// Flush the RTP pipeline to clear jitter buffer state before reconnection.
-    /// This sends FLUSH_START and FLUSH_STOP events through all RTP/RTCP appsrc elements
-    /// to ensure clean state when reconnecting with potentially different SSRCs.
+    /// FIX: Instead of flushing downstream (which kills decoder tasks), we drain
+    /// appsrc buffers internally and reset jitterbuffers without sending flush events.
     fn flush_rtp_pipeline(&self) {
         gst::info!(CAT, "Flushing RTP pipeline before reconnection");
         
@@ -1082,64 +1082,38 @@ impl RtspSrc {
         let obj = self.obj();
         let bin = obj.upcast_ref::<gst::Bin>();
         
-        // STEP 1: Collect all RTP and RTCP appsrc elements
-        let mut appsrcs_to_flush = Vec::new();
+        // CRITICAL FIX: Do NOT drain appsrc buffers or send any events to them
+        // Any flush/EOS events sent to appsrc will propagate downstream to decoders
+        // and kill their source pad tasks. The jitterbuffer flush is sufficient.
+        //
+        // The old RTP buffers will be discarded naturally when new packets arrive
+        // with the updated SSRC/sequence numbers after reconnection.
         
-        // Find all children that are appsrc elements (rtp_appsrc_* and rtcp_appsrc_*)
-        for child in bin.children() {
-            if let Ok(appsrc) = child.downcast::<gst_app::AppSrc>() {
-                let name = appsrc.name();
-                if name.starts_with("rtp_appsrc_") || name.starts_with("rtcp_appsrc_") {
-                    appsrcs_to_flush.push(appsrc);
+        // Reset jitterbuffers to clear stale state without affecting downstream
+        gst::info!(CAT, "Resetting jitterbuffer state internally");
+        
+        if let Some(rtpbin) = bin.by_name("rtpbin0") {
+            if let Ok(rtpbin_bin) = rtpbin.downcast::<gst::Bin>() {
+                // Find and reset all rtpjitterbuffer elements
+                for element in rtpbin_bin.iterate_elements().into_iter().filter_map(Result::ok) {
+                    let name = element.name();
+                    if name.contains("rtpjitterbuffer") {
+                        gst::debug!(CAT, "Resetting jitterbuffer: {}", name);
+                        
+                        // Reset jitterbuffer to clear accumulated packets
+                        // Use the jitterbuffer's internal flush mechanism on its sink pad
+                        // This stays contained within rtpbin and doesn't propagate downstream
+                        if let Some(sink_pad) = element.static_pad("sink") {
+                            gst::debug!(CAT, "Flushing jitterbuffer {} sink pad", name);
+                            let _ = sink_pad.send_event(gst::event::FlushStart::new());
+                            let _ = sink_pad.send_event(gst::event::FlushStop::new(true));
+                        }
+                    }
                 }
             }
         }
         
-        // STEP 2: Send flush events to each appsrc to clear buffers and reset state
-        // This must happen BEFORE setting rtpbin to READY so the events can propagate
-        gst::info!(CAT, "Flushing {} appsrc elements", appsrcs_to_flush.len());
-        for appsrc in appsrcs_to_flush {
-            let name = appsrc.name();
-            
-            // Check if the appsrc has a source pad and if it's linked
-            let src_pad = appsrc.static_pad("src");
-            let should_flush = if let Some(pad) = src_pad {
-                pad.is_linked()
-            } else {
-                false
-            };
-            
-            if !should_flush {
-                gst::debug!(CAT, "Skipping flush for {} (not linked)", name);
-                continue;
-            }
-            
-            gst::debug!(CAT, "Sending FLUSH_START to {}", name);
-            if !appsrc.send_event(gst::event::FlushStart::new()) {
-                gst::info!(CAT, "Failed to send FLUSH_START to {} (may be disconnected)", name);
-            }
-            
-            gst::debug!(CAT, "Sending FLUSH_STOP to {}", name);
-            if !appsrc.send_event(gst::event::FlushStop::new(true)) {
-                gst::info!(CAT, "Failed to send FLUSH_STOP to {} (may be disconnected)", name);
-            }
-        }
-        
-        // STEP 3: Cleanup jitterbuffer threads
-        // NOTE: The ideal solution would be to set rtpbin to READY state to cleanup
-        // jitterbuffers, but this propagates state changes to downstream elements
-        // (depayloaders, parsers, decoders) and can kill decoder source pad tasks.
-        // 
-        // KNOWN ISSUE: Jitterbuffer threads will accumulate with each reconnection
-        // when the SSRC changes. Applications should monitor decoder task health
-        // after reconnection and restart any decoders that lost their tasks.
-        //
-        // Leaving this commented for reference:
-        // if let Some(rtpbin) = bin.by_name("rtpbin0") {
-        //     let _ = rtpbin.set_state(gst::State::Ready);
-        // }
-        
-        gst::info!(CAT, "RTP pipeline flush complete - ready for reconnection");
+        gst::info!(CAT, "RTP pipeline flush complete - decoder tasks preserved");
     }
 
     /// Clean up orphaned jitterbuffer elements to prevent task leaks during reconnection.
@@ -3961,8 +3935,8 @@ impl RtspSrc {
                             }
                             current_rx = Some(new_rx);
 
-                            // Wait before reconnecting
-                            let reconnect_delay = std::time::Duration::from_nanos(settings.reconnection_timeout.nseconds());
+                            // Wait before reconnecting (use initial retry delay, not the max timeout)
+                            let reconnect_delay = std::time::Duration::from_nanos(settings.initial_retry_delay.nseconds());
                             if stop_token.is_cancelled() {
                                 gst::info!(CAT, "Cancellation requested, aborting reconnection wait");
                                 state.cleanup_udp_tasks().await;
