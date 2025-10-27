@@ -195,8 +195,8 @@ impl ConnectionRacer {
             self.config.max_parallel_connections
         );
 
-        let mut futures = Vec::new();
-        let mut handles = Vec::new();
+        use tokio::task::JoinSet;
+        let mut join_set = JoinSet::new();
 
         for i in 0..self.config.max_parallel_connections {
             let hostname_port = hostname_port.to_string();
@@ -204,7 +204,7 @@ impl ConnectionRacer {
             let racing_timeout = self.config.racing_timeout;
 
             let proxy_config = self.config.proxy_config.clone();
-            let handle = tokio::spawn(async move {
+            join_set.spawn(async move {
                 if i > 0 {
                     sleep(delay).await;
                 }
@@ -220,51 +220,48 @@ impl ConnectionRacer {
                 )
                 .await
             });
-
-            handles.push(handle);
-        }
-
-        // Convert handles to futures
-        for handle in handles {
-            futures.push(handle);
         }
 
         // Race all connections
-        while !futures.is_empty() {
-            let (result, _index, remaining) = select_all(futures).await;
-            futures = remaining;
-
+        let mut successful_stream = None;
+        
+        while let Some(result) = join_set.join_next().await {
             match result {
                 Ok(Ok(Ok(stream))) => {
                     gst::debug!(
                         CAT,
-                        "First-wins: connection successful, cancelling other attempts"
+                        "First-wins: connection successful, aborting {} other attempts",
+                        join_set.len()
                     );
-                    // Cancel remaining futures
-                    for future in futures {
-                        future.abort();
-                    }
-                    return Ok(stream);
+                    successful_stream = Some(stream);
+                    break;
                 }
                 Ok(Ok(Err(e))) => {
                     gst::trace!(CAT, "First-wins: connection attempt failed: {}", e);
-                    // Continue with remaining futures
                 }
                 Ok(Err(e)) => {
                     gst::trace!(CAT, "First-wins: connection attempt timed out: {}", e);
-                    // Continue with remaining futures
                 }
                 Err(e) => {
                     gst::trace!(CAT, "First-wins: task join error: {}", e);
-                    // Continue with remaining futures
                 }
             }
         }
 
-        Err(std::io::Error::new(
-            std::io::ErrorKind::ConnectionRefused,
-            "All connection attempts failed in first-wins racing",
-        ))
+        // Abort all remaining tasks and wait for cleanup
+        join_set.abort_all();
+        while join_set.join_next().await.is_some() {
+            // Wait for all tasks to be aborted
+        }
+
+        if let Some(stream) = successful_stream {
+            Ok(stream)
+        } else {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::ConnectionRefused,
+                "All connection attempts failed in first-wins racing",
+            ))
+        }
     }
 
     /// Last-wins strategy
@@ -280,8 +277,8 @@ impl ConnectionRacer {
             self.config.max_parallel_connections
         );
 
-        let mut futures = Vec::new();
-        let mut handles = Vec::new();
+        use tokio::task::JoinSet;
+        let mut join_set = JoinSet::new();
 
         for i in 0..self.config.max_parallel_connections {
             let hostname_port = hostname_port.to_string();
@@ -289,7 +286,7 @@ impl ConnectionRacer {
             let racing_timeout = self.config.racing_timeout;
 
             let proxy_config = self.config.proxy_config.clone();
-            let handle = tokio::spawn(async move {
+            join_set.spawn(async move {
                 if i > 0 {
                     sleep(delay).await;
                 }
@@ -305,22 +302,12 @@ impl ConnectionRacer {
                 )
                 .await
             });
-
-            handles.push(handle);
-        }
-
-        // Convert handles to futures
-        for handle in handles {
-            futures.push(handle);
         }
 
         let mut last_successful: Option<RtspStream> = None;
 
         // Collect all results, keeping the last successful one
-        while !futures.is_empty() {
-            let (result, _index, remaining) = select_all(futures).await;
-            futures = remaining;
-
+        while let Some(result) = join_set.join_next().await {
             match result {
                 Ok(Ok(Ok(stream))) => {
                     gst::debug!(
