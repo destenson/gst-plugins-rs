@@ -632,7 +632,7 @@ impl RtspError {
 
         match self.classify() {
             ErrorClass::Transient => {
-                gst::info!(*cat, "{} - {}", message, classification_info);
+                gst::warning!(*cat, "{} - {}", message, classification_info);
             }
             ErrorClass::RetryableWithBackoff => {
                 gst::warning!(*cat, "{} - {}", message, classification_info);
