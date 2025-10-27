@@ -162,6 +162,11 @@ impl SessionManager {
         &self.keepalive_method
     }
 
+    /// Get the keep-alive interval duration (80% of session timeout)
+    pub fn keepalive_interval_duration(&self) -> Duration {
+        Duration::from_secs_f64(self.timeout.as_secs_f64() * KEEPALIVE_FACTOR)
+    }
+
     /// Start the keep-alive timer
     fn start_keepalive_timer(&mut self) {
         let keepalive_interval_duration =
