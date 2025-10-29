@@ -1145,6 +1145,42 @@ impl RtspSrc {
         gst::debug!(CAT, obj = self.obj(), "Reset pad state");
     }
 
+    /// Force emit no-more-pads during reconnection when pads already exist
+    /// This is needed because existing pads won't trigger pad-added callbacks
+    fn force_no_more_pads_if_ready(&self) {
+        let mut pad_state = self.pad_state.lock().unwrap();
+
+        // Check if we have expected pads set and haven't emitted yet
+        if pad_state.expected_pads > 0 && !pad_state.no_more_pads_emitted {
+            // Count how many src pads currently exist
+            let obj = self.obj();
+            let existing_pad_count = obj.src_pads().len();
+
+            gst::debug!(
+                CAT,
+                obj = obj,
+                "Checking existing pads: found {}, expected {}",
+                existing_pad_count,
+                pad_state.expected_pads
+            );
+
+            // If we have all expected pads, emit no-more-pads
+            if existing_pad_count >= pad_state.expected_pads {
+                pad_state.no_more_pads_emitted = true;
+                pad_state.activated_pads = existing_pad_count;
+                drop(pad_state); // Release lock before emitting signal
+
+                gst::info!(
+                    CAT,
+                    obj = obj,
+                    "Reconnection: All {} pads already exist - emitting no-more-pads",
+                    existing_pad_count
+                );
+                obj.no_more_pads();
+            }
+        }
+    }
+
     /// Emit the on-sdp signal (placeholder)
     /// This function will be called when an SDP message is received from the RTSP server.
     /// Applications can connect to this signal to inspect or modify the SDP before stream setup.
@@ -4559,6 +4595,10 @@ impl RtspSrc {
                 // Note: RTCP appsrcs would need to be stored similarly if needed
             }
         }
+
+        // Since pads already exist during reconnection, we need to manually emit no-more-pads
+        // The pad-added callback won't fire for existing pads
+        self.force_no_more_pads_if_ready();
 
         // Set expected_response based on what command we sent
         let mut expected_response = None;
