@@ -749,11 +749,20 @@ pub struct RtspSrc {
     command_queue: Mutex<Option<mpsc::Sender<Commands>>>,
     buffer_queue: Arc<Mutex<BufferQueue>>,
     stop_token: Arc<Mutex<Option<CancellationToken>>>,
+    // Tracks pad activation for no-more-pads signal
+    pad_state: Mutex<PadState>,
     // TODO: tls_database and tls_interaction properties cannot be properly stored
     // because gio::TlsDatabase and gio::TlsInteraction are not Send+Sync.
     // These properties will need to be implemented after removing Tokio.
     #[cfg(feature = "telemetry")]
     metrics: super::telemetry::RtspMetrics,
+}
+
+#[derive(Debug, Default)]
+struct PadState {
+    expected_pads: usize,
+    activated_pads: usize,
+    no_more_pads_emitted: bool,
 }
 
 impl Default for RtspSrc {
@@ -764,6 +773,7 @@ impl Default for RtspSrc {
             command_queue: Mutex::new(None),
             buffer_queue: Arc::new(Mutex::new(BufferQueue::default())),
             stop_token: Arc::new(Mutex::new(None)),
+            pad_state: Mutex::new(PadState::default()),
             #[cfg(feature = "telemetry")]
             metrics: super::telemetry::RtspMetrics::default(),
         }
@@ -1078,6 +1088,61 @@ impl RtspSrc {
             appsrc,
             rtsp_src: self.obj().clone(),
         }
+    }
+
+    /// Set the expected number of pads for this source
+    /// This should be called once we know how many streams we'll have from the SDP
+    fn set_expected_pads(&self, count: usize) {
+        let mut pad_state = self.pad_state.lock().unwrap();
+        pad_state.expected_pads = count;
+        pad_state.activated_pads = 0;
+        pad_state.no_more_pads_emitted = false;
+
+        gst::debug!(CAT, obj = self.obj(), "Expecting {} pads for this source", count);
+    }
+
+    /// Mark a pad as activated and emit no-more-pads if all pads are ready
+    /// Returns true if no-more-pads was emitted
+    fn pad_activated(&self) -> bool {
+        let mut pad_state = self.pad_state.lock().unwrap();
+        pad_state.activated_pads += 1;
+
+        let obj = self.obj();
+        gst::debug!(
+            CAT,
+            obj = obj,
+            "Pad activated: {}/{} pads ready",
+            pad_state.activated_pads,
+            pad_state.expected_pads
+        );
+
+        // Only emit no-more-pads once, and only when all expected pads are activated
+        if !pad_state.no_more_pads_emitted
+            && pad_state.activated_pads >= pad_state.expected_pads
+            && pad_state.expected_pads > 0
+        {
+            pad_state.no_more_pads_emitted = true;
+            let activated = pad_state.activated_pads;
+            drop(pad_state); // Release lock before emitting signal
+
+            gst::info!(
+                CAT,
+                obj = obj,
+                "All {} pads activated - emitting no-more-pads signal",
+                activated
+            );
+            obj.no_more_pads();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Reset pad state (called on state changes or reconnection)
+    fn reset_pad_state(&self) {
+        let mut pad_state = self.pad_state.lock().unwrap();
+        *pad_state = PadState::default();
+        gst::debug!(CAT, obj = self.obj(), "Reset pad state");
     }
 
     /// Emit the on-sdp signal (placeholder)
@@ -4031,6 +4096,9 @@ impl RtspSrc {
 
         self.command_queue.lock().unwrap().take();
 
+        // Reset pad state when stopping
+        self.reset_pad_state();
+
         gst::info!(CAT, imp = self, "Stopped");
 
         Ok(())
@@ -4269,6 +4337,10 @@ impl RtspSrc {
         state.cleanup_udp_tasks().await;
 
         self.clear_buffer_queue();
+
+        // Reset and set expected pad count for reconnection
+        self.reset_pad_state();
+        self.set_expected_pads(state.setup_params.len());
 
         let cmd_tx = self.cmd_queue();
         let settings = { self.settings.lock().unwrap().clone() };
@@ -4801,6 +4873,9 @@ impl RtspSrc {
             result?
         };
 
+        // Set expected pad count for no-more-pads signal
+        self.set_expected_pads(state.setup_params.len());
+
         // Punch NAT holes for UDP transport after SETUP
         RtspTaskState::punch_nat_holes(&state.setup_params, settings.nat_method).await;
         let manager = RtspManager::new_with_settings(
@@ -5058,7 +5133,7 @@ impl RtspSrc {
                     } else {
                         gst::debug!(
                             CAT,
-                            "Successfully set ghostpad {} target - signaling no_more_pads",
+                            "Successfully set ghostpad {} target",
                             ghostpad.name()
                         );
 
@@ -5083,10 +5158,10 @@ impl RtspSrc {
                                     }
                                 }
                             }
-                        }
 
-                        // Signal that pads are ready now that ghost pad has a target
-                        obj.no_more_pads();
+                            // Mark pad as activated and emit no-more-pads if all pads are ready
+                            rtsp_src.imp().pad_activated();
+                        }
                     }
                 }
                 _ => {
