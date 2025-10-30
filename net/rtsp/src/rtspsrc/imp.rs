@@ -5684,24 +5684,17 @@ impl RtspManager {
                                 let pad_name = pad.name();
                                 // Check if this pad belongs to the old SSRC
                                 if pad_name.starts_with(&format!("recv_rtp_src_{}_{}_", session, old_ssrc)) {
-                                    gst::info!(CAT, "Found old pad {} for SSRC {}, cleaning up internal elements", pad_name, old_ssrc);
+                                    gst::info!(CAT, "Found old pad {} for SSRC {}, unlinking and removing", pad_name, old_ssrc);
                                     
-                                    // First, unlink from peer to stop data flow
+                                    // Unlink if connected
                                     if let Some(peer) = pad.peer() {
                                         gst::debug!(CAT, "Unlinking {} from {}", pad_name, peer.name());
                                         pad.unlink(&peer).ok();
                                     }
                                     
-                                    // Send flush events to the pad to clear any queued data in jitterbuffer
-                                    gst::debug!(CAT, "Flushing pad {} to clear jitterbuffer", pad_name);
-                                    pad.send_event(gst::event::FlushStart::new());
-                                    pad.send_event(gst::event::FlushStop::builder(true).build());
-                                    
-                                    // Use release_request_pad instead of remove_pad for proper cleanup
-                                    // This is the correct way to clean up rtpbin's internal elements (jitterbuffer, etc.)
-                                    gst::debug!(CAT, "Releasing request pad {}", pad_name);
-                                    recv_clone.release_request_pad(&pad);
-                                    gst::info!(CAT, "Released pad {} - rtpbin will clean up jitterbuffer and associated elements", pad_name);
+                                    // Remove the pad - this triggers rtpbin to clean up the jitterbuffer
+                                    recv_clone.remove_pad(&pad).ok();
+                                    gst::info!(CAT, "Removed old pad {} - jitterbuffer should be cleaned up", pad_name);
                                 }
                             }
                         }
