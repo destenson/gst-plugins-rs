@@ -4616,7 +4616,10 @@ impl RtspSrc {
         let mut keepalive_interval = tokio::time::interval(interval_duration);
         keepalive_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         gst::debug!(CAT, "Keep-alive interval set to {:?} (80% of session timeout)", interval_duration);
-        
+
+        // Consume the immediate first tick - tokio intervals fire immediately on creation
+        keepalive_interval.tick().await;
+
         loop {
             // Main message handling loop (same as original)
             enum Res {
@@ -5272,7 +5275,7 @@ impl RtspSrc {
         let mut expected_response: Option<(Method, u32)> = None;
         let mut keepalive_interval = tokio::time::interval(Duration::from_secs(30)); // Will be updated after session
         keepalive_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        
+
         // Update keep-alive interval based on actual session timeout (if we have a session)
         if session.is_some() {
             let interval_duration = state.session_manager.keepalive_interval_duration();
@@ -5280,6 +5283,10 @@ impl RtspSrc {
             keepalive_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             gst::debug!(CAT, "Updated keep-alive interval to {:?} (80% of session timeout)", interval_duration);
         }
+
+        // Consume the immediate first tick - tokio intervals fire immediately on creation
+        // We don't want to send keep-alive right after PLAY
+        keepalive_interval.tick().await;
 
         loop {
             tokio::select! {
@@ -7493,6 +7500,9 @@ async fn udp_rtcp_task(
     // NAT keep-alive timer - send dummy packet every 20 seconds to keep NAT mapping alive
     let mut nat_keepalive_interval = tokio::time::interval(Duration::from_secs(20));
     nat_keepalive_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+    // Consume the immediate first tick - tokio intervals fire immediately on creation
+    nat_keepalive_interval.tick().await;
 
     let error = loop {
         tokio::select! {
