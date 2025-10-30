@@ -5657,6 +5657,8 @@ impl RtspManager {
                 Self::apply_rtcp_settings(&e, settings);
             }
 
+            e.set_property("autoremove", true);
+
             (e.clone(), e)
         };
         if !rtp2 {
