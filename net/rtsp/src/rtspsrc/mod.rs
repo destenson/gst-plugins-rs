@@ -78,10 +78,13 @@ glib::wrapper! {
 }
 
 pub fn register(plugin: &gst::Plugin) -> Result<(), glib::BoolError> {
+    // Use PRIMARY + 1 to be preferred over the old C rtspsrc element
+    // which has PRIMARY rank (256). This ensures playbin will choose
+    // rtspsrc2 by default for RTSP URIs.
     gst::Element::register(
         Some(plugin),
         "rtspsrc2",
-        gst::Rank::PRIMARY,
+        gst::Rank::PRIMARY + 1,
         RtspSrc::static_type(),
     )
 }
